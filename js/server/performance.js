@@ -3,7 +3,7 @@
 
 import * as db from './db.js';
 import { route } from './router.js';
-import { storedUSDTWDRate, toTWD, isHistorySell } from './util.js';
+import { storedUSDTWDRate, toTWD } from './util.js';
 import { portfolioValues } from './stocks.js';
 import { queryDividends } from './dividends.js';
 import { loadPerfTxns } from './twr.js';
@@ -44,7 +44,8 @@ export function xirr(flows, d0) {
 /**
  * GET /api/stocks/xirr → {"ALL": {...}, "TW": {...}, "US": {...}}
  * BUYs are outflows, SELLs and dividends inflows, current market value is the
- * terminal inflow. Imported-history SELLs count as a one-day round trip.
+ * terminal inflow. Imported-history SELLs arrive from loadPerfTxns as a
+ * one-day round trip.
  * Foreign amounts use today's rate, so it is an approximation.
  */
 async function xirrHandler() {
@@ -64,17 +65,6 @@ async function xirrHandler() {
     const d = utcMs(t.date);
     if (t.action === 'BUY') add(t.market, d, -toTWD(t.shares * t.price + t.fee, t.currency, rate));
     else add(t.market, d, toTWD(t.shares * t.price - t.fee - t.tax, t.currency, rate));
-  }
-  // Imported-history SELLs (「歷史已實現損益」) have no BUY on record, so the
-  // ledger leaves them out. Count each as bought the day before at the cost its
-  // stored realized_pl implies, so their profit shows up in XIRR without
-  // touching FIFO lots or holdings.
-  for (const t of db.where('stock_transactions', (x) => x.account_id == null && isHistorySell(x))) {
-    if (!isDateOnly(t.date)) continue;
-    const d = utcMs(t.date);
-    const proceeds = t.shares * t.price - t.fee - t.tax;
-    add(t.market, d - DAY_MS, -toTWD(proceeds - t.realized_pl, t.currency, rate));
-    add(t.market, d, toTWD(proceeds, t.currency, rate));
   }
   for (const d of queryDividends()) {
     if (isDateOnly(d.date)) add(d.market, utcMs(d.date), toTWD(d.amount, d.currency, rate));

@@ -64,15 +64,15 @@ async function check() {
     else orphanBefore++;
   }
   if (orphanIn.length > 0) {
-    checks.push({ level: 'warn', title: `績效期間內有 ${orphanIn.length} 筆賣出沒有對應的買入紀錄`,
-      detail: '這些是只記了已實現損益的歷史賣出。持有期間的漲跌和這筆賣出都不會算進績效與 XIRR（已實現損益頁有算）。補登當初的買入，就能完整計入。',
+    checks.push({ level: 'info', title: `績效期間內有 ${orphanIn.length} 筆賣出沒有對應的買入紀錄`,
+      detail: '這些是只記了已實現損益的歷史賣出。績效與 XIRR 把它們估算成「賣出前一天以反推成本買進」，損益有算進去，但持有期間被壓縮成一天，報酬率會稍微偏高。補登當初真實的買入，就能精確計入。',
       items: capItems(orphanIn), action: 'transactions' });
   } else {
     checks.push({ level: 'ok', title: '績效期間內的賣出都有買入紀錄' });
   }
   if (orphanBefore > 0) {
     checks.push({ level: 'info', title: `起算日前有 ${orphanBefore} 筆只有損益的歷史賣出`,
-      detail: '只計入已實現損益，不影響績效。' });
+      detail: '在績效起算日之前，不影響所選期間的績效。' });
   }
 
   // 3. Trade prices far from that day's close: pre-split units or a typo.
@@ -89,7 +89,7 @@ async function check() {
   const offPrice = [];
   const noHistory = symbols.filter((sym) => !closes[sym] || closes[sym].length === 0);
   for (const t of txns) {
-    if (t.transfer || t.price <= 0) continue;
+    if (t.transfer || t.synthetic || t.price <= 0) continue;
     const cs = closes[t.symbol] || [];
     let i = cs.findIndex((c) => c.date > t.date);
     i = (i < 0 ? cs.length : i) - 1;

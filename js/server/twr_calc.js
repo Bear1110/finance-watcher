@@ -10,10 +10,12 @@ import { goRound, round2, round4, toTWD } from './util.js';
 
 export { goRound, round2 };
 
-// perfTxn: { symbol, market, action, currency, date, shares, price, fee, tax, transfer }
+// perfTxn: { symbol, market, action, currency, date, shares, price, fee, tax, transfer, synthetic }
 // transfer: a 匯入持倉 BUY whose price is the average cost and whose date may be
 // a placeholder; it enters at that day's market value instead, so there is no
 // fake gain or loss on the import day.
+// synthetic: half of the one-day round trip standing in for an imported-history
+// SELL (see loadPerfTxns); priced like a normal trade.
 //
 // perfDiv: { market, currency, date, amount }  (date: ex-date when known, else pay date)
 //

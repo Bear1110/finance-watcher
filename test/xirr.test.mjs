@@ -1,5 +1,6 @@
-// XIRR: imported-history SELLs (no BUY on record) count as a one-day round trip
-// at the cost their stored realized_pl implies, without touching holdings.
+// Performance inputs: imported-history SELLs (no BUY on record) count as a
+// one-day round trip at the cost their stored realized_pl implies, in both XIRR
+// and TWR, without touching holdings.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -17,6 +18,7 @@ const db = await import('../js/server/db.js');
 const market = await import('../js/server/market.js');
 const { handle } = await import('../js/server/router.js');
 const { xirr } = await import('../js/server/performance.js');
+const { loadPerfTxns } = await import('../js/server/twr.js');
 await import('../js/server/stocks.js');
 
 // Offline quotes, whether or not config.js has a default proxy.
@@ -67,4 +69,20 @@ test('xirr solver: short spikes fall outside the range, a year is exact', () => 
   // Over a year the same flows give exactly 20%.
   const r = xirr([{ t: 0, amt: -1000 }, { t: 365 * day, amt: 1200 }], 0);
   assert.ok(Math.abs(r - 0.2) < 1e-6);
+});
+
+test('loadPerfTxns turns a history SELL into a synthetic BUY the day before', () => {
+  load(true);
+  const hist = loadPerfTxns().filter((t) => t.symbol === 'BBB');
+  assert.equal(hist.length, 2);
+  const [buy, sell] = hist;
+  assert.equal(buy.action, 'BUY');
+  assert.equal(buy.date, daysAgo(181));
+  assert.equal(buy.price, 100); // (10 × 120 − 200) / 10
+  assert.equal(buy.synthetic, true);
+  assert.equal(sell.action, 'SELL');
+  assert.equal(sell.date, daysAgo(180));
+  assert.equal(sell.price, 120);
+  // Real trades are not marked.
+  assert.equal(loadPerfTxns().find((t) => t.symbol === 'AAA').synthetic, false);
 });
