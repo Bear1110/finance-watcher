@@ -72,6 +72,6 @@ node --test                  # 單元測試（FIFO、TWR、代管帳戶、股利
 - [x] 建 OAuth 用戶端 ID，填進 `js/config.js`（專案 finance-watcher-513403）
 - [x] 部署 Yahoo 代理（`cd worker && npx wrangler deploy`），填進 `js/config.js` 的 `DEFAULT_YAHOO_PROXY`
 - [ ] 隱私權政策頁（OAuth 正式版需要）
-- [ ] PNG 圖示（iOS 加到主畫面需要 `apple-touch-icon`；目前只有 SVG）
+- [x] PNG 圖示（`apple-touch-icon` 180、192／512、maskable 512，由 `icons/icon.svg` 轉出）
 - [ ] 確認 `GOOGLEFINANCE` 查得到所有持股（部分台股 ETF 可能沒有）
 - [ ] 手機版：寬表格目前是橫向捲動，可再改成卡片式
