@@ -1,0 +1,1472 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <!-- 限制網頁能連到的地方：就算有惡意程式碼混進來，也送不出資料到清單以外的網域。
+       新增外部服務（例如換行情代理網址）時要一併加進 connect-src。
+       script-src 需要 'unsafe-inline' 是因為 HTML 裡有 onclick 等行內事件。 -->
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js https://accounts.google.com/gsi/client;
+    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style;
+    font-src https://fonts.gstatic.com;
+    img-src 'self' data:;
+    connect-src 'self' https://sheets.googleapis.com https://www.googleapis.com https://generativelanguage.googleapis.com https://accounts.google.com/gsi/ https://finance-watcher-yahoo.bearcc01205.workers.dev;
+    frame-src https://accounts.google.com/gsi/;
+    object-src 'none';
+    base-uri 'self';
+    form-action 'self';
+  ">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0f1117">
+  <meta name="description" content="Finance Watcher：免費的個人財務記錄網站。資產、股票、收支都存在你自己的 Google 試算表。">
+  <title>Finance Watcher - 個人財務記錄</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <!-- integrity：CDN 上的檔案被換掉時瀏覽器會拒絕執行（雜湊已與 npm 官方套件比對） -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"
+          integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG"
+          crossorigin="anonymous"></script>
+  <script id="gis" src="https://accounts.google.com/gsi/client" async></script>
+</head>
+<body>
+  <!-- Toast Container -->
+  <div id="toast-container"></div>
+
+  <!-- Top Navigation -->
+  <nav id="main-nav">
+    <div class="nav-brand">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      <span>Finance Watcher</span>
+    </div>
+    <div class="nav-tabs">
+      <button class="tab-btn active" data-tab="dashboard">總覽</button>
+      <button class="tab-btn" data-tab="stocks">股票管理</button>
+      <button class="tab-btn" data-tab="portfolio">組合分析</button>
+      <button class="tab-btn" data-tab="expenses">收支紀錄</button>
+      <button class="tab-btn" data-tab="managed">代管帳戶</button>
+      <button class="tab-btn" data-tab="llm">AI 分析</button>
+      <button class="tab-btn" data-tab="settings">設定</button>
+    </div>
+    <button type="button" id="sync-pill" class="sync-pill" onclick="onSyncPillClick()" title="雲端同步狀態">
+      <span class="sync-dot"></span><span id="sync-pill-text">本機</span>
+    </button>
+  </nav>
+
+  <!-- Main Content -->
+  <main id="app-content">
+
+    <!-- ==================== DASHBOARD TAB ==================== -->
+    <section id="tab-dashboard" class="tab-content active">
+      <!-- Net worth hero -->
+      <div class="hero-card">
+        <div class="hero-label">淨資產</div>
+        <div class="hero-value" id="dash-net-worth">--</div>
+        <div class="hero-sub" id="dash-net-date">--</div>
+        <div class="hero-growth" id="dash-growth"></div>
+      </div>
+
+      <!-- Change stats row: hover a label for how each number is computed -->
+      <div class="dash-stats">
+        <div class="stat-card">
+          <div class="stat-label" title="持股數 × (現價 − 前一交易日收盤) × 現行匯率，全部加總。&#10;台美股各算最近一個交易日（台灣白天看到的美股是昨晚的漲跌），不含匯率變動。">今日損益 ⓘ</div>
+          <div class="stat-value" id="dash-day-pl">--</div>
+          <div class="stat-sub" id="dash-day-pl-sub"></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label" title="現在淨資產（同上方大字：最新快照現金 + 即時股票市值）− 年初基準。&#10;年初基準 = 1/1 當天或之前最後一筆快照。">今年以來 ⓘ</div>
+          <div class="stat-value" id="dash-ytd">--</div>
+          <div class="stat-sub" id="dash-ytd-sub"></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label" title="淨資產變化 = 年初基準快照 → 最新快照（不用即時股價），拆成：&#10;股價漲幅 = 股票市值變化 − 期間淨買入（現金換成股票不算賺）&#10;股利 = 股利表期間入帳&#10;儲蓄 = 收支紀錄的收入 − 支出（排除「股利」分類，避免重複）&#10;其他 = 剩下對不上的部分：美金現金匯差、交易日與現行匯率差、收支未記等">今年變化來源 ⓘ</div>
+          <div class="stat-value" id="dash-source">--</div>
+          <div class="source-bar" id="dash-source-bar"></div>
+          <div class="stat-sub" id="dash-source-sub"></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label" title="買入為現金流出，賣出與股利為流入，今天的持股市值為最後一筆流入；求出讓折現總和為 0 的年利率。&#10;範圍為第一筆交易至今的累計（非今年），外幣以現行匯率換算。">年化報酬 XIRR ⓘ</div>
+          <div class="stat-value" id="dash-xirr">--</div>
+          <div class="stat-sub" id="dash-xirr-sub"></div>
+        </div>
+      </div>
+
+      <!-- Time-weighted return by period -->
+      <div class="card">
+        <div class="card-header">
+          <h3 title="時間加權報酬（TWR，同 IB「業績」）：每天算 (收盤市值 + 當日賣出所得與股利) ÷ (前一日市值 + 當日買入成本) − 1，再把每天串乘起來。&#10;買賣的時點與金額不影響報酬率，已實現、未實現、股利、手續費、匯率都包含在內。&#10;只算股票部位（不含現金），以台幣計；歷史市值用 Yahoo 日收盤價與當日匯率重建，股利以除息日計。&#10;「匯入持倉」的買入視為以當天市價轉入。下方金額為期間損益 = 期末市值 − 期初市值 − 買入 + 賣出 + 股利。">投資績效（時間加權報酬）ⓘ</h3>
+          <small class="text-muted"><span id="perf-note"></span><span id="perf-check-badge"></span></small>
+        </div>
+        <div class="chart-controls perf-controls">
+          <div class="chart-type-toggle" id="perf-periods"></div>
+          <select id="perf-bench" class="input-sm" onchange="renderPerfChart(_perfPeriod)" title="比較基準用含息還原價（股利再投入），美股換算成台幣">
+            <option value="">不比較大盤</option>
+          </select>
+        </div>
+        <div class="chart-container-md"><canvas id="chart-perf"></canvas></div>
+        <div class="table-wrap">
+          <table class="perf-table">
+            <thead><tr id="perf-head"><th></th></tr></thead>
+            <tbody id="perf-body"><tr><td class="text-muted">載入中…</td></tr></tbody>
+          </table>
+        </div>
+        <div class="table-wrap">
+          <table class="perf-risk-table">
+            <thead><tr id="perf-risk-head"></tr></thead>
+            <tbody id="perf-risk-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Monthly return heatmap -->
+      <div class="card">
+        <div class="card-header">
+          <h3 title="每個月的時間加權報酬（月初前一日收盤 → 月底收盤）。第一個月與本月為部分月份。">月報酬 ⓘ</h3>
+          <div class="chart-type-toggle" id="heatmap-seg"></div>
+        </div>
+        <div class="table-wrap">
+          <table class="heatmap-table">
+            <thead><tr><th>年</th><th>1月</th><th>2月</th><th>3月</th><th>4月</th><th>5月</th><th>6月</th><th>7月</th><th>8月</th><th>9月</th><th>10月</th><th>11月</th><th>12月</th><th>全年</th></tr></thead>
+            <tbody id="heatmap-body"><tr><td colspan="14" class="text-muted">載入中…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Charts row -->
+      <div class="dash-charts">
+        <!-- Asset composition donut -->
+        <div class="chart-card">
+          <h3 class="chart-title">資產組成</h3>
+          <div class="chart-container-md"><canvas id="chart-asset-composition"></canvas></div>
+          <div id="legend-asset-composition" class="chart-legend"></div>
+        </div>
+        <!-- Net worth trend -->
+        <div class="chart-card">
+          <div class="chart-head" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <h3 class="chart-title" style="margin-bottom:0">淨資產趨勢</h3>
+            <div class="chart-controls">
+              <div class="chart-type-toggle" id="trend-type">
+                <button class="chart-type-btn active" data-type="bar" onclick="setTrendChartType('bar')">柱狀</button>
+                <button class="chart-type-btn" data-type="line" onclick="setTrendChartType('line')">折線</button>
+              </div>
+              <select id="trend-granularity" onchange="reRenderTrendChart()" class="input-sm">
+                <option value="all">全部</option>
+                <option value="last10">最近 10 筆</option>
+                <option value="last20">最近 20 筆</option>
+                <option value="monthly">每月最後一筆</option>
+                <option value="quarterly">每季最後一筆</option>
+                <option value="yearly">每年最後一筆</option>
+                <option value="daily">每日（股票市值自動重建）</option>
+              </select>
+            </div>
+          </div>
+          <div class="chart-container-md"><canvas id="chart-asset-trend"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Recent transactions -->
+      <div class="card">
+        <div class="card-header">
+          <h3>近期交易</h3>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th>股票</th>
+                <th>操作</th>
+                <th>股數</th>
+                <th>價格</th>
+              </tr>
+            </thead>
+            <tbody id="dash-tx-body">
+              <tr><td colspan="5" class="empty-state">載入中...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Snapshot management -->
+      <div class="card">
+        <div class="card-header">
+          <h3>資產快照紀錄</h3>
+          <button class="btn btn-primary btn-sm" onclick="openSnapshotModal()">+ 新增快照</button>
+        </div>
+        <p class="form-hint" style="margin: 0 0 12px 0">只需填入現金金額，股票市值由系統自動擷取</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th>台幣現金</th>
+                <th>美金現金</th>
+                <th>台股市值</th>
+                <th>美股市值</th>
+                <th>匯率</th>
+                <th>總資產</th>
+                <th>備註</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="snapshot-body">
+              <tr><td colspan="9" class="empty-state">載入中...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== STOCKS TAB ==================== -->
+    <section id="tab-stocks" class="tab-content">
+      <!-- Sub-tabs -->
+      <div class="sub-tabs">
+        <button class="sub-tab-btn active" data-subtab="holdings">持倉總覽</button>
+        <button class="sub-tab-btn" data-subtab="realized">已實現損益</button>
+        <button class="sub-tab-btn" data-subtab="snapshots">快照紀錄</button>
+        <button class="sub-tab-btn" data-subtab="transactions">交易紀錄</button>
+        <button class="sub-tab-btn" data-subtab="dividends">股利</button>
+      </div>
+
+      <!-- Holdings Sub-tab -->
+      <div id="subtab-holdings" class="subtab-content active">
+        <div class="card">
+          <div class="card-header">
+            <h3>股票持倉</h3>
+            <div class="header-actions">
+              <button class="btn btn-outline btn-sm" onclick="refreshStockPrices()">
+                <span class="refresh-icon">&#x21bb;</span> 更新報價
+              </button>
+              <button class="btn btn-primary btn-sm" onclick="openHoldingModal()">+ 匯入持倉</button>
+              <span class="quote-time" id="quote-fetched-at"></span>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>股票</th>
+                  <th>持股 / 均價</th>
+                  <th>投入金額</th>
+                  <th>現價</th>
+                  <th>市值</th>
+                  <th>未實現損益 / %</th>
+                  <th title="累計已領股利 / (未實現損益 + 累計股利) ÷ 投入金額">股利 / 含股利報酬</th>
+                  <th title="近 12 個月已領股利 ÷ 市值（現價殖利率）/ ÷ 投入金額（成本殖利率）">殖利率 現價 / 成本</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="holdings-body">
+                <tr><td colspan="9" class="empty-state">載入中...</td></tr>
+              </tbody>
+              <tfoot id="holdings-foot" style="display:none">
+                <tr>
+                  <td colspan="2" class="text-right"><strong>合計 (TWD)</strong></td>
+                  <td id="total-cost"><strong>--</strong></td>
+                  <td id="total-day-change"></td>
+                  <td id="total-market-value"><strong>--</strong></td>
+                  <td>
+                    <div id="total-unrealized-pl"><strong>--</strong></div>
+                    <div class="cell-sub" id="total-pl-pct"><strong>--</strong></div>
+                  </td>
+                  <td>
+                    <div id="total-div"><strong>--</strong></div>
+                    <div class="cell-sub" id="total-div-return"><strong>--</strong></div>
+                  </td>
+                  <td id="total-yield"><strong>--</strong></td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <div class="table-footer">
+            <span>年化報酬率 (XIRR，含已實現損益與股利，外幣以現行匯率換算): <strong id="xirr-all">--</strong></span>
+            <span style="margin-left:16px">台股 <strong id="xirr-tw">--</strong></span>
+            <span style="margin-left:16px">美股 <strong id="xirr-us">--</strong></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Realized P&L Sub-tab -->
+      <div id="subtab-realized" class="subtab-content">
+        <!-- Market Filter -->
+        <div class="rpl-filter">
+          <button class="rpl-filter-btn active" data-market="ALL" onclick="filterRealizedPL('ALL')">全部</button>
+          <button class="rpl-filter-btn" data-market="US" onclick="filterRealizedPL('US')">美股</button>
+          <button class="rpl-filter-btn" data-market="TW" onclick="filterRealizedPL('TW')">台股</button>
+        </div>
+        <!-- Year Filter -->
+        <div class="rpl-filter" id="rpl-year-filter"></div>
+        <!-- Overall Stats Cards -->
+        <div class="realized-stats">
+          <div class="stat-card">
+            <div class="stat-label">總已實現損益</div>
+            <div class="stat-value" id="rpl-total">--</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">總交易次數</div>
+            <div class="stat-value" id="rpl-trades">--</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">勝率</div>
+            <div class="stat-value" id="rpl-winrate">--</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">最佳交易</div>
+            <div class="stat-value" id="rpl-best">--</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">股利收入</div>
+            <div class="stat-value" id="rpl-div">--</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">含股利總損益</div>
+            <div class="stat-value" id="rpl-total-div">--</div>
+          </div>
+        </div>
+
+        <!-- Per-stock breakdown -->
+        <div class="card">
+          <div class="card-header">
+            <h3>各股損益明細</h3>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>股票</th>
+                  <th>市場</th>
+                  <th>交易次數</th>
+                  <th>賣出股數</th>
+                  <th>總收入</th>
+                  <th>總成本</th>
+                  <th>已實現損益</th>
+                  <th>平均報酬率</th>
+                  <th>最佳 %</th>
+                  <th>最差 %</th>
+                </tr>
+              </thead>
+              <tbody id="rpl-stock-body"></tbody>
+              <tfoot id="rpl-stock-foot">
+                <tr>
+                  <td colspan="6"><strong>合計</strong></td>
+                  <td id="rpl-stock-total-pl"></td>
+                  <td id="rpl-stock-avg-return"></td>
+                  <td colspan="2"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Transactions Sub-tab -->
+      <!-- Snapshots Sub-tab -->
+      <div id="subtab-snapshots" class="subtab-content">
+        <div class="card">
+          <div class="card-header">
+            <h3>股票快照</h3>
+            <button class="btn btn-primary btn-sm" onclick="takeStockSnapshot()">記錄當前快照</button>
+          </div>
+          <p class="form-hint" style="margin:0 0 12px">一鍵記錄目前所有持股的市值狀態，方便追蹤股票資產隨時間的變化。</p>
+          <!-- Trend Chart -->
+          <div class="chart-container-md" style="margin-bottom:20px"><canvas id="chart-stock-snapshot"></canvas></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>台股市值</th>
+                  <th>美股市值</th>
+                  <th>總市值</th>
+                  <th>未實現損益</th>
+                  <th>匯率</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="stock-snapshot-body">
+                <tr><td colspan="7" class="empty-state">尚無快照</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <!-- Expanded detail -->
+        <div id="snapshot-detail-card" class="card" style="margin-top:16px;display:none">
+          <div class="card-header">
+            <h3 id="snapshot-detail-title">快照明細</h3>
+            <button class="btn btn-outline btn-sm" onclick="closeSnapshotDetail()">關閉</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>股票</th>
+                  <th>市場</th>
+                  <th>股數</th>
+                  <th>均價</th>
+                  <th>現價</th>
+                  <th>市值(TWD)</th>
+                  <th>損益(TWD)</th>
+                </tr>
+              </thead>
+              <tbody id="snapshot-detail-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div id="subtab-transactions" class="subtab-content">
+        <div class="card">
+          <div class="card-header">
+            <h3>補登歷史交易</h3>
+            <small class="text-muted">一般買賣請直接在「持倉總覽」操作</small>
+          </div>
+          <form id="tx-form" class="form-grid" onsubmit="submitTransaction(event)">
+            <div class="form-group">
+              <label>股票代號</label>
+              <input type="text" name="symbol" required placeholder="e.g. 2330.TW">
+            </div>
+            <div class="form-group">
+              <label>操作</label>
+              <select name="action" required>
+                <option value="BUY">買入</option>
+                <option value="SELL">賣出</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>股數</label>
+              <input type="number" name="shares" required min="0" step="any">
+            </div>
+            <div class="form-group">
+              <label>價格</label>
+              <input type="number" name="price" required min="0" step="any">
+            </div>
+            <div class="form-group">
+              <label>手續費</label>
+              <input type="number" name="fee" value="0" min="0" step="any">
+            </div>
+            <div class="form-group">
+              <label>證交稅</label>
+              <input type="number" name="tax" value="0" min="0" step="any">
+            </div>
+            <div class="form-group form-group-wide">
+              <label><input type="checkbox" name="auto_fee" checked> 台股自動估算手續費／證交稅（手續費與稅金皆為 0 時）</label>
+            </div>
+            <div class="form-group">
+              <label>日期</label>
+              <input type="date" name="date" required>
+            </div>
+            <div class="form-group form-group-wide">
+              <label>備註</label>
+              <input type="text" name="note" placeholder="選填">
+            </div>
+            <div class="form-group">
+              <button type="submit" class="btn btn-primary">送出交易</button>
+            </div>
+          </form>
+          <div id="tx-result" class="tx-result-box" style="display:none"></div>
+        </div>
+
+        <!-- Filters -->
+        <div class="card">
+          <div class="card-header">
+            <h3>交易紀錄</h3>
+            <div class="header-actions filter-row">
+              <input type="text" id="tx-filter-symbol" placeholder="篩選代號" class="input-sm">
+              <input type="date" id="tx-filter-start" class="input-sm">
+              <span class="filter-sep">~</span>
+              <input type="date" id="tx-filter-end" class="input-sm">
+              <button class="btn btn-outline btn-sm" onclick="loadTransactions()">篩選</button>
+              <button class="btn btn-outline btn-sm" onclick="exportCSV('transactions')">匯出 CSV</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>股票</th>
+                  <th>操作</th>
+                  <th>股數</th>
+                  <th>價格</th>
+                  <th>手續費</th>
+                  <th>證交稅</th>
+                  <th>已實現損益</th>
+                  <th>備註</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="tx-body">
+                <tr><td colspan="10" class="empty-state">載入中...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="table-footer">
+            <span>累計已實現損益: <strong id="cumulative-realized-pl">--</strong></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dividends Sub-tab -->
+      <div id="subtab-dividends" class="subtab-content">
+        <div class="card">
+          <div class="card-header">
+            <h3>記錄股利</h3>
+            <div class="header-actions">
+              <small class="text-muted">股利是現金收入，不會併入收支紀錄，避免重複計算</small>
+              <button type="button" class="btn btn-outline btn-sm" id="div-suggest-btn" onclick="loadDividendSuggestions()">從 Yahoo 查詢股利</button>
+            </div>
+          </div>
+          <div id="div-suggest" style="display:none">
+            <p class="form-hint" style="margin:0 0 12px">依你的買賣紀錄與 Yahoo 的除息資料估算。日期為<strong>除息日</strong>（實際入帳通常晚數週，匯入後可編輯）；美股預扣 30%、台股單筆 ≥ NT$20,000 扣 2.11% 補充保費皆為估計，請對照券商入帳金額。</p>
+            <p class="form-hint" style="margin:0 0 12px">
+              <label>起算日（早於此日的除息不列出）：<input type="date" id="div-suggest-since" class="input-sm" onchange="renderDividendSuggestions()"></label>
+              若某檔的持股數明顯偏高，通常是「匯入持倉」的買入日期不是實際買進日，可到交易紀錄修正日期，或在這裡設起算日。
+            </p>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th><input type="checkbox" id="div-suggest-all" checked onchange="toggleAllSuggestions(this.checked)"></th>
+                    <th>除息日</th>
+                    <th>股票</th>
+                    <th>每股配息</th>
+                    <th>除息前持股</th>
+                    <th>預估實收</th>
+                    <th>預估扣稅</th>
+                  </tr>
+                </thead>
+                <tbody id="div-suggest-body"></tbody>
+              </table>
+            </div>
+            <div class="form-actions" style="margin:12px 0 4px">
+              <button type="button" class="btn btn-primary btn-sm" onclick="importDividendSuggestions()">匯入選取項目</button>
+              <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('div-suggest').style.display='none'">關閉</button>
+            </div>
+          </div>
+          <form id="div-form" class="form-grid" onsubmit="submitDividend(event)">
+            <div class="form-group">
+              <label>股票代號</label>
+              <input type="text" name="symbol" required placeholder="e.g. 0056.TW" oninput="updateDividendCurrency()">
+            </div>
+            <div class="form-group">
+              <label>市場</label>
+              <select name="market" onchange="updateDividendCurrency()">
+                <option value="">自動（依代號）</option>
+                <option value="TW">台股 (NT$)</option>
+                <option value="US">美股 (US$)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>實收金額 (<span class="div-cur">NT$</span>)</label>
+              <input type="number" name="amount" required min="0" step="any">
+            </div>
+            <div class="form-group">
+              <label>已扣稅費 (<span class="div-cur">NT$</span>，補充保費、美股預扣稅等，僅供參考)</label>
+              <input type="number" name="withheld" value="0" min="0" step="any">
+            </div>
+            <div class="form-group">
+              <label>入帳日期</label>
+              <input type="date" name="date" required>
+            </div>
+            <div class="form-group form-group-wide">
+              <label>備註</label>
+              <input type="text" name="note" placeholder="選填">
+            </div>
+            <div class="form-group">
+              <button type="submit" class="btn btn-primary">新增股利</button>
+            </div>
+          </form>
+        </div>
+        <div class="realized-stats">
+          <div class="stat-card">
+            <div class="stat-label">股利合計 (TWD)</div>
+            <div class="stat-value" id="div-total">--</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">筆數</div>
+            <div class="stat-value" id="div-count">--</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h3>股利紀錄</h3>
+            <div class="header-actions">
+              <select id="div-year-filter" onchange="renderDividends()" class="input-sm"></select>
+              <button class="btn btn-outline btn-sm" onclick="exportCSV('dividends')">匯出 CSV</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>股票</th>
+                  <th>市場</th>
+                  <th>實收金額</th>
+                  <th>已扣稅費</th>
+                  <th>備註</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="div-body">
+                <tr><td colspan="7" class="empty-state">載入中...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== PORTFOLIO ANALYSIS TAB ==================== -->
+    <section id="tab-portfolio" class="tab-content">
+      <!-- Row 1: Market allocation (Cost vs Value side by side) -->
+      <h2 class="section-title">市場配置</h2>
+      <div class="chart-row">
+        <div class="chart-card">
+          <h3 class="chart-title">成本配置：台股 vs 美股</h3>
+          <div class="chart-container-md"><canvas id="chart-market-cost"></canvas></div>
+          <div id="legend-market-cost" class="chart-legend"></div>
+        </div>
+        <div class="chart-card">
+          <h3 class="chart-title">市值配置：台股 vs 美股</h3>
+          <div class="chart-container-md"><canvas id="chart-market-value"></canvas></div>
+          <div id="legend-market-value" class="chart-legend"></div>
+        </div>
+      </div>
+
+      <!-- Row 2: Per-stock cost breakdown -->
+      <h2 class="section-title">個股成本佔比</h2>
+      <div class="chart-row">
+        <div class="chart-card">
+          <h3 class="chart-title">台股成本佔比</h3>
+          <div class="chart-container-md"><canvas id="chart-tw-cost"></canvas></div>
+          <div id="legend-tw-cost" class="chart-legend"></div>
+        </div>
+        <div class="chart-card">
+          <h3 class="chart-title">美股成本佔比</h3>
+          <div class="chart-container-md"><canvas id="chart-us-cost"></canvas></div>
+          <div id="legend-us-cost" class="chart-legend"></div>
+        </div>
+      </div>
+
+      <!-- Row 3: Per-stock value breakdown -->
+      <h2 class="section-title">個股市值佔比</h2>
+      <div class="chart-row">
+        <div class="chart-card">
+          <h3 class="chart-title">台股市值佔比</h3>
+          <div class="chart-container-md"><canvas id="chart-tw-value"></canvas></div>
+          <div id="legend-tw-value" class="chart-legend"></div>
+        </div>
+        <div class="chart-card">
+          <h3 class="chart-title">美股市值佔比</h3>
+          <div class="chart-container-md"><canvas id="chart-us-value"></canvas></div>
+          <div id="legend-us-value" class="chart-legend"></div>
+        </div>
+      </div>
+
+      <!-- Row 4: P&L contribution -->
+      <h2 class="section-title">未實現損益貢獻度</h2>
+      <div class="chart-row">
+        <div class="chart-card chart-card-wide">
+          <h3 class="chart-title">各股損益貢獻（依金額排序）</h3>
+          <div class="chart-container-bar"><canvas id="chart-pl-contribution"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Risk concentration -->
+      <h2 class="section-title">風險集中度</h2>
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>股票</th>
+                <th>市場</th>
+                <th>成本佔比</th>
+                <th>市值佔比</th>
+                <th>損益貢獻</th>
+                <th>狀態</th>
+              </tr>
+            </thead>
+            <tbody id="risk-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== EXPENSES TAB ==================== -->
+    <section id="tab-expenses" class="tab-content">
+      <!-- Annual Budget Plan -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <h3>年度收支計畫</h3>
+          <div class="header-actions">
+            <button class="btn btn-outline btn-sm" onclick="toggleBudgetTable()">展開/收合</button>
+            <select id="budget-year" onchange="loadBudgets()" class="input-sm">
+            </select>
+          </div>
+        </div>
+        <div id="budget-section" style="display:none">
+          <p class="form-hint" style="margin:0 0 12px">填入每月預期收入與支出，系統自動對比實際數據。點擊數字可直接編輯。</p>
+          <div class="table-wrap">
+            <table class="budget-table">
+              <thead>
+                <tr>
+                  <th>月份</th>
+                  <th>預期收入</th>
+                  <th>預期支出</th>
+                  <th>實際收入</th>
+                  <th>實際支出</th>
+                  <th>收入差異</th>
+                  <th>支出差異</th>
+                  <th>淨儲蓄</th>
+                </tr>
+              </thead>
+              <tbody id="budget-body"></tbody>
+              <tfoot id="budget-foot">
+                <tr>
+                  <td><strong>年度合計</strong></td>
+                  <td id="budget-total-pi"></td>
+                  <td id="budget-total-pe"></td>
+                  <td id="budget-total-ai"></td>
+                  <td id="budget-total-ae"></td>
+                  <td id="budget-total-id"></td>
+                  <td id="budget-total-ed"></td>
+                  <td id="budget-total-ns"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <!-- Annual progress bar -->
+          <div class="budget-progress" id="budget-progress"></div>
+        </div>
+      </div>
+
+      <!-- New Record Form -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <h3>新增紀錄</h3>
+        </div>
+        <form id="expense-form" class="form-grid" onsubmit="submitExpense(event)">
+          <input type="hidden" name="id">
+          <div class="form-group">
+            <label>類型</label>
+            <div class="type-toggle">
+              <button type="button" class="type-btn active" data-type="expense" onclick="setExpenseType('expense')">支出</button>
+              <button type="button" class="type-btn" data-type="income" onclick="setExpenseType('income')">收入</button>
+            </div>
+            <input type="hidden" name="type" value="expense">
+          </div>
+          <div class="form-group">
+            <label>金額 (NT$)</label>
+            <input type="number" name="amount" required min="0" step="any">
+          </div>
+          <div class="form-group">
+            <label>分類</label>
+            <select name="category" id="expense-category" onchange="toggleCustomCategory(this)">
+              <optgroup label="支出" id="cat-expense-group">
+                <option value="飲食">飲食</option>
+                <option value="交通">交通</option>
+                <option value="住房">住房 (房租/水電)</option>
+                <option value="娛樂">娛樂</option>
+                <option value="醫療">醫療</option>
+                <option value="保險">保險</option>
+                <option value="日用品">日用品</option>
+                <option value="購物">購物</option>
+                <option value="送禮">送禮</option>
+                <option value="其他支出">其他支出</option>
+              </optgroup>
+              <optgroup label="收入" id="cat-income-group">
+                <option value="薪資">薪資</option>
+                <option value="股利">股利</option>
+                <option value="獎金">獎金</option>
+                <option value="其他收入">其他收入</option>
+              </optgroup>
+              <option value="__custom__">自訂...</option>
+            </select>
+          </div>
+          <div id="custom-category-group" style="display:none" class="form-group">
+            <label>自訂分類</label>
+            <input type="text" id="custom-category-input" placeholder="輸入自訂分類">
+          </div>
+          <div class="form-group">
+            <label>日期</label>
+            <input type="date" name="date" required>
+          </div>
+          <div class="form-group">
+            <label>備註</label>
+            <input type="text" name="note" placeholder="選填">
+          </div>
+          <div class="form-group">
+            <button type="submit" class="btn btn-primary">新增</button>
+            <button type="button" id="expense-cancel-btn" class="btn btn-outline" style="display:none" onclick="cancelExpenseEdit()">取消</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Records table -->
+      <div class="card">
+        <div class="card-header">
+          <h3>收支明細</h3>
+          <div class="header-actions">
+            <select id="exp-year-filter" onchange="loadExpenses()" class="input-sm"></select>
+            <button class="btn btn-outline btn-sm" onclick="exportCSV('expenses')">匯出 CSV</button>
+            <select id="exp-type-filter" onchange="loadExpenses()" class="input-sm">
+              <option value="all">全部</option>
+              <option value="income">僅收入</option>
+              <option value="expense">僅支出</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th>類型</th>
+                <th>分類</th>
+                <th>金額</th>
+                <th>備註</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="expense-body">
+              <tr><td colspan="6" class="empty-state">載入中...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== MANAGED ACCOUNTS TAB ==================== -->
+    <section id="tab-managed" class="tab-content">
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header">
+          <h3>代管帳戶</h3>
+          <button class="btn btn-primary btn-sm" onclick="openManagedAccountModal()">+ 新增帳戶</button>
+        </div>
+        <p class="form-hint" style="margin:0 0 12px">追蹤代他人保管的資金（兄弟姐妹、親友委託投資等）。這些帳戶的數值不會出現在「總覽」中，僅在本頁面獨立統計。</p>
+        <div id="managed-account-tabs" class="sub-tabs"></div>
+        <div id="managed-empty-state" class="empty-state" style="padding:32px">尚無代管帳戶，點上方「+ 新增帳戶」開始</div>
+      </div>
+
+      <div id="managed-account-view" style="display:none">
+        <!-- Summary stats -->
+        <div class="dash-stats dash-stats-5">
+          <div class="stat-card">
+            <div class="stat-label">台幣現金</div>
+            <div class="stat-value" id="mng-cash-twd">--</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">美金現金</div>
+            <div class="stat-value" id="mng-cash-usd">--</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">股票市值</div>
+            <div class="stat-value" id="mng-stock-value">--</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">未實現損益</div>
+            <div class="stat-value" id="mng-unrealized">--</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">總價值</div>
+            <div class="stat-value" id="mng-total">--</div>
+          </div>
+        </div>
+
+        <!-- Holdings -->
+        <div class="card" style="margin-top:16px">
+          <div class="card-header">
+            <h3>持倉</h3>
+            <div class="header-actions">
+              <button class="btn btn-primary btn-sm" onclick="openManagedTradeModal('BUY')">買入</button>
+              <button class="btn btn-outline btn-sm" onclick="openManagedTradeModal('SELL')">賣出</button>
+              <button class="btn btn-outline btn-sm" onclick="openManagedCashModal('deposit')">存入</button>
+              <button class="btn btn-outline btn-sm" onclick="openManagedCashModal('withdraw')">提領</button>
+              <button class="btn btn-outline btn-sm" onclick="openManagedAccountModal(true)">編輯帳戶</button>
+              <button class="btn btn-outline btn-sm" style="color:var(--color-loss)" onclick="deleteManagedAccount()">刪除帳戶</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>股票</th>
+                  <th>市場</th>
+                  <th>股數</th>
+                  <th>均價</th>
+                  <th>現價</th>
+                  <th>市值 (原幣)</th>
+                  <th>市值 (TWD)</th>
+                  <th>未實現損益</th>
+                  <th>損益 %</th>
+                </tr>
+              </thead>
+              <tbody id="mng-holdings-body">
+                <tr><td colspan="9" class="empty-state">尚無持倉</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="form-hint" style="margin:8px 0 0">已實現損益: <strong id="mng-realized">--</strong></p>
+        </div>
+
+        <!-- Snapshots -->
+        <div class="card" style="margin-top:16px">
+          <div class="card-header">
+            <h3>快照紀錄</h3>
+            <button class="btn btn-primary btn-sm" onclick="takeManagedSnapshot()">記錄當前快照</button>
+          </div>
+          <p class="form-hint" style="margin:0 0 12px">一鍵凍結此帳戶當下的現金、持倉市值與損益（含即時匯率），只屬於這個帳戶。</p>
+          <div class="chart-container-md" style="margin-bottom:20px"><canvas id="chart-mng-snapshot"></canvas></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>台幣現金</th>
+                  <th>美金現金</th>
+                  <th>股票市值</th>
+                  <th>未實現損益</th>
+                  <th>總價值</th>
+                  <th>匯率</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="mng-snapshot-body">
+                <tr><td colspan="8" class="empty-state">尚無快照</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Snapshot expanded detail -->
+        <div id="mng-snapshot-detail-card" class="card" style="margin-top:16px;display:none">
+          <div class="card-header">
+            <h3 id="mng-snapshot-detail-title">快照明細</h3>
+            <button class="btn btn-outline btn-sm" onclick="closeManagedSnapshotDetail()">關閉</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>股票</th>
+                  <th>市場</th>
+                  <th>股數</th>
+                  <th>均價</th>
+                  <th>現價</th>
+                  <th>市值(TWD)</th>
+                  <th>損益(TWD)</th>
+                </tr>
+              </thead>
+              <tbody id="mng-snapshot-detail-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Transactions -->
+        <div class="card" style="margin-top:16px">
+          <div class="card-header">
+            <h3>交易紀錄</h3>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>股票</th>
+                  <th>操作</th>
+                  <th>股數</th>
+                  <th>價格</th>
+                  <th>手續費</th>
+                  <th>已實現損益</th>
+                  <th>備註</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="mng-tx-body">
+                <tr><td colspan="9" class="empty-state">尚無交易</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Cash Movements -->
+        <div class="card" style="margin-top:16px">
+          <div class="card-header">
+            <h3>現金紀錄</h3>
+          </div>
+          <p class="form-hint" style="margin:0 0 12px">收到更多錢就「存入」，領出/退還就「提領」。刪除紀錄會自動回沖現金。</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>類型</th>
+                  <th>幣別</th>
+                  <th>金額</th>
+                  <th>備註</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="mng-cash-body">
+                <tr><td colspan="6" class="empty-state">尚無紀錄</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== LLM TAB ==================== -->
+    <section id="tab-llm" class="tab-content">
+      <!-- Step 1: Select data to include -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <h3>選擇分析資料</h3>
+        </div>
+        <p class="form-hint" style="margin:0 0 12px">勾選你想要提供給 AI 的資料範圍，再產生 Prompt</p>
+        <div class="llm-checkboxes">
+          <label class="llm-check"><input type="checkbox" id="llm-inc-assets" checked> 資產總覽（現金、配置比例、成長趨勢）</label>
+          <label class="llm-check"><input type="checkbox" id="llm-inc-portfolio" checked> 投資組合（持股明細、即時報價、未實現損益）</label>
+          <label class="llm-check"><input type="checkbox" id="llm-inc-realized" checked> 交易績效（已實現損益、勝率）</label>
+          <label class="llm-check"><input type="checkbox" id="llm-inc-expenses"> 收支狀況（收入/支出分類統計）</label>
+          <label class="llm-check"><input type="checkbox" id="llm-inc-budget"> 預算執行（年度計畫 vs 實際）</label>
+        </div>
+        <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="generatePrompt()">產生 Prompt</button>
+          <button class="btn btn-outline" onclick="generateAndSendToAPI()">直接送 Gemini API 分析</button>
+        </div>
+      </div>
+
+      <!-- Step 2: Prompt output & actions -->
+      <div id="prompt-area" class="card" style="margin-bottom:20px;display:none">
+        <div class="card-header">
+          <h3>產生的 Prompt</h3>
+          <div class="header-actions">
+            <button class="btn btn-outline btn-sm" onclick="copyPrompt()">複製</button>
+            <button class="btn btn-primary btn-sm" onclick="sendPromptToAPI()">送 Gemini API</button>
+          </div>
+        </div>
+        <textarea id="generated-prompt" rows="12"></textarea>
+      </div>
+
+      <!-- Loading & Result -->
+      <div id="llm-loading" class="card loading-box" style="display:none;margin-bottom:20px">
+        <div class="spinner"></div>
+        <span>AI 分析中，請稍候...</span>
+      </div>
+      <div id="llm-result" class="card llm-result-card" style="display:none;margin-bottom:20px"></div>
+
+      <!-- Import manual response -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <h3>匯入 LLM 回應</h3>
+        </div>
+        <p class="form-hint" style="margin:0 0 8px">將 Prompt 複製到 ChatGPT / Claude 等平台後，把回應貼在這裡儲存</p>
+        <textarea id="llm-response-input" rows="6" placeholder="在此貼上 LLM 的回應..."></textarea>
+        <button class="btn btn-primary" style="margin-top:8px" onclick="importLLMResponse()">儲存回應</button>
+      </div>
+
+      <!-- Conversation History -->
+      <div class="card">
+        <div class="card-header">
+          <h3>對話紀錄</h3>
+        </div>
+        <div id="llm-conversations">
+          <div class="empty-state">載入中...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== SETTINGS TAB ==================== -->
+    <section id="tab-settings" class="tab-content">
+      <div class="card" style="max-width:600px">
+        <div class="card-header">
+          <h3>應用程式設定</h3>
+        </div>
+        <form id="settings-form" onsubmit="saveSettings(event)">
+          <div class="form-group">
+            <label>USD/TWD 匯率</label>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <input type="number" name="usd_twd_rate" step="0.0001" min="0" required placeholder="e.g. 32.5" style="flex:1;min-width:140px">
+              <button type="button" class="btn btn-outline btn-sm" onclick="refreshUSDTWDRate()">立即更新</button>
+            </div>
+            <span class="form-hint" id="settings-rate-hint"></span>
+            <span class="form-hint" id="settings-rate-updated"></span>
+          </div>
+          <div class="form-group">
+            <label>Gemini API Key</label>
+            <div class="input-with-toggle">
+              <input type="password" name="gemini_api_key" id="gemini-api-key" placeholder="輸入您的 API Key">
+              <button type="button" class="btn-icon-only" onclick="toggleApiKeyVisibility()" title="顯示/隱藏">
+                <span id="eye-icon">&#x1F441;</span>
+              </button>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">儲存設定</button>
+            <button type="button" class="btn btn-outline" onclick="testApiConnection()">測試 API 連線</button>
+          </div>
+        </form>
+        <div id="settings-test-result" style="margin-top:1rem"></div>
+      </div>
+
+      <!-- Data health check -->
+      <div class="card" style="max-width:900px;margin-top:20px">
+        <div class="card-header">
+          <h3>資料健康檢查</h3>
+          <button type="button" class="btn btn-outline btn-sm" onclick="loadDataCheck()">重新檢查</button>
+        </div>
+        <div class="form-group" id="perf-start-group">
+          <label>績效起算日</label>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input type="date" id="perf-start-date" class="input-sm">
+            <button type="button" class="btn btn-primary btn-sm" onclick="savePerfStartDate()">儲存</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="savePerfStartDate('')">清除</button>
+            <button type="button" class="btn btn-outline btn-sm" id="perf-start-suggest" style="display:none" onclick="applySuggestedStart()"></button>
+          </div>
+          <span class="form-hint">總覽的「全部」績效、折線圖、月報酬都從這天開始算，避開紀錄不完整的早期資料。留空 = 從第一筆交易開始。</span>
+        </div>
+        <div id="data-check-list"><p class="text-muted">檢查中…</p></div>
+      </div>
+
+      <!-- Cloud sync & data -->
+      <div class="card" style="max-width:600px;margin-top:20px">
+        <div class="card-header">
+          <h3>雲端同步與資料</h3>
+        </div>
+        <div class="form-group">
+          <label>Google 帳號</label>
+          <div id="cloud-account" class="text-muted">--</div>
+          <div class="form-actions" style="margin-top:8px">
+            <button type="button" class="btn btn-primary btn-sm" id="cloud-signin-btn" onclick="cloudSignIn()">用 Google 登入</button>
+            <button type="button" class="btn btn-outline btn-sm" id="cloud-sync-btn" onclick="cloudSyncNow()">立即同步</button>
+            <a class="btn btn-outline btn-sm" id="cloud-sheet-link" target="_blank" rel="noopener" style="display:none">開啟試算表</a>
+            <button type="button" class="btn btn-outline btn-sm" id="cloud-signout-btn" onclick="cloudSignOut()">登出</button>
+          </div>
+          <span class="form-hint">紀錄存在你自己雲端硬碟的「Finance Watcher 財務紀錄」試算表。網站只能存取它自己建立的那份檔案，作者看不到任何人的資料。沒登入時資料只存在這台裝置的瀏覽器。</span>
+        </div>
+        <div class="form-group">
+          <label>行情來源（Yahoo 代理網址）</label>
+          <input type="url" id="yahoo-proxy-url" placeholder="https://xxx.workers.dev（留空使用預設）">
+          <span class="form-hint" id="yahoo-proxy-hint">Yahoo Finance 不允許網頁直接查詢，需要經過轉送代理。沒有代理時，報價與匯率改用試算表的 GOOGLEFINANCE（需登入），績效分析與股利建議無法使用。</span>
+          <div class="form-actions" style="margin-top:8px">
+            <button type="button" class="btn btn-outline btn-sm" onclick="saveProxyURL()">儲存並測試</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>匯入資料</label>
+          <input type="file" id="import-file" accept=".json,application/json">
+          <span class="form-hint">選擇本網站的備份檔（JSON）。匯入會<strong>取代</strong>目前所有資料。</span>
+          <div id="import-preview" style="margin-top:8px"></div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-primary" onclick="downloadBackup()">下載備份（JSON）</button>
+          <button type="button" class="btn btn-outline" onclick="clearLocalData()">清除這台裝置的資料</button>
+        </div>
+      </div>
+
+      <!-- Display Settings -->
+      <div class="card" style="max-width:600px;margin-top:20px">
+        <div class="card-header">
+          <h3>顯示設定</h3>
+        </div>
+        <div class="form-group">
+          <label>字體大小</label>
+          <div class="font-size-ctrl-settings">
+            <button class="font-btn" onclick="setFontSize('s')">S 小</button>
+            <button class="font-btn" onclick="setFontSize('m')">M 中</button>
+            <button class="font-btn" onclick="setFontSize('l')">L 大</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Version -->
+      <div class="card" style="max-width:600px;margin-top:20px">
+        <div class="card-header">
+          <h3>關於</h3>
+        </div>
+        <div class="form-group">
+          <label>版本</label>
+          <span id="settings-version">--</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ==================== MODALS ==================== -->
+
+  <!-- Snapshot Modal -->
+  <div id="modal-snapshot" class="modal-overlay" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="snapshot-modal-title">新增資產快照</h3>
+        <button class="modal-close" onclick="closeModal('modal-snapshot')">&times;</button>
+      </div>
+      <form id="snapshot-form" onsubmit="submitSnapshot(event)">
+        <input type="hidden" name="id">
+        <div class="snapshot-auto-info" id="snapshot-auto-info">
+          系統將自動擷取：目前股票市值、USD/TWD 匯率
+        </div>
+        <div class="snapshot-mode-toggle">
+          <button type="button" class="toggle-sm active" onclick="setSnapshotMode('auto')">自動擷取</button>
+          <button type="button" class="toggle-sm" onclick="setSnapshotMode('manual')">手動填入(匯入歷史)</button>
+        </div>
+        <div class="form-group">
+          <label>日期</label>
+          <input type="date" name="date" required>
+        </div>
+        <div class="form-group">
+          <label>台幣現金 (NT$)</label>
+          <input type="number" name="cash_twd" required min="0" step="any" placeholder="台幣活存+定存">
+        </div>
+        <div class="form-group">
+          <label>美金現金 (US$)</label>
+          <input type="number" name="cash_usd" required min="0" step="any" placeholder="美金現金購買力">
+        </div>
+        <div id="snapshot-manual-fields" style="display:none">
+          <div class="form-group">
+            <label>台股市值 (NT$)</label>
+            <input type="number" name="stock_tw_value" min="0" step="any" placeholder="台股總市值">
+          </div>
+          <div class="form-group">
+            <label>美股市值 (NT$，已換算台幣)</label>
+            <input type="number" name="stock_us_value" min="0" step="any" placeholder="美股總市值(TWD)">
+          </div>
+          <div class="form-group">
+            <label>USD/TWD 匯率</label>
+            <input type="number" name="usd_twd_rate" min="0" step="any" placeholder="例如 32.5">
+          </div>
+          <div class="form-group">
+            <label>總資產 (NT$，選填，不填則自動計算)</label>
+            <input type="number" name="total_asset_override" min="0" step="any" placeholder="可直接填入已知總資產">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>備註 (選填)</label>
+          <input type="text" name="note" placeholder="">
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">儲存快照</button>
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-snapshot')">取消</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Holding Modal -->
+  <div id="modal-holding" class="modal-overlay" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>匯入持倉</h3>
+        <button class="modal-close" onclick="closeModal('modal-holding')">&times;</button>
+      </div>
+      <form id="holding-form" onsubmit="submitHolding(event)">
+        <div class="form-group">
+          <label>市場</label>
+          <select name="market" onchange="onHoldingMarketChange(this)">
+            <option value="TW">台股</option>
+            <option value="US">美股</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>股票代號</label>
+          <input type="text" name="symbol" required placeholder="輸入股票代號，例如 2330">
+          <small id="holding-symbol-hint" class="form-hint">台股輸入代號即可（如 2330），系統自動處理</small>
+        </div>
+        <div class="form-group">
+          <label>持有股數</label>
+          <input type="number" name="shares" required min="0" step="any">
+        </div>
+        <div class="form-group">
+          <label>均價 (<span id="holding-currency-label">TWD</span>)</label>
+          <input type="number" name="avg_cost" required min="0" step="any">
+        </div>
+        <div class="form-group">
+          <label>買入日期</label>
+          <input type="date" name="date">
+          <small class="form-hint">交易紀錄用，不填則為今天</small>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">儲存</button>
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-holding')">取消</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Trade Modal (Buy/Sell from Holdings) -->
+  <div id="modal-trade" class="modal-overlay" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="trade-modal-title">買入</h3>
+        <button class="modal-close" onclick="closeModal('modal-trade')">&times;</button>
+      </div>
+      <form id="trade-form" onsubmit="submitTrade(event)">
+        <input type="hidden" name="action">
+        <input type="hidden" name="symbol">
+        <input type="hidden" name="market">
+        <div class="trade-stock-info" id="trade-stock-info"></div>
+        <div class="form-group">
+          <label>股數</label>
+          <input type="number" name="shares" required min="0.01" step="any">
+        </div>
+        <div class="form-group">
+          <label>每股價格 (<span id="trade-currency-label">USD</span>)</label>
+          <input type="number" name="price" required min="0" step="any">
+        </div>
+        <div class="form-group">
+          <label>手續費</label>
+          <input type="number" name="fee" value="0" min="0" step="any">
+        </div>
+        <div class="form-group">
+          <label><input type="checkbox" name="auto_fee" checked> 台股自動估算手續費／證交稅（手續費為 0 時）</label>
+        </div>
+        <div class="form-group">
+          <label>日期</label>
+          <input type="date" name="date" required>
+        </div>
+        <div class="form-group">
+          <label>備註</label>
+          <input type="text" name="note" placeholder="選填">
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary" id="trade-submit-btn">確認</button>
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-trade')">取消</button>
+        </div>
+      </form>
+      <div id="trade-result" class="tx-result-box" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- Managed Account Modal -->
+  <div id="modal-managed-account" class="modal-overlay" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="managed-account-modal-title">新增代管帳戶</h3>
+        <button class="modal-close" onclick="closeModal('modal-managed-account')">&times;</button>
+      </div>
+      <form id="managed-account-form" onsubmit="submitManagedAccount(event)">
+        <input type="hidden" name="id">
+        <div class="form-group">
+          <label>帳戶名稱</label>
+          <input type="text" name="name" required placeholder="例如：弟弟的錢、媽媽的投資">
+        </div>
+        <div class="form-group">
+          <label>台幣現金 (NT$)</label>
+          <input type="number" name="cash_twd" min="0" step="any" value="0">
+          <small class="form-hint">尚未投入的台幣餘額；買賣股票時會自動加減</small>
+        </div>
+        <div class="form-group">
+          <label>美金現金 (US$)</label>
+          <input type="number" name="cash_usd" min="0" step="any" value="0">
+        </div>
+        <div class="form-group">
+          <label>備註</label>
+          <input type="text" name="note" placeholder="選填">
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">儲存</button>
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-managed-account')">取消</button>
+          <button type="button" id="managed-account-delete-btn" class="btn btn-outline" style="display:none;margin-left:auto;color:var(--color-loss)" onclick="deleteManagedAccount()">刪除帳戶</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Managed Trade Modal -->
+  <div id="modal-managed-trade" class="modal-overlay" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="managed-trade-modal-title">買入</h3>
+        <button class="modal-close" onclick="closeModal('modal-managed-trade')">&times;</button>
+      </div>
+      <form id="managed-trade-form" onsubmit="submitManagedTrade(event)">
+        <input type="hidden" name="action">
+        <div class="form-group">
+          <label>市場</label>
+          <select name="market" onchange="onManagedTradeMarketChange(this)">
+            <option value="TW">台股</option>
+            <option value="US">美股</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>股票代號</label>
+          <input type="text" name="symbol" required placeholder="例如 2330.TW 或 NVDA">
+          <small class="form-hint">台股請加 .TW 後綴（例如 2330.TW）</small>
+        </div>
+        <div class="form-group">
+          <label>股數</label>
+          <input type="number" name="shares" required min="0" step="any">
+        </div>
+        <div class="form-group">
+          <label>每股價格 (<span id="mng-trade-currency-label">TWD</span>)</label>
+          <input type="number" name="price" required min="0" step="any">
+        </div>
+        <div class="form-group">
+          <label>手續費</label>
+          <input type="number" name="fee" value="0" min="0" step="any">
+        </div>
+        <div class="form-group">
+          <label>日期</label>
+          <input type="date" name="date" required>
+        </div>
+        <div class="form-group">
+          <label>備註</label>
+          <input type="text" name="note" placeholder="選填">
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary" id="managed-trade-submit-btn">確認買入</button>
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-managed-trade')">取消</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Managed Cash Modal -->
+  <div id="modal-managed-cash" class="modal-overlay" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="managed-cash-modal-title">存入現金</h3>
+        <button class="modal-close" onclick="closeModal('modal-managed-cash')">&times;</button>
+      </div>
+      <form id="managed-cash-form" onsubmit="submitManagedCash(event)">
+        <input type="hidden" name="type">
+        <div class="form-group">
+          <label>幣別</label>
+          <select name="currency">
+            <option value="TWD">台幣 (TWD)</option>
+            <option value="USD">美金 (USD)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>金額</label>
+          <input type="number" name="amount" required min="0" step="any" placeholder="輸入正數">
+          <small class="form-hint" id="mng-cash-current-hint"></small>
+        </div>
+        <div class="form-group">
+          <label>日期</label>
+          <input type="date" name="date" required>
+        </div>
+        <div class="form-group">
+          <label>備註</label>
+          <input type="text" name="note" placeholder="例如：弟弟匯入 / 退還生活費">
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary" id="managed-cash-submit-btn">確認</button>
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-managed-cash')">取消</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="js/app.js"></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "Finance Watcher",
+  "short_name": "Finance",
+  "description": "個人財務記錄：資產、股票、收支；資料存在你自己的 Google 試算表。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0f1117",
+  "theme_color": "#0f1117",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

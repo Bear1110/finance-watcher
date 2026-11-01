@@ -1,0 +1,18 @@
+# 每次 push 或 PR 自動跑：FIFO 損益、TWR、代管帳戶、股利估算的測試。公開 repo 的 Actions 免費。
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Unit tests
+        run: node --test

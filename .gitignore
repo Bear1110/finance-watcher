@@ -1,0 +1,11 @@
+.DS_Store
+Thumbs.db
+node_modules/
+.vscode/
+
+# 個人財務資料匯出／備份，絕不 commit
+finance-watcher-backup*.json
+*.db
+
+# wrangler 部署暫存
+worker/.wrangler/

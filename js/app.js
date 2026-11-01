@@ -1,0 +1,3583 @@
+/* ============================================================
+   Finance Watcher - Main Application JS
+   Single Page Application logic for personal finance management
+   ============================================================ */
+
+// ============================================================
+// SECTION: Utility Functions
+// ============================================================
+
+/** Format number with commas */
+function fmt(n, decimals = 0) {
+  if (n == null || isNaN(n)) return '--';
+  return Number(n).toLocaleString('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
+/** Format as NT$ currency */
+function fmtTWD(n) {
+  if (n == null || isNaN(n)) return '--';
+  return 'NT$ ' + fmt(n, 0);
+}
+
+/** Format as US$ currency */
+function fmtUSD(n) {
+  if (n == null || isNaN(n)) return '--';
+  return 'US$ ' + fmt(n, 2);
+}
+
+/** Format percentage */
+function fmtPct(n) {
+  if (n == null || isNaN(n)) return '--';
+  return (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
+}
+
+/** Get CSS class for positive/negative */
+function plClass(n) {
+  if (n == null || isNaN(n) || n === 0) return '';
+  return n > 0 ? 'positive' : 'negative';
+}
+
+/** Format P&L value with sign */
+function fmtPL(n) {
+  if (n == null || isNaN(n)) return '--';
+  const prefix = n > 0 ? '+' : '';
+  return prefix + fmt(n, 0);
+}
+
+/** Format amount in native currency (USD=2 decimals, TWD=0 decimals) */
+function fmtCur(n, currency) {
+  if (n == null || isNaN(n)) return '--';
+  const isUSD = currency === 'USD';
+  return (isUSD ? '$' : 'NT$') + fmt(n, isUSD ? 2 : 0);
+}
+
+/** Format a per-share price in native currency (always 2 decimals, TW prices can be fractional) */
+function fmtPrice(n, currency) {
+  if (n == null || isNaN(n)) return '--';
+  return (currency === 'USD' ? '$' : 'NT$') + fmt(n, 2);
+}
+
+/** Convert a native-currency amount to TWD */
+function toTWD(n, currency, rate) {
+  return currency === 'USD' ? n * rate : n;
+}
+
+/** Format P&L in native currency, with sign */
+function fmtPLCur(n, currency) {
+  if (n == null || isNaN(n)) return '--';
+  const isUSD = currency === 'USD';
+  const prefix = n > 0 ? '+' : (n < 0 ? '-' : '');
+  return prefix + (isUSD ? '$' : 'NT$') + fmt(Math.abs(n), isUSD ? 2 : 0);
+}
+
+/** Today's date string YYYY-MM-DD */
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** Current month YYYY-MM */
+function currentMonth() {
+  return new Date().toISOString().slice(0, 7);
+}
+
+/** Simple markdown-like rendering (bold, lists) */
+function renderMarkdown(text) {
+  if (!text) return '';
+  let html = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  // bold
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // unordered lists
+  html = html.replace(/^[\-\*]\s+(.+)$/gm, '<li>$1</li>');
+  html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
+  // ordered lists
+  html = html.replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>');
+  // paragraphs
+  html = html.replace(/\n{2,}/g, '</p><p>');
+  html = html.replace(/\n/g, '<br>');
+  return '<p>' + html + '</p>';
+}
+
+// ============================================================
+// SECTION: Toast Notifications
+// ============================================================
+
+function showToast(message, type = 'info') {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => {
+    if (toast.parentNode) toast.parentNode.removeChild(toast);
+  }, 3000);
+}
+
+// ============================================================
+// SECTION: API Helper
+// ============================================================
+
+// There is no server: js/main.js registers the handlers in js/server and exposes
+// them as window.LocalAPI, which answers the /api/... routes in-browser.
+async function api(url, options = {}) {
+  try {
+    await window.localApiReady;
+    const result = await window.LocalAPI.handle(url, options);
+    if (result && result.__download) {
+      downloadFile(result.filename, result.content, result.type);
+      return result;
+    }
+    return result;
+  } catch (err) {
+    console.error('API Error:', url, err);
+    throw err;
+  }
+}
+
+function downloadFile(filename, content, type) {
+  const blob = new Blob([content], { type: type || 'application/octet-stream' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// ============================================================
+// SECTION: Tab Navigation
+// ============================================================
+
+function initTabs() {
+  const tabs = document.querySelectorAll('.tab-btn');
+  tabs.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.tab;
+      tabs.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+      document.getElementById('tab-' + target).classList.add('active');
+      // Load data for the tab
+      onTabActivated(target);
+    });
+  });
+
+  // Sub-tabs (stocks)
+  document.querySelectorAll('.sub-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const parent = btn.closest('section');
+      parent.querySelectorAll('.sub-tab-btn').forEach(b => b.classList.remove('active'));
+      parent.querySelectorAll('.subtab-content').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('subtab-' + btn.dataset.subtab).classList.add('active');
+    });
+  });
+
+  // LLM toggle
+  document.querySelectorAll('.toggle-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('.llm-mode').forEach(m => m.classList.remove('active'));
+      document.getElementById('llm-mode-' + btn.dataset.mode).classList.add('active');
+    });
+  });
+}
+
+function onTabActivated(tab) {
+  switch (tab) {
+    case 'dashboard': loadDashboard(); break;
+    case 'stocks': loadHoldings(); loadTransactions(); loadRealizedSummary(); loadStockSnapshots(); loadDividends(); loadXirr(); break;
+    case 'portfolio': loadPortfolioAnalysis(); break;
+    case 'expenses': loadExpenses(); break;
+    case 'managed': loadManagedAccounts(); break;
+    case 'llm': loadConversations(); break;
+    case 'settings': loadSettings(); loadDataCheck(); break;
+  }
+}
+
+// ============================================================
+// SECTION: Modal Helpers
+// ============================================================
+
+function openModal(id) {
+  document.getElementById(id).style.display = 'flex';
+}
+
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+}
+
+// Close modals on overlay click
+document.addEventListener('click', (e) => {
+  if (e.target.classList.contains('modal-overlay')) {
+    e.target.style.display = 'none';
+  }
+});
+
+// ============================================================
+// SECTION: Dashboard
+// ============================================================
+
+let assetTrendChart = null;
+let _cachedAssets = [];
+
+async function loadDashboard() {
+  try {
+    const [assets, stocks, transactions, expenses, xirr, dividends] = await Promise.all([
+      api('/api/assets').catch(() => []),
+      api('/api/stocks').catch(() => ({ holdings: [], total_value_twd: 0 })),
+      api('/api/transactions').catch(() => []),
+      api('/api/expenses').catch(() => []),
+      api('/api/stocks/xirr').catch(() => ({})),
+      api('/api/dividends').catch(() => []),
+    ]);
+
+    const assetList = Array.isArray(assets) ? assets : [];
+    const stockData = (stocks && stocks.holdings) ? stocks : { holdings: [], total_value_twd: 0 };
+    const txList = Array.isArray(transactions) ? transactions : [];
+
+    _cachedAssets = assetList;
+
+    // Current live values - split TW/US
+    const holdings = stockData.holdings || [];
+    const twHoldings = holdings.filter(h => h.market === 'TW');
+    const usHoldings = holdings.filter(h => h.market === 'US');
+    const twStockValue = twHoldings.reduce((s, h) => s + (h.market_value_twd || 0), 0);
+    const usStockValue = usHoldings.reduce((s, h) => s + (h.market_value_twd || 0), 0);
+    const currentStockValue = stockData.total_value_twd || 0;
+
+    // Latest snapshot for cash info
+    const latest = assetList.length > 0 ? assetList[0] : null;
+    const rate = (latest && latest.usd_twd_rate) || 32;
+
+    const liveNetWorth = latest
+      ? (latest.cash_twd || 0) + (latest.cash_usd || 0) * rate + currentStockValue
+      : null;
+
+    if (latest) {
+      document.getElementById('dash-net-worth').textContent = fmtTWD(liveNetWorth);
+      document.getElementById('dash-net-date').textContent = `快照日期: ${latest.date} / 股票為即時市值`;
+
+      if (assetList.length >= 2) {
+        const prev = assetList[1];
+        const prevTotal = prev.total_asset || 0;
+        if (prevTotal > 0) {
+          const growthPct = ((liveNetWorth - prevTotal) / prevTotal * 100);
+          const growthEl = document.getElementById('dash-growth');
+          growthEl.innerHTML = `<span class="${plClass(growthPct)}">較上次 ${fmtPct(growthPct)} (${fmtTWD(liveNetWorth - prevTotal)})</span>`;
+        }
+      }
+    } else {
+      document.getElementById('dash-net-worth').textContent = '--';
+      document.getElementById('dash-net-date').textContent = '尚無快照，請新增';
+    }
+
+    renderDashChangeStats({
+      assetList, latest, rate, liveNetWorth, txList, xirr,
+      twHoldings, usHoldings, stockValue: currentStockValue,
+      expenses: Array.isArray(expenses) ? expenses : [],
+      dividends: Array.isArray(dividends) ? dividends : [],
+    });
+    loadPerformance(); // separate request: the first run fetches price history
+    loadDataCheckBadge();
+
+    // Asset composition donut - split TW/US stocks
+    if (latest) {
+      const cashTwd = latest.cash_twd || 0;
+      const cashUsdTwd = (latest.cash_usd || 0) * rate;
+      const ctx = document.getElementById('chart-asset-composition');
+      if (window._assetCompChart) window._assetCompChart.destroy();
+      const compLabels = ['台幣現金', '美金現金(換算TWD)', '台股市值', '美股市值'];
+      const compData = [cashTwd, cashUsdTwd, twStockValue, usStockValue];
+      const compColors = ['#4e8cff', '#fbbf24', '#34d399', '#f87171'];
+      const compTotal = compData.reduce((a, b) => a + b, 0);
+      window._assetCompChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: compLabels,
+          datasets: [{ data: compData, backgroundColor: compColors, borderWidth: 0, hoverOffset: 6 }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, cutout: '55%',
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: c => { const pct = compTotal > 0 ? ((c.parsed/compTotal)*100).toFixed(1) : 0; return `${c.label}: ${fmtTWD(c.parsed)} (${pct}%)`; } } }
+          }
+        }
+      });
+      document.getElementById('legend-asset-composition').innerHTML = compLabels.map((l, i) => {
+        const pct = compTotal > 0 ? ((compData[i]/compTotal)*100).toFixed(1) : 0;
+        return `<span class="legend-item"><span class="legend-dot" style="background:${compColors[i]}"></span>${l}: ${fmtTWD(compData[i])} (${pct}%)</span>`;
+      }).join('');
+    }
+
+    // Net worth trend from snapshots
+    window._trendAssets = [...assetList].reverse(); // chronological
+    reRenderTrendChart();
+
+    // Recent transactions
+    const recentTx = txList.slice(0, 5);
+    const txBody = document.getElementById('dash-tx-body');
+    if (recentTx.length === 0) {
+      txBody.innerHTML = '<tr><td colspan="5" class="empty-state">尚無交易紀錄</td></tr>';
+    } else {
+      txBody.innerHTML = recentTx.map(t => `
+        <tr>
+          <td>${t.date || '--'}</td>
+          <td>${t.symbol || '--'}</td>
+          <td><span class="${t.action === 'BUY' ? 'tag-buy' : 'tag-sell'}">${t.action === 'BUY' ? '買' : '賣'}</span></td>
+          <td>${fmt(t.shares)}</td>
+          <td>${fmt(t.price, 2)}</td>
+        </tr>
+      `).join('');
+    }
+
+    // Snapshots table
+    renderSnapshotTable(assetList);
+
+  } catch (err) {
+    showToast('載入總覽資料失敗: ' + err.message, 'error');
+  }
+}
+
+let _trendChartType = 'bar';
+
+function setTrendChartType(type) {
+  _trendChartType = type;
+  document.querySelectorAll('#trend-type .chart-type-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.type === type);
+  });
+  reRenderTrendChart();
+}
+
+function reRenderTrendChart() {
+  const assets = window._trendAssets || [];
+  const mode = document.getElementById('trend-granularity')?.value || 'all';
+  if (mode === 'daily') {
+    renderDailyTrendChart(assets);
+    return;
+  }
+  let filtered;
+
+  switch (mode) {
+    case 'last10':
+      filtered = assets.slice(-10);
+      break;
+    case 'last20':
+      filtered = assets.slice(-20);
+      break;
+    case 'monthly':
+      filtered = pickLastPerGroup(assets, a => a.date?.slice(0, 7)); // YYYY-MM
+      break;
+    case 'quarterly':
+      filtered = pickLastPerGroup(assets, a => {
+        const m = parseInt(a.date?.slice(5, 7) || '1');
+        const q = Math.ceil(m / 3);
+        return a.date?.slice(0, 4) + '-Q' + q;
+      });
+      break;
+    case 'yearly':
+      filtered = pickLastPerGroup(assets, a => a.date?.slice(0, 4)); // YYYY
+      break;
+    default:
+      filtered = assets;
+  }
+
+  renderAssetTrendChart(filtered);
+}
+
+/**
+ * Net worth per weekday: stock values rebuilt by /api/stocks/performance (from
+ * the performance start date), cash from the latest snapshot on or before each
+ * day. Before the performance data arrives it draws nothing; loadPerformance
+ * re-renders it.
+ */
+/** The four net-worth parts, shared by the snapshot and daily trend charts */
+const ASSET_SERIES = [
+  { key: 'cashTWD', label: '台幣現金', color: '#4e8cff' },
+  { key: 'cashUSD', label: '美金現金(TWD)', color: '#fbbf24' },
+  { key: 'tw', label: '台股市值', color: '#34d399' },
+  { key: 'us', label: '美股市值', color: '#f87171' },
+];
+
+function renderDailyTrendChart(assets) {
+  const ctx = document.getElementById('chart-asset-trend');
+  if (assetTrendChart) assetTrendChart.destroy();
+  assetTrendChart = null;
+  const s = _perfData && _perfData.series;
+  if (!s || !s.dates) return;
+
+  const idx = weekdayIndexes(s.dates, 0);
+  let j = -1;
+  const snaps = idx.map(i => {
+    while (j + 1 < assets.length && assets[j + 1].date <= s.dates[i]) j++;
+    return j >= 0 ? assets[j] : null;
+  });
+  const daily = {
+    cashTWD: k => snaps[k] ? snaps[k].cash_twd || 0 : 0,
+    cashUSD: k => snaps[k] ? toTWD(snaps[k].cash_usd || 0, 'USD', s.fx[idx[k]]) : 0,
+    tw: k => s.value.TW[idx[k]],
+    us: k => s.value.US[idx[k]],
+  };
+  const parts = ASSET_SERIES.map(a => [a.label, a.color, daily[a.key]]);
+  const labels = idx.map(i => s.dates[i]);
+  const axis = { ticks: { color: '#5c6f8a', font: { size: 11 }, maxTicksLimit: 8, maxRotation: 0 }, grid: { color: 'rgba(42,58,78,0.4)' } };
+  const isLine = _trendChartType === 'line';
+  const datasets = isLine
+    ? [{
+        label: '總資產', data: idx.map((_, k) => parts.reduce((sum, p) => sum + p[2](k), 0)),
+        borderColor: '#4e8cff', backgroundColor: 'rgba(78, 140, 255, 0.08)', fill: true,
+        borderWidth: 2, pointRadius: 0, pointHitRadius: 8, tension: 0,
+      }]
+    : parts.map(([label, color, val], n) => ({
+        label, data: idx.map((_, k) => val(k)), borderColor: color, backgroundColor: color + '99',
+        fill: n === 0 ? 'origin' : '-1', borderWidth: 1, pointRadius: 0, pointHitRadius: 8, tension: 0,
+      }));
+
+  assetTrendChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: !isLine, position: 'top', labels: { color: '#8a9ab5', usePointStyle: true, pointStyle: 'rect', font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: c => `${c.dataset.label}: ${fmtTWD(c.parsed.y)}`,
+            footer: items => isLine ? '' : `總資產: ${fmtTWD(items.reduce((sum, i) => sum + i.parsed.y, 0))}`,
+          },
+        },
+      },
+      scales: {
+        x: axis,
+        y: { ...axis, stacked: !isLine, ticks: { ...axis.ticks, callback: v => fmt(v) } },
+      },
+    },
+  });
+}
+
+function pickLastPerGroup(arr, keyFn) {
+  const map = new Map();
+  for (const item of arr) {
+    const key = keyFn(item);
+    map.set(key, item); // last one wins (arr is chronological)
+  }
+  return Array.from(map.values());
+}
+
+function renderAssetTrendChart(assets) {
+  const ctx = document.getElementById('chart-asset-trend');
+  if (assetTrendChart) assetTrendChart.destroy();
+
+  if (!assets || assets.length === 0) return;
+
+  const labels = assets.map(a => a.date || '');
+  const isLine = _trendChartType === 'line';
+
+  let datasets, options;
+
+  if (isLine) {
+    // Clean line chart - just total asset
+    datasets = [{
+      label: '總資產',
+      data: assets.map(a => a.total_asset || 0),
+      borderColor: '#4e8cff',
+      backgroundColor: 'rgba(78, 140, 255, 0.08)',
+      fill: true,
+      tension: 0.35,
+      pointRadius: 4,
+      pointHoverRadius: 6,
+      pointBackgroundColor: '#4e8cff',
+      borderWidth: 2,
+    }];
+    options = {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => `總資產: ${fmtTWD(c.parsed.y)}` } }
+      },
+      scales: {
+        x: { ticks: { color: '#5c6f8a', font: { size: 11 } }, grid: { color: 'rgba(42,58,78,0.4)' } },
+        y: { ticks: { color: '#5c6f8a', font: { size: 11 }, callback: v => fmt(v) }, grid: { color: 'rgba(42,58,78,0.4)' } }
+      }
+    };
+  } else {
+    // Stacked bar chart with breakdown
+    const snap = {
+      cashTWD: a => a.cash_twd || 0,
+      cashUSD: a => (a.cash_usd || 0) * (a.usd_twd_rate || 32),
+      tw: a => a.stock_tw_value || 0,
+      us: a => a.stock_us_value || 0,
+    };
+    datasets = ASSET_SERIES.map(s => ({
+      label: s.label, data: assets.map(snap[s.key]), backgroundColor: s.color, borderRadius: 2, stack: 'stack',
+    }));
+    options = {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, position: 'top', labels: { color: '#8a9ab5', usePointStyle: true, pointStyle: 'rect', font: { size: 11 } } },
+        tooltip: {
+          mode: 'index',
+          callbacks: {
+            label: c => `${c.dataset.label}: ${fmtTWD(c.parsed.y)}`,
+            footer: items => { const total = items.reduce((s, i) => s + i.parsed.y, 0); return `總資產: ${fmtTWD(total)}`; }
+          }
+        }
+      },
+      scales: {
+        x: { stacked: true, ticks: { color: '#5c6f8a', font: { size: 11 } }, grid: { color: 'rgba(42,58,78,0.4)' } },
+        y: { stacked: true, ticks: { color: '#5c6f8a', font: { size: 11 }, callback: v => fmt(v) }, grid: { color: 'rgba(42,58,78,0.4)' } }
+      }
+    };
+  }
+
+  assetTrendChart = new Chart(ctx, {
+    type: isLine ? 'line' : 'bar',
+    data: { labels, datasets },
+    options,
+  });
+}
+
+function renderSnapshotTable(assets) {
+  const tbody = document.getElementById('snapshot-body');
+  if (!assets || assets.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-state">尚無快照資料，請新增</td></tr>';
+    return;
+  }
+  tbody.innerHTML = assets.map(a => `
+    <tr>
+      <td>${a.date || '--'}</td>
+      <td>${fmtTWD(a.cash_twd)}</td>
+      <td>${fmtUSD(a.cash_usd)}</td>
+      <td>${fmtTWD(a.stock_tw_value)}</td>
+      <td>${fmtTWD(a.stock_us_value)}</td>
+      <td>${fmt(a.usd_twd_rate, 2)}</td>
+      <td><strong>${fmtTWD(a.total_asset)}</strong></td>
+      <td>${a.note || ''}</td>
+      <td>
+        <button class="btn btn-outline btn-sm" onclick="editSnapshot(${a.id})">編輯</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteSnapshot(${a.id})">刪除</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+/** Dashboard change cards: today's P&L, YTD, YTD change sources, XIRR. Formulas are in each label's tooltip in index.html. */
+function renderDashChangeStats({ assetList, latest, rate, liveNetWorth, twHoldings, usHoldings, stockValue, txList, expenses, dividends, xirr }) {
+  const setPL = (id, n, text) => {
+    const el = document.getElementById(id);
+    el.className = 'stat-value ' + plClass(n);
+    el.textContent = text;
+  };
+  const setSub = (id, html) => { document.getElementById(id).innerHTML = html; };
+
+  // 1. Today's P&L
+  const sumDay = list => list.reduce((s, h) => s + (h.day_change_twd || 0), 0);
+  const twDay = sumDay(twHoldings);
+  const usDay = sumDay(usHoldings);
+  const dayPL = twDay + usDay;
+  const prevValue = stockValue - dayPL;
+  if (twHoldings.length || usHoldings.length) {
+    setPL('dash-day-pl', dayPL, `${fmtPL(dayPL)}${prevValue > 0 ? ` (${fmtPct(dayPL / prevValue * 100)})` : ''}`);
+    setSub('dash-day-pl-sub', `台股 <span class="${plClass(twDay)}">${fmtPL(twDay)}</span> · 美股 <span class="${plClass(usDay)}">${fmtPL(usDay)}</span>`);
+  }
+
+  // Baseline: last snapshot on/before Jan 1, else the earliest snapshot this year (assetList is newest first)
+  const yearStart = `${new Date().getFullYear()}-01-01`;
+  const base = assetList.find(a => a.date <= yearStart) || assetList.findLast(a => a.date >= yearStart);
+  if (!latest || !base || !(base.total_asset > 0)) {
+    setSub('dash-ytd-sub', '需要至少一筆今年以前或今年的快照');
+  } else {
+    // 2. YTD
+    const ytd = liveNetWorth - base.total_asset;
+    setPL('dash-ytd', ytd, `${fmtPL(ytd)} (${fmtPct(ytd / base.total_asset * 100)})`);
+    setSub('dash-ytd-sub', `基準 ${base.date} · ${fmtTWD(base.total_asset)}`);
+
+    // 3. Sources, snapshot to snapshot; "other" is the remainder
+    const inclusive = base.date >= yearStart; // a Jan 1 snapshot still counts Jan 1 records
+    const inRange = e => (inclusive ? e.date >= base.date : e.date > base.date) && e.date <= latest.date;
+    const records = expenses.filter(e => inRange(e) && !(e.type === 'income' && e.category === '股利'));
+    const savings = records.reduce((s, e) => s + (e.type === 'income' ? e.amount : -e.amount), 0);
+    const divTotal = dividends.filter(inRange).reduce((s, d) => s + toTWD(d.amount, d.currency, rate), 0);
+    // Every recorded trade moves cash, imported-history SELLs included (unlike the ledger's countedTxns).
+    const netBuys = txList.filter(inRange).reduce((s, t) => s + (t.action === 'BUY'
+      ? toTWD(t.shares * t.price + t.fee, t.currency, rate)
+      : -toTWD(t.shares * t.price - t.fee - t.tax, t.currency, rate)), 0);
+    const price = (latest.stock_value_twd - base.stock_value_twd) - netBuys;
+    const change = latest.total_asset - base.total_asset;
+    const lastRecord = records.reduce((m, e) => (e.date > m ? e.date : m), '');
+
+    setPL('dash-source', change, fmtPL(change));
+    const parts = [
+      { label: '股價漲幅', v: price, color: price < 0 ? 'var(--red)' : 'var(--green)' },
+      { label: '股利', v: divTotal, color: 'var(--yellow)' },
+      { label: '儲蓄', v: savings, color: 'var(--accent)' },
+      { label: '其他', v: change - savings - divTotal - price, color: 'var(--text-muted)',
+        attrs: ' class="src-other" title="美金現金匯差、交易日與現行匯率差、收支未記等對不上的差額"' },
+    ];
+    const total = parts.reduce((s, p) => s + Math.abs(p.v), 0);
+    document.getElementById('dash-source-bar').innerHTML = total > 0
+      ? parts.map(p => `<span style="width:${Math.abs(p.v) / total * 100}%;background:${p.color}"></span>`).join('')
+      : '';
+    setSub('dash-source-sub', parts.map(p =>
+      `<span${p.attrs || ''}><span class="legend-dot src-dot" style="background:${p.color}"></span>${p.label} ${fmtPL(p.v)}</span>`).join('<br>'));
+    document.getElementById('dash-source').title =
+      `${base.date} → ${latest.date}${lastRecord ? `，收支記到 ${lastRecord}` : '，期間無收支紀錄'}`;
+  }
+
+  // 4. XIRR (cumulative since first trade)
+  const all = xirr.ALL;
+  if (all && all.xirr != null) {
+    setPL('dash-xirr', all.xirr, fmtPct(all.xirr));
+    setSub('dash-xirr-sub', `台股 ${xirrHtml(xirr.TW)} · 美股 ${xirrHtml(xirr.US)}<br>自 ${(all.first_date || '').slice(0, 7)} 起・年化`);
+  }
+}
+
+// ============================================================
+// SECTION: Asset Snapshots CRUD
+// ============================================================
+
+let _snapshotMode = 'auto'; // 'auto' or 'manual'
+
+function setSnapshotMode(mode) {
+  _snapshotMode = mode;
+  const toggles = document.querySelectorAll('.snapshot-mode-toggle .toggle-sm');
+  toggles.forEach(b => b.classList.toggle('active', b.textContent.includes(mode === 'auto' ? '自動' : '手動')));
+  const manualFields = document.getElementById('snapshot-manual-fields');
+  const autoInfo = document.getElementById('snapshot-auto-info');
+  if (mode === 'manual') {
+    manualFields.style.display = 'block';
+    autoInfo.textContent = '手動模式：所有欄位由你自行填入';
+  } else {
+    manualFields.style.display = 'none';
+    autoInfo.textContent = '系統將自動擷取：目前股票市值、USD/TWD 匯率';
+  }
+}
+
+function openSnapshotModal() {
+  const form = document.getElementById('snapshot-form');
+  form.reset();
+  form.querySelector('[name="id"]').value = '';
+  form.querySelector('[name="date"]').value = todayStr();
+  document.getElementById('snapshot-modal-title').textContent = '新增資產快照';
+  setSnapshotMode('auto');
+  openModal('modal-snapshot');
+}
+
+function editSnapshot(id) {
+  const a = _cachedAssets.find(x => x.id === id);
+  if (!a) return;
+  const form = document.getElementById('snapshot-form');
+  form.querySelector('[name="id"]').value = a.id;
+  form.querySelector('[name="date"]').value = a.date;
+  form.querySelector('[name="cash_twd"]').value = a.cash_twd || 0;
+  form.querySelector('[name="cash_usd"]').value = a.cash_usd || 0;
+  form.querySelector('[name="stock_tw_value"]').value = a.stock_tw_value || 0;
+  form.querySelector('[name="stock_us_value"]').value = a.stock_us_value || 0;
+  form.querySelector('[name="usd_twd_rate"]').value = a.usd_twd_rate || 0;
+  form.querySelector('[name="total_asset_override"]').value = '';
+  form.querySelector('[name="note"]').value = a.note || '';
+  document.getElementById('snapshot-modal-title').textContent = '編輯資產快照';
+  setSnapshotMode('manual'); // editing always shows all fields
+  openModal('modal-snapshot');
+}
+
+async function submitSnapshot(e) {
+  e.preventDefault();
+  const form = e.target;
+  const id = form.querySelector('[name="id"]').value;
+  const data = {
+    date: form.querySelector('[name="date"]').value,
+    cash_twd: Number(form.querySelector('[name="cash_twd"]').value),
+    cash_usd: Number(form.querySelector('[name="cash_usd"]').value),
+    note: form.querySelector('[name="note"]').value,
+  };
+
+  // Manual mode: include stock value, rate, and optional total override
+  if (_snapshotMode === 'manual') {
+    const twInput = form.querySelector('[name="stock_tw_value"]').value;
+    const usInput = form.querySelector('[name="stock_us_value"]').value;
+    const rateInput = form.querySelector('[name="usd_twd_rate"]').value;
+    const totalInput = form.querySelector('[name="total_asset_override"]').value;
+    if (twInput) data.stock_tw_value = Number(twInput);
+    if (usInput) data.stock_us_value = Number(usInput);
+    if (twInput || usInput) data.stock_value_twd = (Number(twInput) || 0) + (Number(usInput) || 0);
+    if (rateInput) data.usd_twd_rate = Number(rateInput);
+    if (totalInput) data.total_asset = Number(totalInput);
+  }
+
+  try {
+    if (id) {
+      await api(`/api/assets/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+      showToast('快照已更新', 'success');
+    } else {
+      const msg = _snapshotMode === 'auto' ? '快照已新增（股票市值已自動擷取）' : '快照已新增（手動填入）';
+      await api('/api/assets', { method: 'POST', body: JSON.stringify(data) });
+      showToast(msg, 'success');
+    }
+    closeModal('modal-snapshot');
+    loadDashboard();
+  } catch (err) {
+    showToast('儲存失敗: ' + err.message, 'error');
+  }
+}
+
+async function deleteSnapshot(id) {
+  if (!confirm('確定要刪除此快照嗎？')) return;
+  try {
+    await api(`/api/assets/${id}`, { method: 'DELETE' });
+    showToast('快照已刪除', 'success');
+    loadDashboard();
+  } catch (err) {
+    showToast('刪除失敗: ' + err.message, 'error');
+  }
+}
+
+// ============================================================
+// SECTION: Stock Holdings
+// ============================================================
+
+// Dividends received per symbol (native currency), loaded alongside holdings
+let _divBySymbol = {};
+
+// Total return incl. dividends, and yield on price / on cost (trailing 12 months of recorded dividends)
+function divMetrics(pl, cost, mv, div) {
+  const total = div ? div.total : 0;
+  const ttm = div ? div.ttm : 0;
+  return {
+    total,
+    ret: cost > 0 ? ((pl + total) / cost) * 100 : null,
+    yieldPrice: mv > 0 && ttm > 0 ? (ttm / mv) * 100 : null,
+    yieldCost: cost > 0 && ttm > 0 ? (ttm / cost) * 100 : null,
+  };
+}
+
+// Two cells: dividends (+ total return incl. dividends underneath) and yield (price / cost)
+function divCells(m, cur) {
+  const divTxt = m.total ? fmtCur(m.total, cur) : '--';
+  const retTxt = m.ret == null ? '--' : fmtPct(m.ret);
+  const yieldTxt = m.yieldPrice == null
+    ? '--'
+    : `${m.yieldPrice.toFixed(2)}%<span class="cell-sub">成本 ${m.yieldCost.toFixed(2)}%</span>`;
+  return `
+      <td>${divTxt}<span class="cell-sub ${plClass(m.ret)}">${retTxt}</span></td>
+      <td>${yieldTxt}</td>`;
+}
+
+// Unrealized P&L amount with its % underneath
+function plCell(pl, pct, cur) {
+  return `<td class="${plClass(pl)}">${fmtPLCur(pl, cur)}<span class="cell-sub">${fmtPct(pct)}</span></td>`;
+}
+
+// Today's change in the 現價 column of subtotal/total rows: amount with % vs previous close underneath
+function dayChangeCell(chg, mv, cur, strong) {
+  const prev = mv - chg;
+  const amt = `今日 ${fmtPLCur(chg, cur)}`;
+  return `<td class="${plClass(chg)}" title="較前一交易日收盤">${strong ? `<strong>${amt}</strong>` : amt}` +
+    `<span class="cell-sub">${prev > 0 ? fmtPct(chg / prev * 100) : '--'}</span></td>`;
+}
+
+function renderHoldingRow(s) {
+  const cur = s.currency;
+  const costNative = (s.avg_cost || 0) * (s.shares || 0);
+  const dm = divMetrics(s.unrealized_pl || 0, costNative, s.market_value || 0, _divBySymbol[s.symbol]);
+  return `
+    <tr>
+      <td><strong>${s.symbol || '--'}</strong></td>
+      <td>${fmt(s.shares)}<span class="cell-sub">均價 ${fmtPrice(s.avg_cost, cur)}</span></td>
+      <td>${fmtCur(costNative, cur)}</td>
+      <td>${fmtPrice(s.current_price, cur)}${s.current_price ? `<span class="cell-sub ${plClass(s.day_change_pct)}" title="較前一交易日收盤">${fmtPct(s.day_change_pct)}</span>` : ''}</td>
+      <td>${fmtCur(s.market_value, cur)}</td>
+      ${plCell(s.unrealized_pl, s.pl_percent, cur)}${divCells(dm, cur)}
+      <td class="action-buttons">
+        <button class="btn btn-buy btn-sm" title="買入" onclick="openTradeModal('BUY', '${s.symbol}', '${s.market}', '${s.currency}', ${s.shares}, ${s.current_price || 0})">買</button>
+        <button class="btn btn-sell btn-sm" title="賣出" onclick="openTradeModal('SELL', '${s.symbol}', '${s.market}', '${s.currency}', ${s.shares}, ${s.current_price || 0})">賣</button>
+        <button class="btn btn-danger btn-sm" title="刪除持倉" onclick="deleteHolding(${s.id})">刪</button>
+      </td>
+    </tr>
+  `;
+}
+
+async function loadHoldings() {
+  try {
+    const [stockData, divData] = await Promise.all([
+      api('/api/stocks'),
+      api('/api/dividends/by-symbol').catch(() => ({ items: [], usd_twd_rate: 32 })),
+    ]);
+    _divBySymbol = {};
+    (divData.items || []).forEach(d => { _divBySymbol[d.symbol] = d; });
+    const list = (stockData && stockData.holdings) ? stockData.holdings : [];
+    const tbody = document.getElementById('holdings-body');
+    const tfoot = document.getElementById('holdings-foot');
+
+    if (list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="9" class="empty-state">尚無持倉資料</td></tr>';
+      tfoot.style.display = 'none';
+      return;
+    }
+
+    const subtotal = (rows) => {
+      const cost = rows.reduce((sum, s) => sum + (s.avg_cost || 0) * (s.shares || 0), 0);
+      const mv = rows.reduce((sum, s) => sum + (s.market_value || 0), 0);
+      const pl = rows.reduce((sum, s) => sum + (s.unrealized_pl || 0), 0);
+      const pct = cost > 0 ? (pl / cost) * 100 : 0;
+      // Native-currency day change, from each holding's market value and % vs previous close
+      const day = rows.reduce((sum, s) => {
+        const p = s.day_change_pct || 0;
+        return sum + (s.market_value || 0) * p / (100 + p);
+      }, 0);
+      // Dividends of the symbols in this group, same currency as the group
+      const div = { total: 0, ttm: 0 };
+      rows.forEach(s => {
+        const d = _divBySymbol[s.symbol];
+        if (d) { div.total += d.total; div.ttm += d.ttm; }
+      });
+      return { cost, mv, pl, pct, day, dm: divMetrics(pl, cost, mv, div) };
+    };
+
+    const groups = [
+      { market: 'US', label: '\u{1F1FA}\u{1F1F8} 美股', subtotalLabel: '美股小計', cur: 'USD' },
+      { market: 'TW', label: '\u{1F1F9}\u{1F1FC} 台股', subtotalLabel: '台股小計', cur: 'TWD' },
+    ];
+    tbody.innerHTML = groups.map(g => {
+      const rows = list.filter(s => s.market === g.market);
+      if (rows.length === 0) return '';
+      const t = subtotal(rows);
+      return `<tr class="market-group-header"><td colspan="9">${g.label}</td></tr>` +
+        rows.map(renderHoldingRow).join('') +
+        `<tr class="market-subtotal"><td colspan="2">${g.subtotalLabel}</td><td>${fmtCur(t.cost, g.cur)}</td>${dayChangeCell(t.day, t.mv, g.cur)}<td>${fmtCur(t.mv, g.cur)}</td>${plCell(t.pl, t.pct, g.cur)}${divCells(t.dm, g.cur)}<td></td></tr>`;
+    }).join('');
+
+    // TWD footer: USD dividends converted at the stored rate
+    const rate = divData.usd_twd_rate || 32;
+    const divTwd = { total: 0, ttm: 0 };
+    (divData.items || []).forEach(d => {
+      divTwd.total += toTWD(d.total, d.currency, rate);
+      divTwd.ttm += toTWD(d.ttm, d.currency, rate);
+    });
+    const totalDm = divMetrics(stockData.total_pl_twd, stockData.total_cost_twd, stockData.total_value_twd, divTwd);
+    document.getElementById('total-div').innerHTML = `<strong>${totalDm.total ? fmtTWD(totalDm.total) : '--'}</strong>`;
+    document.getElementById('total-div-return').innerHTML =
+      `<strong class="${plClass(totalDm.ret)}">${totalDm.ret == null ? '--' : fmtPct(totalDm.ret)}</strong>`;
+    document.getElementById('total-yield').innerHTML = totalDm.yieldPrice == null
+      ? '<strong>--</strong>'
+      : `<strong>${totalDm.yieldPrice.toFixed(2)}%</strong><span class="cell-sub">成本 ${totalDm.yieldCost.toFixed(2)}%</span>`;
+
+    document.getElementById('total-cost').innerHTML = `<strong>${fmtTWD(stockData.total_cost_twd)}</strong>`;
+    const dayTwd = list.reduce((sum, s) => sum + (s.day_change_twd || 0), 0);
+    document.getElementById('total-day-change').outerHTML =
+      dayChangeCell(dayTwd, stockData.total_value_twd, 'TWD', true).replace('<td ', '<td id="total-day-change" ');
+    document.getElementById('total-market-value').innerHTML = `<strong>${fmtTWD(stockData.total_value_twd)}</strong>`;
+    document.getElementById('total-unrealized-pl').innerHTML = `<strong class="${plClass(stockData.total_pl_twd)}">${fmtPL(stockData.total_pl_twd)}</strong>`;
+    document.getElementById('total-pl-pct').innerHTML = `<strong class="${plClass(stockData.total_pl_percent)}">${fmtPct(stockData.total_pl_percent)}</strong>`;
+    tfoot.style.display = '';
+
+    // Show quote fetch time
+    const fetchedEl = document.getElementById('quote-fetched-at');
+    if (fetchedEl && stockData.quote_fetched_at) {
+      fetchedEl.textContent = `報價更新: ${stockData.quote_fetched_at}`;
+    }
+
+  } catch (err) {
+    showToast('載入持倉失敗: ' + err.message, 'error');
+  }
+}
+
+function openHoldingModal() {
+  const form = document.getElementById('holding-form');
+  form.reset();
+  // Default to TW
+  form.querySelector('[name="market"]').value = 'TW';
+  onHoldingMarketChange(form.querySelector('[name="market"]'));
+  openModal('modal-holding');
+}
+
+function onHoldingMarketChange(select) {
+  const market = select.value;
+  const symbolInput = select.form.querySelector('[name="symbol"]');
+  const hint = document.getElementById('holding-symbol-hint');
+  const currLabel = document.getElementById('holding-currency-label');
+
+  if (market === 'TW') {
+    symbolInput.placeholder = '輸入股票代號，例如 2330';
+    hint.textContent = '台股輸入代號即可（如 2330），系統自動加上 .TW';
+    currLabel.textContent = 'TWD';
+  } else {
+    symbolInput.placeholder = '輸入股票代號，例如 AAPL';
+    hint.textContent = '美股直接輸入代號（如 AAPL、NVDA）';
+    currLabel.textContent = 'USD';
+  }
+}
+
+async function submitHolding(e) {
+  e.preventDefault();
+  const form = e.target;
+  const market = form.querySelector('[name="market"]').value;
+  let symbol = form.querySelector('[name="symbol"]').value.trim().toUpperCase();
+
+  // Auto-append .TW for Taiwan stocks if not already present
+  if (market === 'TW' && !symbol.endsWith('.TW') && !symbol.endsWith('.TWO')) {
+    symbol = symbol + '.TW';
+  }
+
+  const data = {
+    symbol,
+    market,
+    shares: Number(form.querySelector('[name="shares"]').value),
+    avg_cost: Number(form.querySelector('[name="avg_cost"]').value),
+    currency: market === 'US' ? 'USD' : 'TWD',
+    date: form.querySelector('[name="date"]').value || '',
+  };
+
+  try {
+    await api('/api/stocks', { method: 'POST', body: JSON.stringify(data) });
+    showToast('持倉已匯入（含買入交易紀錄）', 'success');
+    closeModal('modal-holding');
+    loadHoldings();
+    loadTransactions();
+  } catch (err) {
+    showToast('新增失敗: ' + err.message, 'error');
+  }
+}
+
+async function deleteHolding(id) {
+  if (!confirm('確定要刪除此持倉嗎？\n\n這會一併刪除該股票的「買入」交易紀錄（否則持倉會在下次重算時復活）。\n已實現損益的「賣出」紀錄會保留。')) return;
+  try {
+    await api(`/api/stocks/${id}`, { method: 'DELETE' });
+    showToast('持倉已刪除', 'success');
+    loadHoldings();
+    loadTransactions();
+    loadXirr();
+  } catch (err) {
+    showToast('刪除失敗: ' + err.message, 'error');
+  }
+}
+
+async function refreshStockPrices() {
+  const btn = document.querySelector('[onclick="refreshStockPrices()"]');
+  btn.classList.add('refreshing');
+  btn.disabled = true;
+  try {
+    // Clear server cache first, then reload
+    await api('/api/stocks/refresh', { method: 'POST' });
+    await loadHoldings();
+    showToast('報價已強制更新', 'success');
+  } catch (err) {
+    showToast('更新報價失敗: ' + err.message, 'error');
+  } finally {
+    btn.classList.remove('refreshing');
+    btn.disabled = false;
+  }
+}
+
+// ============================================================
+// SECTION: Realized P&L Summary
+// ============================================================
+
+let _rplData = null; // cached realized P&L data
+let _rplFilter = 'ALL';
+let _rplYear = 'ALL';
+let _rplYears = [];
+
+async function loadRealizedSummary() {
+  try {
+    const q = _rplYear === 'ALL' ? '' : '?year=' + _rplYear;
+    _rplData = await api('/api/transactions/summary' + q);
+    // Year list comes from the server unfiltered, so keep it when a year is selected
+    if (_rplYear === 'ALL' || _rplYears.length === 0) _rplYears = _rplData.years || [];
+    renderRplYearButtons();
+    renderRealizedSummary();
+  } catch (err) {
+    showToast('載入已實現損益失敗: ' + err.message, 'error');
+  }
+}
+
+function renderRplYearButtons() {
+  const el = document.getElementById('rpl-year-filter');
+  if (!el) return;
+  const items = ['ALL', ..._rplYears];
+  el.innerHTML = items.map(y =>
+    `<button class="rpl-filter-btn${y === _rplYear ? ' active' : ''}" onclick="filterRealizedYear('${y}')">${y === 'ALL' ? '全部年度' : y}</button>`
+  ).join('');
+}
+
+function filterRealizedYear(year) {
+  _rplYear = year;
+  loadRealizedSummary();
+}
+
+function filterRealizedPL(market) {
+  _rplFilter = market;
+  // Update button states
+  document.querySelectorAll('.rpl-filter-btn[data-market]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.market === market);
+  });
+  renderRealizedSummary();
+}
+
+function renderRealizedSummary() {
+  if (!_rplData) return;
+
+  const allStocks = _rplData.by_stock || [];
+  const stocks = _rplFilter === 'ALL' ? allStocks : allStocks.filter(s => s.market === _rplFilter);
+
+  // Recalculate stats for filtered data
+  let totalTrades = 0, winTrades = 0, loseTrades = 0;
+  let totalPLTwd = 0, totalCostTwd = 0;
+  let bestTrade = null, worstTrade = null;
+
+  // We need the exchange rate for USD→TWD conversion
+  const rate = _rplData.overall?.usd_twd_rate || 32;
+
+  stocks.forEach(s => {
+    totalTrades += s.total_trades;
+    // Count wins/losses per stock (approximate: if total_realized_pl > 0, consider trades mostly winning)
+    // Better: use per-trade data. For now, estimate from avg.
+    const plTwd = toTWD(s.total_realized_pl, s.currency, rate);
+    totalPLTwd += plTwd;
+    totalCostTwd += toTWD(s.total_cost, s.currency, rate);
+
+    if (!bestTrade || s.best_trade_pct > bestTrade.pct) {
+      bestTrade = { symbol: s.symbol, pct: s.best_trade_pct };
+    }
+    if (!worstTrade || s.worst_trade_pct < worstTrade.pct) {
+      worstTrade = { symbol: s.symbol, pct: s.worst_trade_pct };
+    }
+  });
+
+  // Use overall win/lose if showing all, otherwise estimate
+  let flatTrades = 0;
+  if (_rplFilter === 'ALL' && _rplData.overall) {
+    winTrades = _rplData.overall.winning_trades || 0;
+    loseTrades = _rplData.overall.losing_trades || 0;
+    flatTrades = _rplData.overall.flat_trades || 0;
+  } else {
+    // Estimate: count stocks with positive vs negative total P&L (rough)
+    stocks.forEach(s => {
+      if (s.total_realized_pl > 0) winTrades += s.total_trades;
+      else if (s.total_realized_pl < 0) loseTrades += s.total_trades;
+      else flatTrades += s.total_trades;
+    });
+  }
+
+  const winRate = totalTrades > 0 ? (winTrades / totalTrades) * 100 : 0;
+
+  // Render stats cards
+  const totalPct = totalCostTwd > 0 ? (totalPLTwd / totalCostTwd) * 100 : 0;
+  document.getElementById('rpl-total').innerHTML =
+    `<span class="${plClass(totalPLTwd)}">${fmtTWD(totalPLTwd)}</span> ` +
+    `<span class="${plClass(totalPct)}" style="font-size:0.6em">(${fmtPct(totalPct)})</span>`;
+  document.getElementById('rpl-trades').textContent =
+    `${totalTrades} 筆 (勝${winTrades}/負${loseTrades}${flatTrades ? '/平' + flatTrades : ''})`;
+  document.getElementById('rpl-winrate').textContent =
+    `${winRate.toFixed(1)}%`;
+
+  const divTwd = (_rplData.dividends || [])
+    .filter(d => _rplFilter === 'ALL' || d.market === _rplFilter)
+    .reduce((sum, d) => sum + toTWD(d.total, d.currency, rate), 0);
+  document.getElementById('rpl-div').innerHTML = divTwd ? `<span class="positive">${fmtTWD(divTwd)}</span>` : '--';
+  const withDiv = totalPLTwd + divTwd;
+  document.getElementById('rpl-total-div').innerHTML =
+    `<span class="${plClass(withDiv)}">${fmtTWD(withDiv)}</span>`;
+
+  if (bestTrade) {
+    document.getElementById('rpl-best').innerHTML =
+      `${bestTrade.symbol} <span class="${plClass(bestTrade.pct)}">${fmtPct(bestTrade.pct)}</span>`;
+  } else {
+    document.getElementById('rpl-best').textContent = '--';
+  }
+
+  // Render table
+  const tbody = document.getElementById('rpl-stock-body');
+  if (stocks.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10" class="empty-state">此分類無已實現損益紀錄</td></tr>';
+    document.getElementById('rpl-stock-total-pl').textContent = '--';
+    document.getElementById('rpl-stock-avg-return').textContent = '--';
+    return;
+  }
+
+  tbody.innerHTML = stocks.map(s => {
+    const fc = s.currency === 'TWD' ? fmtTWD : fmtUSD;
+    return `
+      <tr>
+        <td><strong>${s.symbol}</strong></td>
+        <td>${s.market === 'TW' ? '台股' : '美股'}</td>
+        <td>${s.total_trades}</td>
+        <td>${fmt(s.total_shares_sold)}</td>
+        <td>${fc(s.total_revenue)}</td>
+        <td>${fc(s.total_cost)}</td>
+        <td class="${plClass(s.total_realized_pl)}"><strong>${fc(s.total_realized_pl)}</strong></td>
+        <td class="${plClass(s.avg_return_pct)}">${fmtPct(s.avg_return_pct)}</td>
+        <td class="${plClass(s.best_trade_pct)}">${fmtPct(s.best_trade_pct)}</td>
+        <td class="${plClass(s.worst_trade_pct)}">${fmtPct(s.worst_trade_pct)}</td>
+      </tr>
+    `;
+  }).join('');
+
+  // Footer totals
+  document.getElementById('rpl-stock-total-pl').innerHTML =
+    `<strong class="${plClass(totalPLTwd)}">${fmtTWD(totalPLTwd)}</strong>`;
+
+  document.getElementById('rpl-stock-avg-return').innerHTML =
+    `<strong class="${plClass(totalPct)}">${fmtPct(totalPct)}</strong>`;
+}
+
+// ============================================================
+// SECTION: Transactions
+// ============================================================
+
+async function submitTransaction(e) {
+  e.preventDefault();
+  const form = e.target;
+  const data = {
+    symbol: form.querySelector('[name="symbol"]').value.trim().toUpperCase(),
+    action: form.querySelector('[name="action"]').value,
+    shares: Number(form.querySelector('[name="shares"]').value),
+    price: Number(form.querySelector('[name="price"]').value),
+    fee: Number(form.querySelector('[name="fee"]').value) || 0,
+    tax: Number(form.querySelector('[name="tax"]').value) || 0,
+    auto_fee: form.querySelector('[name="auto_fee"]').checked,
+    date: form.querySelector('[name="date"]').value,
+    note: form.querySelector('[name="note"]').value,
+  };
+
+  const editId = form.dataset.editId;
+
+  try {
+    let result;
+    if (editId) {
+      // Edit mode - PUT
+      data.market = form.dataset.editMarket || 'US';
+      data.realized_pl = Number(form.dataset.editRealizedPl) || 0;
+      result = await api(`/api/transactions/${editId}`, { method: 'PUT', body: JSON.stringify(data) });
+      showToast('交易已更新', 'success');
+      showLedgerWarnings(result);
+      cancelTransactionEdit();
+    } else {
+      // New transaction - POST
+      result = await api('/api/transactions', { method: 'POST', body: JSON.stringify(data) });
+      showToast('交易已記錄', 'success');
+
+      // Show realized P&L for sell transactions
+      const resultBox = document.getElementById('tx-result');
+      if (data.action === 'SELL' && result && result.realized_pl != null) {
+        resultBox.style.display = 'block';
+        resultBox.className = 'tx-result-box success';
+        resultBox.innerHTML = `賣出完成！已實現損益: <strong class="${plClass(result.realized_pl)}">${fmtTWD(result.realized_pl)}</strong>`;
+        setTimeout(() => { resultBox.style.display = 'none'; }, 8000);
+      } else {
+        resultBox.style.display = 'block';
+        resultBox.className = 'tx-result-box info';
+        resultBox.textContent = '買入交易已記錄';
+        setTimeout(() => { resultBox.style.display = 'none'; }, 4000);
+      }
+
+      form.reset();
+      form.querySelector('[name="date"]').value = todayStr();
+    }
+
+    loadTransactions();
+    loadHoldings();
+    loadRealizedSummary();
+  } catch (err) {
+    showToast('交易記錄失敗: ' + err.message, 'error');
+  }
+}
+
+async function loadTransactions() {
+  try {
+    let url = '/api/transactions';
+    const params = new URLSearchParams();
+    const sym = document.getElementById('tx-filter-symbol').value.trim();
+    const start = document.getElementById('tx-filter-start').value;
+    const end = document.getElementById('tx-filter-end').value;
+    if (sym) params.set('symbol', sym);
+    if (start) params.set('from', start);
+    if (end) params.set('to', end);
+    const qs = params.toString();
+    if (qs) url += '?' + qs;
+
+    const transactions = await api(url);
+    const list = Array.isArray(transactions) ? transactions : [];
+    const tbody = document.getElementById('tx-body');
+
+    if (list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="10" class="empty-state">尚無交易紀錄</td></tr>';
+      document.getElementById('cumulative-realized-pl').textContent = '--';
+      return;
+    }
+
+    let cumPL = 0;
+    tbody.innerHTML = list.map(t => {
+      if (t.realized_pl) cumPL += t.realized_pl;
+      const escaped = (s) => (s || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+      return `
+        <tr>
+          <td>${t.date || '--'}</td>
+          <td><strong>${t.symbol || '--'}</strong></td>
+          <td><span class="${t.action === 'BUY' ? 'tag-buy' : 'tag-sell'}">${t.action === 'BUY' ? '買' : '賣'}</span></td>
+          <td>${fmt(t.shares)}</td>
+          <td>${fmt(t.price, 2)}</td>
+          <td>${fmt(t.fee, 0)}</td>
+          <td>${t.tax ? fmt(t.tax, 0) : '--'}</td>
+          <td class="${plClass(t.realized_pl)}">${t.realized_pl ? fmtPL(t.realized_pl) : '--'}</td>
+          <td>${t.note || ''}</td>
+          <td>
+            <button class="btn btn-outline btn-sm" onclick="editTransaction(${t.id}, '${escaped(t.symbol)}', '${t.market}', '${t.action}', ${t.shares}, ${t.price}, ${t.fee || 0}, '${t.date}', '${escaped(t.note)}', ${t.realized_pl || 0}, ${t.tax || 0})">編輯</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteTransaction(${t.id})">刪除</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    const plEl = document.getElementById('cumulative-realized-pl');
+    plEl.textContent = fmtTWD(cumPL);
+    plEl.className = plClass(cumPL);
+
+  } catch (err) {
+    showToast('載入交易紀錄失敗: ' + err.message, 'error');
+  }
+}
+
+// ============================================================
+// SECTION: Stock Snapshots
+// ============================================================
+
+async function takeStockSnapshot() {
+  try {
+    const result = await api('/api/stocks/snapshot', { method: 'POST' });
+    showToast(`快照已記錄！總市值 ${fmtTWD(result.total_value_twd)}`, 'success');
+    loadStockSnapshots();
+  } catch (err) {
+    showToast('快照記錄失敗: ' + err.message, 'error');
+  }
+}
+
+let _stockSnapshotChart = null;
+
+async function loadStockSnapshots() {
+  try {
+    const snapshots = await api('/api/stocks/snapshots');
+    const list = Array.isArray(snapshots) ? snapshots : [];
+    const tbody = document.getElementById('stock-snapshot-body');
+
+    // Render chart (chronological order = reversed since API returns DESC)
+    renderStockSnapshotChart([...list].reverse());
+
+    if (list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">尚無快照，點擊上方按鈕記錄</td></tr>';
+      return;
+    }
+
+    window._stockSnapshots = list;
+    tbody.innerHTML = list.map((s, idx) => `
+      <tr>
+        <td><a href="#" onclick="viewSnapshotDetail(${idx});return false">${s.date}</a></td>
+        <td>${fmtTWD(s.tw_value_twd)}</td>
+        <td>${fmtTWD(s.us_value_twd)}</td>
+        <td><strong>${fmtTWD(s.total_value_twd)}</strong></td>
+        <td class="${plClass(s.total_pl_twd)}">${fmtTWD(s.total_pl_twd)}</td>
+        <td>${fmt(s.usd_twd_rate, 2)}</td>
+        <td>
+          <button class="btn btn-outline btn-sm" onclick="viewSnapshotDetail(${idx})">明細</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteStockSnapshot(${s.id})">刪除</button>
+        </td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    showToast('載入快照失敗: ' + err.message, 'error');
+  }
+}
+
+function renderStockSnapshotChart(list) {
+  const ctx = document.getElementById('chart-stock-snapshot');
+  if (_stockSnapshotChart) _stockSnapshotChart.destroy();
+
+  if (!list || list.length === 0) {
+    _stockSnapshotChart = null;
+    return;
+  }
+
+  const labels = list.map(s => s.date);
+
+  _stockSnapshotChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: '總市值',
+          data: list.map(s => s.total_value_twd),
+          borderColor: '#4e8cff',
+          backgroundColor: 'rgba(78, 140, 255, 0.08)',
+          fill: true,
+          tension: 0.35,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          borderWidth: 2,
+        },
+        {
+          label: '台股',
+          data: list.map(s => s.tw_value_twd),
+          borderColor: '#34d399',
+          backgroundColor: 'transparent',
+          tension: 0.35,
+          pointRadius: 3,
+          borderWidth: 1.5,
+          borderDash: [4, 2],
+        },
+        {
+          label: '美股',
+          data: list.map(s => s.us_value_twd),
+          borderColor: '#fbbf24',
+          backgroundColor: 'transparent',
+          tension: 0.35,
+          pointRadius: 3,
+          borderWidth: 1.5,
+          borderDash: [4, 2],
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+          labels: { color: '#8a9ab5', usePointStyle: true, pointStyle: 'line', font: { size: 11 } }
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: ${fmtTWD(ctx.parsed.y)}`,
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#5c6f8a', font: { size: 11 } },
+          grid: { color: 'rgba(42,58,78,0.4)' },
+        },
+        y: {
+          ticks: {
+            color: '#5c6f8a',
+            font: { size: 11 },
+            callback: v => fmt(v),
+          },
+          grid: { color: 'rgba(42,58,78,0.4)' },
+        }
+      }
+    }
+  });
+}
+
+function viewSnapshotDetail(idx) {
+  const s = window._stockSnapshots && window._stockSnapshots[idx];
+  if (!s) return;
+
+  let details = [];
+  try { details = JSON.parse(s.detail_json); } catch (_) {}
+
+  const card = document.getElementById('snapshot-detail-card');
+  document.getElementById('snapshot-detail-title').textContent = `快照明細 - ${s.date}`;
+
+  const tbody = document.getElementById('snapshot-detail-body');
+  if (!details || details.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">無明細資料</td></tr>';
+  } else {
+    // Group by market
+    const tw = details.filter(d => d.market === 'TW');
+    const us = details.filter(d => d.market === 'US');
+    let html = '';
+
+    if (tw.length > 0) {
+      html += '<tr class="market-group-header"><td colspan="7">\u{1F1F9}\u{1F1FC} 台股</td></tr>';
+      html += tw.map(d => renderSnapshotDetailRow(d)).join('');
+      const twTotal = tw.reduce((s, d) => s + d.value_twd, 0);
+      const twPL = tw.reduce((s, d) => s + d.pl_twd, 0);
+      html += `<tr class="market-subtotal"><td colspan="5">台股小計</td><td>${fmtTWD(twTotal)}</td><td class="${plClass(twPL)}">${fmtTWD(twPL)}</td></tr>`;
+    }
+    if (us.length > 0) {
+      html += '<tr class="market-group-header"><td colspan="7">\u{1F1FA}\u{1F1F8} 美股</td></tr>';
+      html += us.map(d => renderSnapshotDetailRow(d)).join('');
+      const usTotal = us.reduce((s, d) => s + d.value_twd, 0);
+      const usPL = us.reduce((s, d) => s + d.pl_twd, 0);
+      html += `<tr class="market-subtotal"><td colspan="5">美股小計</td><td>${fmtTWD(usTotal)}</td><td class="${plClass(usPL)}">${fmtTWD(usPL)}</td></tr>`;
+    }
+    tbody.innerHTML = html;
+  }
+
+  card.style.display = 'block';
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function renderSnapshotDetailRow(d) {
+  const cs = d.currency === 'USD' ? '$' : 'NT$';
+  return `
+    <tr>
+      <td><strong>${d.symbol}</strong></td>
+      <td>${d.market === 'TW' ? '台股' : '美股'}</td>
+      <td>${fmt(d.shares)}</td>
+      <td>${cs}${fmt(d.avg_cost, 2)}</td>
+      <td>${cs}${fmt(d.current_price, 2)}</td>
+      <td>${fmtTWD(d.value_twd)}</td>
+      <td class="${plClass(d.pl_twd)}">${fmtTWD(d.pl_twd)}</td>
+    </tr>
+  `;
+}
+
+function closeSnapshotDetail() {
+  document.getElementById('snapshot-detail-card').style.display = 'none';
+}
+
+async function deleteStockSnapshot(id) {
+  if (!confirm('確定要刪除此快照嗎？')) return;
+  try {
+    await api(`/api/stocks/snapshots/${id}`, { method: 'DELETE' });
+    showToast('快照已刪除', 'success');
+    closeSnapshotDetail();
+    loadStockSnapshots();
+  } catch (err) {
+    showToast('刪除失敗: ' + err.message, 'error');
+  }
+}
+
+// ============================================================
+// SECTION: Portfolio Analysis
+// ============================================================
+
+const CHART_COLORS = [
+  '#4e8cff', '#34d399', '#f87171', '#fbbf24', '#a78bfa',
+  '#f472b6', '#38bdf8', '#fb923c', '#6ee7b7', '#e879f9',
+  '#818cf8', '#22d3ee', '#facc15', '#fb7185', '#94a3b8',
+];
+
+// Store chart instances for cleanup
+const portfolioCharts = {};
+
+function destroyChart(key) {
+  if (portfolioCharts[key]) {
+    portfolioCharts[key].destroy();
+    delete portfolioCharts[key];
+  }
+}
+
+function createDonut(canvasId, labels, data, legendId) {
+  destroyChart(canvasId);
+  const ctx = document.getElementById(canvasId);
+  const total = data.reduce((a, b) => a + b, 0);
+  const colors = CHART_COLORS.slice(0, labels.length);
+
+  portfolioCharts[canvasId] = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{
+        data,
+        backgroundColor: colors,
+        borderWidth: 0,
+        hoverOffset: 6,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '55%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const pct = total > 0 ? ((ctx.parsed / total) * 100).toFixed(1) : 0;
+              return `${ctx.label}: ${fmtTWD(ctx.parsed)} (${pct}%)`;
+            }
+          }
+        }
+      },
+    }
+  });
+
+  // Custom legend with percentages
+  const legend = document.getElementById(legendId);
+  legend.innerHTML = labels.map((l, i) => {
+    const pct = total > 0 ? ((data[i] / total) * 100).toFixed(1) : 0;
+    return `<span class="legend-item">
+      <span class="legend-dot" style="background:${colors[i]}"></span>
+      ${l}: ${fmtTWD(data[i])} (${pct}%)
+    </span>`;
+  }).join('');
+}
+
+function createBarChart(canvasId, labels, data, colors) {
+  destroyChart(canvasId);
+  const ctx = document.getElementById(canvasId);
+
+  portfolioCharts[canvasId] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        data,
+        backgroundColor: colors,
+        borderRadius: 6,
+        barPercentage: 0.6,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: 'y',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => fmtTWD(ctx.parsed.x),
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: {
+            color: '#5c6f8a',
+            callback: v => fmt(v),
+          },
+          grid: { color: 'rgba(42,58,78,0.4)' },
+        },
+        y: {
+          ticks: { color: '#e8ecf1', font: { weight: '500' } },
+          grid: { display: false },
+        }
+      }
+    }
+  });
+}
+
+async function loadPortfolioAnalysis() {
+  try {
+    const stockData = await api('/api/stocks');
+    const holdings = (stockData && stockData.holdings) ? stockData.holdings : [];
+
+    if (holdings.length === 0) {
+      return;
+    }
+
+    const rate = stockData.total_value_twd && stockData.total_cost_twd ? 1 : 32; // fallback
+
+    // Prepare data: convert everything to TWD
+    const items = holdings.map(h => {
+      const isUS = h.currency === 'USD';
+      const r = isUS ? (stockData.total_value_twd / holdings.filter(x => x.currency === 'USD').reduce((s, x) => s + x.market_value * getImpliedRate(stockData, holdings), 0)) || 32 : 1;
+      return {
+        symbol: h.symbol,
+        market: h.market,
+        costTWD: h.market_value_twd ? (h.avg_cost * h.shares * (isUS ? getUsdRate(stockData, holdings) : 1)) : 0,
+        valueTWD: h.market_value_twd || 0,
+        plTWD: h.unrealized_pl_twd || 0,
+      };
+    });
+
+    // Simpler: derive USD rate from stockData
+    // total_cost_twd and total_value_twd already in TWD from API
+    // For per-stock cost in TWD, calculate from holdings data
+    const settingsResp = await api('/api/settings');
+    const usdRate = Number(settingsResp.usd_twd_rate) || 32;
+
+    const analyzed = holdings.map(h => {
+      const isUS = h.currency === 'USD';
+      const fx = isUS ? usdRate : 1;
+      return {
+        symbol: h.symbol,
+        market: h.market,
+        costTWD: h.avg_cost * h.shares * fx,
+        valueTWD: h.market_value_twd || 0,
+        plTWD: h.unrealized_pl_twd || 0,
+      };
+    });
+
+    const twStocks = analyzed.filter(s => s.market === 'TW');
+    const usStocks = analyzed.filter(s => s.market === 'US');
+
+    const twCostTotal = twStocks.reduce((s, x) => s + x.costTWD, 0);
+    const usCostTotal = usStocks.reduce((s, x) => s + x.costTWD, 0);
+    const twValueTotal = twStocks.reduce((s, x) => s + x.valueTWD, 0);
+    const usValueTotal = usStocks.reduce((s, x) => s + x.valueTWD, 0);
+    const totalCost = twCostTotal + usCostTotal;
+    const totalValue = twValueTotal + usValueTotal;
+
+    // 1. Market cost allocation
+    createDonut('chart-market-cost',
+      ['台股', '美股'],
+      [twCostTotal, usCostTotal],
+      'legend-market-cost'
+    );
+
+    // 2. Market value allocation
+    createDonut('chart-market-value',
+      ['台股', '美股'],
+      [twValueTotal, usValueTotal],
+      'legend-market-value'
+    );
+
+    // 3. TW per-stock cost
+    if (twStocks.length > 0) {
+      createDonut('chart-tw-cost',
+        twStocks.map(s => s.symbol),
+        twStocks.map(s => s.costTWD),
+        'legend-tw-cost'
+      );
+    }
+
+    // 4. US per-stock cost
+    if (usStocks.length > 0) {
+      createDonut('chart-us-cost',
+        usStocks.map(s => s.symbol),
+        usStocks.map(s => s.costTWD),
+        'legend-us-cost'
+      );
+    }
+
+    // 5. TW per-stock value
+    if (twStocks.length > 0) {
+      createDonut('chart-tw-value',
+        twStocks.map(s => s.symbol),
+        twStocks.map(s => s.valueTWD),
+        'legend-tw-value'
+      );
+    }
+
+    // 6. US per-stock value
+    if (usStocks.length > 0) {
+      createDonut('chart-us-value',
+        usStocks.map(s => s.symbol),
+        usStocks.map(s => s.valueTWD),
+        'legend-us-value'
+      );
+    }
+
+    // 7. P&L contribution bar chart (all stocks, sorted by absolute P&L)
+    const sorted = [...analyzed].sort((a, b) => b.plTWD - a.plTWD);
+    createBarChart('chart-pl-contribution',
+      sorted.map(s => s.symbol),
+      sorted.map(s => s.plTWD),
+      sorted.map(s => s.plTWD >= 0 ? 'rgba(52, 211, 153, 0.8)' : 'rgba(248, 113, 113, 0.8)')
+    );
+
+    // 8. Risk concentration table
+    const riskBody = document.getElementById('risk-body');
+    const allSorted = [...analyzed].sort((a, b) => b.valueTWD - a.valueTWD);
+    riskBody.innerHTML = allSorted.map(s => {
+      const costPct = totalCost > 0 ? (s.costTWD / totalCost * 100) : 0;
+      const valuePct = totalValue > 0 ? (s.valueTWD / totalValue * 100) : 0;
+      const totalPL = analyzed.reduce((sum, x) => sum + Math.abs(x.plTWD), 0);
+      const plContrib = totalPL > 0 ? (s.plTWD / totalPL * 100) : 0;
+
+      let status = '', statusClass = 'risk-ok';
+      if (valuePct >= 40) { status = '高度集中'; statusClass = 'risk-danger'; }
+      else if (valuePct >= 25) { status = '偏高'; statusClass = 'risk-warn'; }
+      else { status = '正常'; }
+
+      return `
+        <tr>
+          <td><strong>${s.symbol}</strong></td>
+          <td>${s.market === 'TW' ? '台股' : '美股'}</td>
+          <td>${costPct.toFixed(1)}%</td>
+          <td>${valuePct.toFixed(1)}%</td>
+          <td class="${plClass(s.plTWD)}">${plContrib.toFixed(1)}% (${fmtTWD(s.plTWD)})</td>
+          <td class="${statusClass}">${status}</td>
+        </tr>
+      `;
+    }).join('');
+
+  } catch (err) {
+    showToast('載入投資組合分析失敗: ' + err.message, 'error');
+  }
+}
+
+function getUsdRate(stockData, holdings) {
+  // Fallback rate extraction
+  return 32;
+}
+
+function getImpliedRate(stockData, holdings) {
+  return 32;
+}
+
+// ============================================================
+// SECTION: Trade Modal (Buy/Sell from Holdings)
+// ============================================================
+
+function openTradeModal(action, symbol, market, currency, currentShares, currentPrice) {
+  const form = document.getElementById('trade-form');
+  form.reset();
+  form.querySelector('[name="action"]').value = action;
+  form.querySelector('[name="symbol"]').value = symbol;
+  form.querySelector('[name="market"]').value = market;
+  form.querySelector('[name="date"]').value = todayStr();
+
+  // Pre-fill current price
+  if (currentPrice > 0) {
+    form.querySelector('[name="price"]').value = currentPrice;
+  }
+
+  const title = document.getElementById('trade-modal-title');
+  const submitBtn = document.getElementById('trade-submit-btn');
+  const currLabel = document.getElementById('trade-currency-label');
+  const info = document.getElementById('trade-stock-info');
+
+  currLabel.textContent = currency || 'USD';
+
+  if (action === 'BUY') {
+    title.textContent = `買入 ${symbol}`;
+    submitBtn.textContent = '確認買入';
+    submitBtn.className = 'btn btn-buy';
+    info.innerHTML = `<strong>${symbol}</strong> 目前持有 ${fmt(currentShares)} 股`;
+  } else {
+    title.textContent = `賣出 ${symbol}`;
+    submitBtn.textContent = '確認賣出';
+    submitBtn.className = 'btn btn-sell';
+    info.innerHTML = `<strong>${symbol}</strong> 目前持有 <strong>${fmt(currentShares)} 股</strong>（可賣出上限）`;
+    form.querySelector('[name="shares"]').max = currentShares;
+  }
+
+  document.getElementById('trade-result').style.display = 'none';
+  openModal('modal-trade');
+}
+
+async function submitTrade(e) {
+  e.preventDefault();
+  const form = e.target;
+  const market = form.querySelector('[name="market"]').value;
+  const data = {
+    symbol: form.querySelector('[name="symbol"]').value,
+    market,
+    action: form.querySelector('[name="action"]').value,
+    shares: Number(form.querySelector('[name="shares"]').value),
+    price: Number(form.querySelector('[name="price"]').value),
+    fee: Number(form.querySelector('[name="fee"]').value) || 0,
+    auto_fee: form.querySelector('[name="auto_fee"]').checked,
+    currency: market === 'TW' ? 'TWD' : 'USD',
+    date: form.querySelector('[name="date"]').value,
+    note: form.querySelector('[name="note"]').value,
+  };
+
+  try {
+    const result = await api('/api/transactions', { method: 'POST', body: JSON.stringify(data) });
+
+    const resultBox = document.getElementById('trade-result');
+    if (data.action === 'SELL' && result && result.realized_pl != null) {
+      resultBox.style.display = 'block';
+      resultBox.className = 'tx-result-box success';
+      resultBox.innerHTML = `賣出完成！已實現損益: <strong class="${plClass(result.realized_pl)}">${fmtTWD(result.realized_pl)}</strong>`;
+      showToast(`${data.symbol} 賣出 ${data.shares} 股完成`, 'success');
+    } else {
+      showToast(`${data.symbol} 買入 ${data.shares} 股完成`, 'success');
+      closeModal('modal-trade');
+    }
+
+    loadHoldings();
+    loadTransactions();
+    loadRealizedSummary();
+    loadXirr();
+  } catch (err) {
+    showToast('交易失敗: ' + err.message, 'error');
+  }
+}
+
+// ---- Shared edit mode for forms that double as "add" and "edit" ----
+// Fills the named fields, remembers the record id (plus any extra edit*
+// dataset entries), relabels submit and adds a cancel button.
+function enterEditMode(form, { id, values, extra = {}, submitLabel, onCancel }) {
+  Object.entries(values).forEach(([name, v]) => {
+    const el = form.querySelector(`[name="${name}"]`);
+    if (el.type === 'checkbox') el.checked = !!v;
+    else el.value = v;
+  });
+  form.dataset.editId = id;
+  Object.entries(extra).forEach(([key, v]) => { form.dataset[key] = v; });
+
+  const submitBtn = form.querySelector('button[type="submit"]');
+  submitBtn.textContent = submitLabel;
+  const cancelId = form.id + '-cancel-btn';
+  if (!document.getElementById(cancelId)) {
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.id = cancelId;
+    cancelBtn.className = 'btn btn-outline';
+    cancelBtn.textContent = '取消編輯';
+    cancelBtn.onclick = onCancel;
+    submitBtn.parentNode.insertBefore(cancelBtn, submitBtn.nextSibling);
+  }
+  form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// Back to "add" mode: clears every edit* dataset entry, resets the form.
+function exitEditMode(form, submitLabel) {
+  Object.keys(form.dataset).filter(k => k.startsWith('edit')).forEach(k => delete form.dataset[k]);
+  form.reset();
+  form.querySelector('[name="date"]').value = todayStr();
+  form.querySelector('button[type="submit"]').textContent = submitLabel;
+  document.getElementById(form.id + '-cancel-btn')?.remove();
+}
+
+function editTransaction(id, symbol, market, action, shares, price, fee, date, note, realizedPl, tax) {
+  enterEditMode(document.getElementById('tx-form'), {
+    id,
+    // auto_fee off: editing keeps the stored fee/tax
+    values: { symbol, action, shares, price, fee, tax: tax || 0, auto_fee: false, date, note },
+    extra: { editRealizedPl: realizedPl, editMarket: market },
+    submitLabel: '更新交易',
+    onCancel: cancelTransactionEdit,
+  });
+}
+
+function cancelTransactionEdit() {
+  exitEditMode(document.getElementById('tx-form'), '新增交易');
+}
+
+async function deleteTransaction(id) {
+  if (!confirm('確定要刪除此筆交易嗎？')) return;
+  try {
+    const result = await api(`/api/transactions/${id}`, { method: 'DELETE' });
+    showToast('交易已刪除，持倉與已實現損益已重新計算', 'success');
+    showLedgerWarnings(result);
+    loadTransactions();
+    loadHoldings();
+    loadRealizedSummary();
+  } catch (err) {
+    showToast('刪除失敗: ' + err.message, 'error');
+  }
+}
+
+// Server reports SELLs that lost their BUY records after an edit/delete
+function showLedgerWarnings(result) {
+  const warnings = result && result.warnings;
+  if (warnings && warnings.length) showToast(warnings.join('\n'), 'error');
+}
+
+function exportCSV(kind) {
+  const year = kind === 'expenses'
+    ? (document.getElementById('exp-year-filter')?.value || '')
+    : kind === 'dividends'
+      ? (document.getElementById('div-year-filter')?.value || '')
+      : '';
+  const qs = /^\d{4}$/.test(year) ? '?year=' + year : '';
+  api(`/api/${kind}/export${qs}`).catch(err => showToast('匯出失敗: ' + err.message, 'error'));
+}
+
+// ============================================================
+// SECTION: XIRR (annualized money-weighted return)
+// ============================================================
+
+/** One market's /api/stocks/xirr result as a colored % with a flow-count tooltip, or -- */
+function xirrHtml(r) {
+  if (!r || r.xirr == null) return '--';
+  const title = `${r.flows} 筆現金流，期間 ${r.span_days} 天` +
+    (r.span_days < 365 ? '（不足一年，年化數字僅供參考）' : '');
+  return `<span class="${plClass(r.xirr)}" title="${title}">${fmtPct(r.xirr)}</span>`;
+}
+
+async function loadXirr() {
+  const targets = [['ALL', 'xirr-all'], ['TW', 'xirr-tw'], ['US', 'xirr-us']];
+  let data = {};
+  try {
+    data = await api('/api/stocks/xirr');
+  } catch (err) { /* leave every cell at -- */ }
+  targets.forEach(([market, id]) => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = xirrHtml(data[market]);
+  });
+}
+
+// ============================================================
+// SECTION: Performance (time-weighted return by period)
+// ============================================================
+
+let _perfData = null;
+let _perfPeriod = '1Y';
+let _perfChart = null;
+let _heatmapSeg = 'ALL';
+
+const PERF_ROWS = [
+  { seg: 'ALL', name: '全部', color: '#4e8cff', width: 2 },
+  { seg: 'TW', name: '台股', color: '#34d399', width: 1.5, dash: [4, 2] },
+  { seg: 'US', name: '美股', color: '#fbbf24', width: 1.5, dash: [4, 2] },
+];
+
+/** The benchmark picked in the dropdown, or undefined */
+function selectedBench() {
+  const sym = document.getElementById('perf-bench').value;
+  return ((_perfData && _perfData.benchmarks) || []).find(b => b.symbol === sym);
+}
+
+/** Dashboard performance card + monthly heatmap from /api/stocks/performance */
+async function loadPerformance() {
+  const head = document.getElementById('perf-head');
+  const body = document.getElementById('perf-body');
+  if (!head || !body) return;
+  let data;
+  try {
+    data = await api('/api/stocks/performance');
+  } catch (err) {
+    // 503 = no Yahoo proxy configured; its message says where to set one
+    const why = err.status === 503 ? escapeHtml(err.message) : '無法計算績效';
+    body.innerHTML = `<tr><td class="text-muted">${why}</td></tr>`;
+    return;
+  }
+  _perfData = data;
+  const periods = data.periods || [];
+  if (!periods.length) {
+    body.innerHTML = '<tr><td class="text-muted">尚無交易紀錄</td></tr>';
+    return;
+  }
+
+  const benchSel = document.getElementById('perf-bench');
+  const benchKept = benchSel.value;
+  benchSel.innerHTML = '<option value="">不比較大盤</option>' +
+    (data.benchmarks || []).map(b => `<option value="${b.symbol}">比較 ${b.label}</option>`).join('');
+  benchSel.value = benchKept;
+
+  head.innerHTML = '<th></th>' + periods.map(p => {
+    const title = `${p.start} 收盤 → ${data.as_of}（${p.days} 天）` +
+      (p.partial ? '\n期間起點早於起算日，從起算日開始算' : '');
+    return `<th data-period="${p.key}" class="perf-period-th" title="${title}" onclick="renderPerfChart('${p.key}')">${p.label}${p.partial ? '*' : ''}</th>`;
+  }).join('');
+  document.getElementById('perf-periods').innerHTML = periods.map(p =>
+    `<button class="chart-type-btn" data-period="${p.key}" onclick="renderPerfChart('${p.key}')">${p.label}</button>`).join('');
+  document.getElementById('heatmap-seg').innerHTML = PERF_ROWS.map(r =>
+    `<button class="chart-type-btn" data-seg="${r.seg}" onclick="renderHeatmap('${r.seg}')">${r.name}</button>`).join('');
+
+  const notes = [`自 ${data.inception} 起`];
+  if (data.start_setting) notes.push('起算日可在設定頁調整');
+  if (data.missing && data.missing.length) notes.push(`${data.missing.join(', ')} 無 Yahoo 歷史價，以成交價估`);
+  document.getElementById('perf-note').textContent = notes.join(' · ');
+  renderPerfChart(_perfPeriod);
+  renderHeatmap(_heatmapSeg);
+  if (document.getElementById('trend-granularity')?.value === 'daily') reRenderTrendChart();
+}
+
+/** Return rows per market, plus the selected benchmark's row */
+function renderPerfTableBody() {
+  const data = _perfData;
+  const periods = data.periods || [];
+  let html = PERF_ROWS.map(({ seg, name }) => `<tr><td><strong>${name}</strong></td>` + periods.map(p => {
+    const r = p.markets[seg];
+    if (!r || r.twr == null) return '<td>--</td>';
+    const title = `期初市值 ${fmtTWD(r.start_value)}\n期末市值 ${fmtTWD(r.end_value)}`;
+    const annual = r.annualized != null ? ` · 年化 ${fmtPct(r.annualized)}` : '';
+    return `<td title="${title}"><span class="${plClass(r.twr)}">${fmtPct(r.twr)}</span>` +
+      `<span class="cell-sub ${plClass(r.pnl)}">${fmtTWD(r.pnl)}${annual}</span></td>`;
+  }).join('') + '</tr>').join('');
+
+  const bench = selectedBench();
+  if (bench) {
+    html += `<tr class="perf-bench-row"><td>${bench.label}</td>` + periods.map(p => {
+      const v = p.bench[bench.symbol];
+      return `<td>${v == null ? '--' : `<span class="${plClass(v)}">${fmtPct(v)}</span>`}</td>`;
+    }).join('') + '</tr>';
+  }
+  document.getElementById('perf-body').innerHTML = html;
+}
+
+/** Cumulative TWR line chart for one period: the daily growth index rebased to 0% at the period's start close. */
+function renderPerfChart(key) {
+  const data = _perfData;
+  const p = data && (data.periods || []).find(x => x.key === key);
+  const s = data && data.series;
+  if (!p || !s) return;
+  _perfPeriod = key;
+  renderPerfTableBody();
+  document.querySelectorAll('#perf-periods .chart-type-btn, .perf-period-th').forEach(el =>
+    el.classList.toggle('active', el.dataset.period === key));
+  renderPerfRisk(p);
+
+  // Window from the period's base close to today; weekends are flat, drop them.
+  let b = s.dates.findIndex(d => d >= p.start);
+  if (b < 0) b = 0;
+  const idx = weekdayIndexes(s.dates, b);
+  // A line that starts mid-window is rebased at its own first point.
+  const rebased = vals => {
+    const base = idx.map(i => vals[i]).find(v => v != null);
+    return idx.map(i => (vals[i] == null || !base) ? null : (vals[i] / base - 1) * 100);
+  };
+  const line = (label, vals, color, width, dash) => ({
+    label, data: rebased(vals || []), borderColor: color, backgroundColor: 'transparent',
+    borderWidth: width, borderDash: dash || [], pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 8, tension: 0,
+  });
+  const datasets = PERF_ROWS.map(r => line(r.name, s.growth[r.seg], r.color, r.width, r.dash));
+  const bench = selectedBench();
+  if (bench) datasets.push(line(bench.label, s.bench[bench.symbol], '#c3cede', 1.5, [1, 3]));
+
+  const ctx = document.getElementById('chart-perf');
+  if (_perfChart) _perfChart.destroy();
+  _perfChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: idx.map(i => s.dates[i]), datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, position: 'top', labels: { color: '#8a9ab5', usePointStyle: true, pointStyle: 'line', font: { size: 11 } } },
+        tooltip: { callbacks: { label: c => c.parsed.y == null ? null : `${c.dataset.label}: ${fmtPct(c.parsed.y)}` } },
+      },
+      scales: {
+        x: { ticks: { color: '#5c6f8a', font: { size: 11 }, maxTicksLimit: 8, maxRotation: 0 }, grid: { display: false } },
+        y: {
+          ticks: { color: '#5c6f8a', font: { size: 11 }, callback: v => v + '%' },
+          // Emphasize the 0% line: above it the period made money.
+          grid: { color: c => c.tick.value === 0 ? 'rgba(138,154,181,0.6)' : 'rgba(42,58,78,0.4)' },
+        },
+      },
+    },
+  });
+}
+
+/** Indexes from b to the end, skipping weekends but keeping the first and last day */
+function weekdayIndexes(dates, b) {
+  const idx = [];
+  for (let i = b; i < dates.length; i++) {
+    const dow = new Date(dates[i] + 'T00:00:00').getDay();
+    if (i === b || i === dates.length - 1 || (dow !== 0 && dow !== 6)) idx.push(i);
+  }
+  return idx;
+}
+
+/** Max drawdown and volatility of the selected period, per market */
+function renderPerfRisk(p) {
+  document.getElementById('perf-risk-head').innerHTML =
+    `<th>風險（${p.label}）</th>` + PERF_ROWS.map(r => `<th>${r.name}</th>`).join('');
+  const cells = fn => PERF_ROWS.map(({ seg }) => {
+    const r = p.markets[seg];
+    return `<td>${r && r.twr != null ? fn(r) : '--'}</td>`;
+  }).join('');
+  const md = d => d.slice(5);
+  document.getElementById('perf-risk-body').innerHTML = `
+    <tr><td title="期間內從最高點到之後最低點的最大跌幅">最大回撤 ⓘ</td>${cells(r => r.max_drawdown ? `<span class="negative">${fmtPct(r.max_drawdown)}</span>` : '0%')}</tr>
+    <tr><td>回撤期間</td>${cells(r => !r.dd_peak ? '--' :
+      `${md(r.dd_peak)} → ${md(r.dd_trough)}<span class="cell-sub">${r.dd_recovered ? `${md(r.dd_recovered)} 回到高點` : '尚未回到高點'}</span>`)}</tr>
+    <tr><td title="每日報酬的標準差 × √252，越大代表波動越劇烈。0050 長期約 15–20%">年化波動度 ⓘ</td>${cells(r => r.volatility == null ? '--' : r.volatility.toFixed(1) + '%')}</tr>`;
+}
+
+/** Monthly TWR heatmap for one market, newest year first */
+function renderHeatmap(seg) {
+  _heatmapSeg = seg;
+  document.querySelectorAll('#heatmap-seg .chart-type-btn').forEach(b => b.classList.toggle('active', b.dataset.seg === seg));
+  const years = ((_perfData && _perfData.monthly && _perfData.monthly[seg]) || []).slice().reverse();
+  const body = document.getElementById('heatmap-body');
+  if (!years.length) {
+    body.innerHTML = '<tr><td colspan="14" class="text-muted">尚無資料</td></tr>';
+    return;
+  }
+  // Fill strength scales with |return|, saturating at 10% a month (30% a year).
+  const cell = (v, cap) => {
+    if (v == null) return '<td class="heatmap-empty"></td>';
+    const a = Math.min(Math.abs(v) / cap, 1) * 0.55 + 0.08;
+    const rgb = v >= 0 ? '52,211,153' : '248,113,113';
+    return `<td style="background:rgba(${rgb},${a.toFixed(2)})">${fmtPct(v)}</td>`;
+  };
+  body.innerHTML = years.map(y =>
+    `<tr><td><strong>${y.year}</strong></td>${y.months.map(v => cell(v, 10)).join('')}${cell(y.total, 30)}</tr>`).join('');
+}
+
+// ============================================================
+// SECTION: Data health check
+// ============================================================
+
+/** Warning count next to the performance note, linking to the settings page */
+async function loadDataCheckBadge() {
+  const badge = document.getElementById('perf-check-badge');
+  if (!badge) return;
+  let d;
+  try {
+    d = await api('/api/data-check');
+  } catch (_) { return; }
+  const warns = (d.checks || []).filter(c => c.level === 'warn').length;
+  badge.innerHTML = warns ? ` · <a href="#" onclick="goToTab('settings');return false">⚠ 資料檢查 ${warns} 項提醒</a>` : '';
+}
+
+/** Switch to a top-level tab (and optionally a stocks sub-tab) as if clicked */
+function goToTab(tab, subtab) {
+  document.querySelector(`.tab-btn[data-tab="${tab}"]`)?.click();
+  if (subtab) document.querySelector(`.sub-tab-btn[data-subtab="${subtab}"]`)?.click();
+}
+
+const CHECK_ICONS = { warn: '⚠', info: 'ℹ', ok: '✓' };
+const CHECK_ACTIONS = {
+  start_date: ['設定起算日', () => document.getElementById('perf-start-date').focus()],
+  transactions: ['到交易紀錄', () => goToTab('stocks', 'transactions')],
+  dividends: ['到股利', () => goToTab('stocks', 'dividends')],
+  assets: ['到總覽', () => goToTab('dashboard')],
+};
+
+async function loadDataCheck() {
+  const list = document.getElementById('data-check-list');
+  if (!list) return;
+  list.innerHTML = '<p class="text-muted">檢查中…</p>';
+  let d;
+  try {
+    d = await api('/api/data-check');
+  } catch (err) {
+    list.innerHTML = `<p class="negative">檢查失敗：${err.message}</p>`;
+    return;
+  }
+  document.getElementById('perf-start-date').value = d.start_setting || '';
+  const sug = document.getElementById('perf-start-suggest');
+  sug.dataset.date = d.suggested_start || '';
+  sug.style.display = d.suggested_start && d.suggested_start !== d.start_setting ? '' : 'none';
+  sug.textContent = `套用建議：${d.suggested_start}（匯入持倉後第一筆實際交易）`;
+
+  const order = { warn: 0, info: 1, ok: 2 };
+  list.innerHTML = (d.checks || []).slice().sort((a, b) => order[a.level] - order[b.level]).map(c => {
+    const action = CHECK_ACTIONS[c.action];
+    return `<div class="check-item check-${c.level}">
+      <div class="check-title"><span class="check-icon">${CHECK_ICONS[c.level] || ''}</span><span>${c.title}</span>
+        ${action ? `<button type="button" class="btn btn-outline btn-sm" onclick="CHECK_ACTIONS['${c.action}'][1]()">${action[0]}</button>` : ''}</div>
+      ${c.detail ? `<div class="check-detail">${c.detail}</div>` : ''}
+      ${c.items && c.items.length ? `<details><summary>明細（${c.items.length}）</summary><ul>${c.items.map(x => `<li>${x}</li>`).join('')}</ul></details>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function savePerfStartDate(value) {
+  const v = value !== undefined ? value : document.getElementById('perf-start-date').value;
+  try {
+    await api('/api/settings', { method: 'PUT', body: JSON.stringify({ perf_start_date: v }) });
+    showToast(v ? `績效起算日已設為 ${v}` : '已清除績效起算日', 'success');
+    loadDataCheck();
+  } catch (err) {
+    showToast('儲存失敗: ' + err.message, 'error');
+  }
+}
+
+function applySuggestedStart() {
+  const date = document.getElementById('perf-start-suggest').dataset.date;
+  if (date) savePerfStartDate(date);
+}
+
+// ============================================================
+// SECTION: Dividends
+// ============================================================
+
+let _dividends = [];
+
+async function loadDividends() {
+  try {
+    _dividends = await api('/api/dividends');
+    const sel = document.getElementById('div-year-filter');
+    if (sel) {
+      const prev = sel.value;
+      const years = [...new Set(_dividends.map(d => d.date.slice(0, 4)))].sort().reverse();
+      sel.innerHTML = '<option value="">全部年度</option>' + years.map(y => `<option value="${y}">${y}</option>`).join('');
+      if (years.includes(prev)) sel.value = prev;
+    }
+    const form = document.getElementById('div-form');
+    if (form && !form.querySelector('[name="date"]').value) form.querySelector('[name="date"]').value = todayStr();
+    renderDividends();
+  } catch (err) {
+    showToast('載入股利失敗: ' + err.message, 'error');
+  }
+}
+
+function renderDividends() {
+  const year = document.getElementById('div-year-filter').value;
+  const list = _dividends.filter(d => !year || d.date.startsWith(year));
+  const rate = _rplData?.overall?.usd_twd_rate || 32;
+  const totalTwd = list.reduce((s, d) => s + toTWD(d.amount, d.currency, rate), 0);
+  document.getElementById('div-total').innerHTML = list.length ? `<span class="positive">${fmtTWD(totalTwd)}</span>` : '--';
+  document.getElementById('div-count').textContent = list.length ? `${list.length} 筆` : '--';
+
+  const tbody = document.getElementById('div-body');
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">尚無股利紀錄</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(d => {
+    const fc = n => fmtCur(n, d.currency);
+    return `
+      <tr>
+        <td>${d.date}</td>
+        <td><strong>${escapeHtml(d.symbol)}</strong></td>
+        <td>${d.market === 'TW' ? '台股' : '美股'}</td>
+        <td class="positive">${fc(d.amount)}</td>
+        <td>${d.withheld ? fc(d.withheld) : '--'}</td>
+        <td>${escapeHtml(d.note || '')}</td>
+        <td>
+          <button class="btn btn-outline btn-sm" onclick="editDividend(${d.id})">編輯</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteDividend(${d.id})">刪除</button>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+// Amount labels follow the market: explicit choice, else the symbol (.TW/.TWO = 台股)
+function updateDividendCurrency() {
+  const form = document.getElementById('div-form');
+  let market = form.querySelector('[name="market"]').value;
+  if (!market) {
+    const sym = form.querySelector('[name="symbol"]').value.trim().toUpperCase();
+    market = /\.TWO?$/.test(sym) || !sym ? 'TW' : 'US';
+  }
+  const label = market === 'TW' ? 'NT$' : 'US$';
+  form.querySelectorAll('.div-cur').forEach(el => { el.textContent = label; });
+}
+
+let _divSuggestions = [];
+
+async function loadDividendSuggestions() {
+  const btn = document.getElementById('div-suggest-btn');
+  btn.disabled = true;
+  btn.textContent = '查詢中...';
+  try {
+    const res = await api('/api/dividends/suggestions');
+    _divSuggestions = res.suggestions || [];
+    document.getElementById('div-suggest').style.display = 'block';
+    renderDividendSuggestions();
+    if (res.errors && res.errors.length) showToast('部分股票查詢失敗：\n' + res.errors.join('\n'), 'error');
+  } catch (err) {
+    showToast('查詢股利失敗: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '從 Yahoo 查詢股利';
+  }
+}
+
+function renderDividendSuggestions() {
+  const since = document.getElementById('div-suggest-since').value;
+  document.getElementById('div-suggest-all').checked = true;
+  const body = document.getElementById('div-suggest-body');
+  // data-idx stays the index into the full list so import picks the right row
+  const rows = _divSuggestions
+    .map((s, i) => ({ s, i }))
+    .filter(({ s }) => !since || s.ex_date >= since);
+  if (rows.length === 0) {
+    body.innerHTML = '<tr><td colspan="7" class="empty-state">沒有新的股利可匯入（已記錄的會自動略過）</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map(({ s, i }) => {
+    const fc = n => fmtCur(n, s.currency);
+    return `
+      <tr>
+        <td><input type="checkbox" class="div-suggest-cb" data-idx="${i}" checked></td>
+        <td>${s.ex_date}</td>
+        <td><strong>${escapeHtml(s.symbol)}</strong></td>
+        <td>${s.currency === 'TWD' ? 'NT$' : '$'}${fmt(s.per_share, 4)}</td>
+        <td>${fmt(s.shares)}</td>
+        <td class="positive">${fc(s.amount)}</td>
+        <td>${s.withheld ? fc(s.withheld) : '--'}</td>
+      </tr>`;
+  }).join('');
+}
+
+function toggleAllSuggestions(checked) {
+  document.querySelectorAll('.div-suggest-cb').forEach(cb => { cb.checked = checked; });
+}
+
+async function importDividendSuggestions() {
+  const picked = [...document.querySelectorAll('.div-suggest-cb')]
+    .filter(cb => cb.checked)
+    .map(cb => _divSuggestions[Number(cb.dataset.idx)]);
+  if (picked.length === 0) { showToast('請先勾選要匯入的項目', 'error'); return; }
+  try {
+    await api('/api/dividends/batch', {
+      method: 'POST',
+      body: JSON.stringify(picked.map(s => ({
+        symbol: s.symbol, market: s.market, currency: s.currency,
+        amount: s.amount, withheld: s.withheld,
+        date: s.ex_date, ex_date: s.ex_date,
+        note: `Yahoo 估算：每股 ${s.per_share} × ${s.shares} 股（日期為除息日）`,
+      }))),
+    });
+    showToast(`已匯入 ${picked.length} 筆股利`, 'success');
+    document.getElementById('div-suggest').style.display = 'none';
+    loadDividends();
+    loadRealizedSummary();
+    loadXirr();
+  } catch (err) {
+    showToast('匯入失敗: ' + err.message, 'error');
+    loadDividends();
+  }
+}
+
+async function submitDividend(e) {
+  e.preventDefault();
+  const form = e.target;
+  const data = {
+    symbol: form.querySelector('[name="symbol"]').value.trim().toUpperCase(),
+    amount: Number(form.querySelector('[name="amount"]').value),
+    withheld: Number(form.querySelector('[name="withheld"]').value) || 0,
+    date: form.querySelector('[name="date"]').value,
+    note: form.querySelector('[name="note"]').value,
+  };
+  data.market = form.querySelector('[name="market"]').value; // '' lets the server infer from the symbol
+  const editId = form.dataset.editId;
+  try {
+    if (editId) {
+      await api(`/api/dividends/${editId}`, { method: 'PUT', body: JSON.stringify(data) });
+      showToast('股利已更新', 'success');
+      cancelDividendEdit();
+    } else {
+      await api('/api/dividends', { method: 'POST', body: JSON.stringify(data) });
+      showToast('股利已記錄', 'success');
+      form.reset();
+      updateDividendCurrency();
+      form.querySelector('[name="date"]').value = todayStr();
+    }
+    loadDividends();
+    loadRealizedSummary();
+    loadXirr();
+  } catch (err) {
+    showToast('儲存股利失敗: ' + err.message, 'error');
+  }
+}
+
+function editDividend(id) {
+  const d = _dividends.find(x => x.id === id);
+  if (!d) return;
+  enterEditMode(document.getElementById('div-form'), {
+    id,
+    values: { symbol: d.symbol, market: d.market, amount: d.amount, withheld: d.withheld || 0, date: d.date, note: d.note || '' },
+    submitLabel: '更新股利',
+    onCancel: cancelDividendEdit,
+  });
+  updateDividendCurrency();
+}
+
+function cancelDividendEdit() {
+  exitEditMode(document.getElementById('div-form'), '新增股利');
+  updateDividendCurrency();
+}
+
+async function deleteDividend(id) {
+  if (!confirm('確定要刪除此筆股利嗎？')) return;
+  try {
+    await api(`/api/dividends/${id}`, { method: 'DELETE' });
+    showToast('股利已刪除', 'success');
+    loadDividends();
+    loadRealizedSummary();
+    loadXirr();
+  } catch (err) {
+    showToast('刪除失敗: ' + err.message, 'error');
+  }
+}
+
+// ============================================================
+// SECTION: Expenses
+// ============================================================
+
+let _budgetVisible = false;
+
+function toggleBudgetTable() {
+  _budgetVisible = !_budgetVisible;
+  document.getElementById('budget-section').style.display = _budgetVisible ? 'block' : 'none';
+  if (_budgetVisible) loadBudgets();
+}
+
+function initBudgetYearSelector() {
+  initYearSelector('budget-year');
+}
+
+async function loadBudgets() {
+  const year = document.getElementById('budget-year').value;
+  try {
+    const data = await api(`/api/budgets?year=${year}`);
+    const months = data.months || [];
+    const monthNames = ['1\u6708','2\u6708','3\u6708','4\u6708','5\u6708','6\u6708','7\u6708','8\u6708','9\u6708','10\u6708','11\u6708','12\u6708'];
+
+    const tbody = document.getElementById('budget-body');
+    tbody.innerHTML = months.map((m, i) => `
+      <tr>
+        <td><strong>${monthNames[i]}</strong></td>
+        <td><input type="number" value="${m.planned_income || ''}" placeholder="0"
+            onchange="saveBudget(${year}, ${m.month}, 'planned_income', this.value)"></td>
+        <td><input type="number" value="${m.planned_expense || ''}" placeholder="0"
+            onchange="saveBudget(${year}, ${m.month}, 'planned_expense', this.value)"></td>
+        <td>${m.actual_income ? fmtTWD(m.actual_income) : '<span class="text-muted">--</span>'}</td>
+        <td>${m.actual_expense ? fmtTWD(m.actual_expense) : '<span class="text-muted">--</span>'}</td>
+        <td class="${plClass(m.income_diff)}">${m.actual_income || m.planned_income ? fmtTWD(m.income_diff) : '--'}</td>
+        <td class="${plClass(-m.expense_diff)}">${m.actual_expense || m.planned_expense ? fmtTWD(m.expense_diff) : '--'}</td>
+        <td class="${plClass(m.net_savings)}"><strong>${m.actual_income ? fmtTWD(m.net_savings) : '--'}</strong></td>
+      </tr>
+    `).join('');
+
+    // Totals
+    document.getElementById('budget-total-pi').innerHTML = `<strong>${fmtTWD(data.total_planned_income)}</strong>`;
+    document.getElementById('budget-total-pe').innerHTML = `<strong>${fmtTWD(data.total_planned_expense)}</strong>`;
+    document.getElementById('budget-total-ai').innerHTML = `<strong>${fmtTWD(data.total_actual_income)}</strong>`;
+    document.getElementById('budget-total-ae').innerHTML = `<strong>${fmtTWD(data.total_actual_expense)}</strong>`;
+    const totalID = data.total_actual_income - data.total_planned_income;
+    const totalED = data.total_actual_expense - data.total_planned_expense;
+    document.getElementById('budget-total-id').innerHTML = `<strong class="${plClass(totalID)}">${fmtTWD(totalID)}</strong>`;
+    document.getElementById('budget-total-ed').innerHTML = `<strong class="${plClass(-totalED)}">${fmtTWD(totalED)}</strong>`;
+    document.getElementById('budget-total-ns').innerHTML = `<strong class="${plClass(data.total_net_savings)}">${fmtTWD(data.total_net_savings)}</strong>`;
+
+    // Progress bars
+    const progressEl = document.getElementById('budget-progress');
+    const incPct = data.total_planned_income > 0 ? Math.min((data.total_actual_income / data.total_planned_income) * 100, 150) : 0;
+    const expPct = data.total_planned_expense > 0 ? Math.min((data.total_actual_expense / data.total_planned_expense) * 100, 150) : 0;
+    const savTarget = data.total_planned_income - data.total_planned_expense;
+    const savPct = savTarget > 0 ? Math.min((data.total_net_savings / savTarget) * 100, 150) : 0;
+
+    progressEl.innerHTML = `
+      <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span>\u5E74\u5EA6\u6536\u5165\u9054\u6210</span>
+          <span>${fmtTWD(data.total_actual_income)} / ${fmtTWD(data.total_planned_income)} (${incPct.toFixed(1)}%)</span>
+        </div>
+        <div class="progress-bar-container">
+          <div class="progress-bar-fill" style="width:${Math.min(incPct,100)}%;background:var(--green)">${incPct.toFixed(0)}%</div>
+        </div>
+      </div>
+      <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span>\u5E74\u5EA6\u652F\u51FA\u63A7\u5236</span>
+          <span>${fmtTWD(data.total_actual_expense)} / ${fmtTWD(data.total_planned_expense)} (${expPct.toFixed(1)}%)</span>
+        </div>
+        <div class="progress-bar-container">
+          <div class="progress-bar-fill" style="width:${Math.min(expPct,100)}%;background:${expPct > 100 ? 'var(--red)' : 'var(--accent)'}">${expPct.toFixed(0)}%</div>
+        </div>
+      </div>
+      <div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span>\u5E74\u5EA6\u5132\u84C4\u76EE\u6A19</span>
+          <span>${fmtTWD(data.total_net_savings)} / ${fmtTWD(savTarget)} (${savPct.toFixed(1)}%)</span>
+        </div>
+        <div class="progress-bar-container">
+          <div class="progress-bar-fill" style="width:${Math.min(Math.max(savPct,0),100)}%;background:${savPct >= 100 ? 'var(--green)' : 'var(--yellow)'}">${savPct.toFixed(0)}%</div>
+        </div>
+      </div>
+    `;
+
+  } catch (err) {
+    showToast('\u8F09\u5165\u5E74\u5EA6\u8A08\u756B\u5931\u6557: ' + err.message, 'error');
+  }
+}
+
+async function saveBudget(year, month, field, value) {
+  // Need to get current values for the other field
+  try {
+    const data = await api(`/api/budgets?year=${year}`);
+    const m = (data.months || []).find(x => x.month === month) || {};
+    const body = {
+      year,
+      month,
+      planned_income: field === 'planned_income' ? Number(value) || 0 : (m.planned_income || 0),
+      planned_expense: field === 'planned_expense' ? Number(value) || 0 : (m.planned_expense || 0),
+    };
+    await api('/api/budgets', { method: 'PUT', body: JSON.stringify(body) });
+    // Silently reload to update totals and progress
+    loadBudgets();
+  } catch (err) {
+    showToast('\u5132\u5B58\u9810\u7B97\u5931\u6557: ' + err.message, 'error');
+  }
+}
+
+let expensePieChart = null;
+
+function initExpenseDefaults() {
+  const dateInput = document.querySelector('#expense-form [name="date"]');
+  if (dateInput) dateInput.value = todayStr();
+  initYearSelector('exp-year-filter');
+}
+
+function initYearSelector(id) {
+  const select = document.getElementById(id);
+  if (!select) return;
+  const currentYear = new Date().getFullYear();
+  const startYear = 2020; // earliest possible data
+  select.innerHTML = '';
+  for (let y = currentYear + 1; y >= startYear; y--) {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = y + '\u5E74';
+    if (y === currentYear) opt.selected = true;
+    select.appendChild(opt);
+  }
+}
+
+function toggleCustomCategory(select) {
+  const group = document.getElementById('custom-category-group');
+  group.style.display = select.value === '__custom__' ? 'flex' : 'none';
+}
+
+function setExpenseType(type) {
+  const typeInput = document.querySelector('#expense-form [name="type"]');
+  if (typeInput) typeInput.value = type;
+  document.querySelectorAll('.type-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.type === type);
+  });
+  // Show/hide relevant category groups
+  const expGroup = document.getElementById('cat-expense-group');
+  const incGroup = document.getElementById('cat-income-group');
+  const select = document.getElementById('expense-category');
+  if (type === 'income') {
+    if (expGroup) expGroup.disabled = true;
+    if (incGroup) incGroup.disabled = false;
+    if (select) select.value = '薪資';
+  } else {
+    if (expGroup) expGroup.disabled = false;
+    if (incGroup) incGroup.disabled = true;
+    if (select) select.value = '飲食';
+  }
+}
+
+function cancelExpenseEdit() {
+  const form = document.getElementById('expense-form');
+  form.reset();
+  form.querySelector('[name="id"]').value = '';
+  form.querySelector('[name="date"]').value = todayStr();
+  setExpenseType('expense');
+  form.querySelector('button[type="submit"]').textContent = '新增';
+  document.getElementById('expense-cancel-btn').style.display = 'none';
+  document.getElementById('custom-category-group').style.display = 'none';
+}
+
+async function submitExpense(e) {
+  e.preventDefault();
+  const form = e.target;
+  const id = form.querySelector('[name="id"]').value;
+  let category = form.querySelector('[name="category"]').value;
+  if (category === '__custom__') {
+    category = document.getElementById('custom-category-input').value.trim();
+    if (!category) {
+      showToast('請輸入自訂分類', 'error');
+      return;
+    }
+  }
+
+  const data = {
+    type: form.querySelector('[name="type"]').value || 'expense',
+    amount: Number(form.querySelector('[name="amount"]').value),
+    category,
+    date: form.querySelector('[name="date"]').value,
+    note: form.querySelector('[name="note"]').value,
+  };
+
+  try {
+    if (id) {
+      await api(`/api/expenses/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+      showToast('紀錄已更新', 'success');
+    } else {
+      await api('/api/expenses', { method: 'POST', body: JSON.stringify(data) });
+      showToast('紀錄已新增', 'success');
+    }
+    cancelExpenseEdit();
+    document.getElementById('exp-type-filter').value = 'all';
+    loadExpenses();
+    // Also refresh budget if visible
+    if (_budgetVisible) loadBudgets();
+  } catch (err) {
+    showToast('儲存失敗: ' + err.message, 'error');
+  }
+}
+
+function editExpenseByIndex(idx) {
+  const e = window._expenseList && window._expenseList[idx];
+  if (!e) return;
+  editExpense(e.id, e.amount, e.category, e.date, e.note, e.type);
+}
+
+function editExpense(id, amount, category, date, note, type) {
+  const form = document.getElementById('expense-form');
+  form.querySelector('[name="id"]').value = id;
+  form.querySelector('[name="amount"]').value = amount;
+  form.querySelector('[name="date"]').value = date;
+  form.querySelector('[name="note"]').value = note || '';
+
+  // Set type first (this enables the right optgroup)
+  setExpenseType(type || 'expense');
+
+  // Set category - need to enable all optgroups temporarily to set value
+  const expGroup = document.getElementById('cat-expense-group');
+  const incGroup = document.getElementById('cat-income-group');
+  expGroup.disabled = false;
+  incGroup.disabled = false;
+
+  const select = form.querySelector('[name="category"]');
+  const options = Array.from(select.options).map(o => o.value);
+  if (options.includes(category)) {
+    select.value = category;
+    document.getElementById('custom-category-group').style.display = 'none';
+  } else {
+    select.value = '__custom__';
+    document.getElementById('custom-category-group').style.display = 'flex';
+    document.getElementById('custom-category-input').value = category;
+  }
+
+  // Re-disable the wrong optgroup
+  if ((type || 'expense') === 'income') {
+    expGroup.disabled = true;
+  } else {
+    incGroup.disabled = true;
+  }
+
+  form.querySelector('button[type="submit"]').textContent = '更新';
+  document.getElementById('expense-cancel-btn').style.display = 'inline-flex';
+}
+
+async function deleteExpense(id) {
+  if (!confirm('確定要刪除此筆支出嗎？')) return;
+  try {
+    await api(`/api/expenses/${id}`, { method: 'DELETE' });
+    showToast('支出已刪除', 'success');
+    loadExpenses();
+  } catch (err) {
+    showToast('刪除失敗: ' + err.message, 'error');
+  }
+}
+
+async function loadExpenses() {
+  const year = document.getElementById('exp-year-filter')?.value || new Date().getFullYear();
+  const typeFilter = document.getElementById('exp-type-filter').value;
+
+  try {
+    const expenses = await api('/api/expenses');
+    const list = Array.isArray(expenses) ? expenses : [];
+
+    // Filter by year and type
+    let filtered = list.filter(e => e.date && e.date.startsWith(String(year)));
+    if (typeFilter !== 'all') {
+      filtered = filtered.filter(e => (e.type || 'expense') === typeFilter);
+    }
+
+    // Table
+    const tbody = document.getElementById('expense-body');
+    if (filtered.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty-state">此年度尚無紀錄</td></tr>';
+    } else {
+      window._expenseList = filtered;
+      tbody.innerHTML = filtered.map((e, idx) => {
+        const t = e.type || 'expense';
+        return `
+          <tr>
+            <td>${e.date || '--'}</td>
+            <td><span class="tag-${t}">${t === 'income' ? '收入' : '支出'}</span></td>
+            <td>${e.category || '--'}</td>
+            <td>${fmtTWD(e.amount)}</td>
+            <td>${e.note || ''}</td>
+            <td>
+              <button class="btn btn-outline btn-sm" onclick="editExpenseByIndex(${idx})">編輯</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteExpense(${e.id})">刪除</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+  } catch (err) {
+    showToast('載入收支資料失敗: ' + err.message, 'error');
+  }
+}
+
+const PIE_COLORS = [
+  '#4e8cff', '#34d399', '#f87171', '#fbbf24', '#a78bfa',
+  '#f472b6', '#38bdf8', '#fb923c', '#6ee7b7', '#e879f9',
+];
+
+function renderExpensePieChart(catMap) {
+  const ctx = document.getElementById('chart-expense-pie');
+  if (expensePieChart) expensePieChart.destroy();
+
+  const labels = Object.keys(catMap);
+  const data = Object.values(catMap);
+
+  if (labels.length === 0) {
+    // Clear the chart area
+    expensePieChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: { labels: ['無資料'], datasets: [{ data: [1], backgroundColor: ['#2a3a4e'] }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } },
+    });
+    document.getElementById('expense-category-legend').innerHTML = '';
+    return;
+  }
+
+  expensePieChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{
+        data,
+        backgroundColor: PIE_COLORS.slice(0, labels.length),
+        borderWidth: 0,
+        hoverOffset: 6,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '60%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.label}: NT$ ${fmt(ctx.parsed)}`
+          }
+        }
+      },
+    }
+  });
+
+  // Custom legend
+  const legend = document.getElementById('expense-category-legend');
+  legend.innerHTML = labels.map((l, i) => `
+    <span class="legend-item">
+      <span class="legend-dot" style="background:${PIE_COLORS[i % PIE_COLORS.length]}"></span>
+      ${l}: ${fmtTWD(data[i])}
+    </span>
+  `).join('');
+}
+
+// ============================================================
+// SECTION: LLM Analysis
+// ============================================================
+
+function getSelectedSections() {
+  const sections = [];
+  if (document.getElementById('llm-inc-assets')?.checked) sections.push('assets');
+  if (document.getElementById('llm-inc-portfolio')?.checked) sections.push('portfolio');
+  if (document.getElementById('llm-inc-realized')?.checked) sections.push('realized');
+  if (document.getElementById('llm-inc-expenses')?.checked) sections.push('expenses');
+  if (document.getElementById('llm-inc-budget')?.checked) sections.push('budget');
+  return sections;
+}
+
+async function generatePrompt() {
+  const sections = getSelectedSections();
+  if (sections.length === 0) {
+    showToast('請至少勾選一項資料', 'error');
+    return;
+  }
+  try {
+    const result = await api('/api/llm/prompt', {
+      method: 'POST',
+      body: JSON.stringify({ sections }),
+    });
+    const prompt = result.prompt || '';
+    document.getElementById('generated-prompt').value = prompt;
+    document.getElementById('prompt-area').style.display = 'block';
+    showToast('Prompt 已產生', 'success');
+  } catch (err) {
+    showToast('產生 Prompt 失敗: ' + err.message, 'error');
+  }
+}
+
+async function generateAndSendToAPI() {
+  const sections = getSelectedSections();
+  if (sections.length === 0) {
+    showToast('請至少勾選一項資料', 'error');
+    return;
+  }
+  const loadingEl = document.getElementById('llm-loading');
+  const resultEl = document.getElementById('llm-result');
+  loadingEl.style.display = 'flex';
+  resultEl.style.display = 'none';
+
+  try {
+    const result = await api('/api/llm/analyze', {
+      method: 'POST',
+      body: JSON.stringify({ auto: true, sections }),
+    });
+    const response = result.response || result.text || '';
+    resultEl.innerHTML = renderMarkdown(response);
+    resultEl.style.display = 'block';
+    showToast('AI 分析完成', 'success');
+    loadConversations();
+  } catch (err) {
+    showToast('AI 分析失敗: ' + err.message, 'error');
+  } finally {
+    loadingEl.style.display = 'none';
+  }
+}
+
+async function sendPromptToAPI() {
+  const prompt = document.getElementById('generated-prompt').value;
+  if (!prompt) {
+    showToast('請先產生 Prompt', 'error');
+    return;
+  }
+  const loadingEl = document.getElementById('llm-loading');
+  const resultEl = document.getElementById('llm-result');
+  loadingEl.style.display = 'flex';
+  resultEl.style.display = 'none';
+
+  try {
+    const result = await api('/api/llm/analyze', {
+      method: 'POST',
+      body: JSON.stringify({ prompt }),
+    });
+    const response = result.response || result.text || '';
+    resultEl.innerHTML = renderMarkdown(response);
+    resultEl.style.display = 'block';
+    showToast('AI 分析完成', 'success');
+    loadConversations();
+  } catch (err) {
+    showToast('AI 分析失敗: ' + err.message, 'error');
+  } finally {
+    loadingEl.style.display = 'none';
+  }
+}
+
+function copyPrompt() {
+  const textarea = document.getElementById('generated-prompt');
+  navigator.clipboard.writeText(textarea.value).then(() => {
+    showToast('已複製到剪貼簿', 'success');
+  }).catch(() => {
+    textarea.select();
+    document.execCommand('copy');
+    showToast('已複製到剪貼簿', 'success');
+  });
+}
+
+async function importLLMResponse() {
+  const prompt = document.getElementById('generated-prompt').value;
+  const response = document.getElementById('llm-response-input').value.trim();
+
+  if (!response) {
+    showToast('請先貼上 LLM 回應', 'error');
+    return;
+  }
+
+  try {
+    await api('/api/llm/import', {
+      method: 'POST',
+      body: JSON.stringify({ prompt, response }),
+    });
+    showToast('回應已儲存', 'success');
+    document.getElementById('llm-response-input').value = '';
+    loadConversations();
+  } catch (err) {
+    showToast('儲存失敗: ' + err.message, 'error');
+  }
+}
+
+async function loadConversations() {
+  try {
+    const convs = await api('/api/llm/conversations');
+    const list = Array.isArray(convs) ? convs : [];
+    const container = document.getElementById('llm-conversations');
+
+    if (list.length === 0) {
+      container.innerHTML = '<div class="empty-state">尚無對話紀錄</div>';
+      return;
+    }
+
+    container.innerHTML = list.map((c, i) => `
+      <div class="conv-item" onclick="toggleConversation(this)">
+        <div class="conv-header">
+          <span class="conv-date">${c.date || c.created_at || '--'}</span>
+          <span class="conv-toggle">&#x25BC;</span>
+        </div>
+        <div class="conv-body">
+          <div class="conv-section-label">Prompt</div>
+          <div class="conv-text">${escapeHtml(c.prompt || '--')}</div>
+          <div class="conv-section-label">回應</div>
+          <div class="conv-text">${escapeHtml(c.response || '--')}</div>
+        </div>
+      </div>
+    `).join('');
+  } catch (err) {
+    // Silently fail for conversations
+    document.getElementById('llm-conversations').innerHTML = '<div class="empty-state">載入對話紀錄失敗</div>';
+  }
+}
+
+function toggleConversation(el) {
+  el.classList.toggle('open');
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// ============================================================
+// SECTION: Settings
+// ============================================================
+
+async function loadSettings() {
+  try {
+    const settings = await api('/api/settings');
+    const form = document.getElementById('settings-form');
+    if (settings.usd_twd_rate != null) {
+      form.querySelector('[name="usd_twd_rate"]').value = settings.usd_twd_rate;
+      document.getElementById('settings-rate-hint').textContent = `目前匯率: ${settings.usd_twd_rate}`;
+    }
+    const updatedEl = document.getElementById('settings-rate-updated');
+    if (updatedEl) {
+      const ts = settings.usd_twd_rate_updated_at;
+      updatedEl.textContent = ts ? `Yahoo Finance 更新於: ${ts}` : '尚未自動更新 (使用手動值或預設 32)';
+    }
+    if (settings.gemini_api_key) {
+      form.querySelector('[name="gemini_api_key"]').value = settings.gemini_api_key;
+    }
+    const proxyInput = document.getElementById('yahoo-proxy-url');
+    if (proxyInput) proxyInput.value = settings.yahoo_proxy_url || '';
+    window.renderCloudStatus?.();
+
+    // Version
+    try {
+      const ver = await api('/api/version');
+      document.getElementById('settings-version').textContent = 'v' + (ver.version || '?');
+    } catch (_) {}
+
+    // Font size buttons
+    const saved = localStorage.getItem('fontSize') || 'm';
+    document.querySelectorAll('.font-btn').forEach(b => {
+      b.classList.toggle('active', b.textContent.trim().toLowerCase().startsWith(saved));
+    });
+  } catch (err) {
+    // Settings may not exist yet
+  }
+}
+
+async function saveSettings(e) {
+  e.preventDefault();
+  const form = e.target;
+  const data = {
+    usd_twd_rate: Number(form.querySelector('[name="usd_twd_rate"]').value),
+    gemini_api_key: form.querySelector('[name="gemini_api_key"]').value,
+  };
+
+  try {
+    await api('/api/settings', { method: 'PUT', body: JSON.stringify(data) });
+    showToast('設定已儲存', 'success');
+    document.getElementById('settings-rate-hint').textContent = `目前匯率: ${data.usd_twd_rate}`;
+  } catch (err) {
+    showToast('儲存設定失敗: ' + err.message, 'error');
+  }
+}
+
+function toggleApiKeyVisibility() {
+  const input = document.getElementById('gemini-api-key');
+  const icon = document.getElementById('eye-icon');
+  if (input.type === 'password') {
+    input.type = 'text';
+    icon.innerHTML = '&#x1F576;';
+  } else {
+    input.type = 'password';
+    icon.innerHTML = '&#x1F441;';
+  }
+}
+
+async function refreshUSDTWDRate(silent = false) {
+  try {
+    const result = await api('/api/settings/refresh-rate', { method: 'POST' });
+    const rate = result.usd_twd_rate;
+    const ts = result.usd_twd_rate_updated_at;
+    // Update visible UI if Settings tab is loaded
+    const form = document.getElementById('settings-form');
+    const rateInput = form && form.querySelector('[name="usd_twd_rate"]');
+    if (rateInput) rateInput.value = rate;
+    const hint = document.getElementById('settings-rate-hint');
+    if (hint) hint.textContent = `目前匯率: ${rate}`;
+    const updated = document.getElementById('settings-rate-updated');
+    if (updated) updated.textContent = `Yahoo Finance 更新於: ${ts}`;
+    if (!silent) showToast(`匯率已更新: ${Number(rate).toFixed(4)}`, 'success');
+    return rate;
+  } catch (err) {
+    if (!silent) showToast('更新匯率失敗: ' + err.message, 'error');
+    return null;
+  }
+}
+
+async function testApiConnection() {
+  const resultEl = document.getElementById('settings-test-result');
+  resultEl.innerHTML = '<span style="color:var(--text-secondary)">測試連線中...</span>';
+
+  try {
+    const result = await api('/api/llm/analyze', {
+      method: 'POST',
+      body: JSON.stringify({ auto: true, test: true }),
+    });
+    resultEl.innerHTML = '<span style="color:var(--green)">API 連線成功！</span>';
+  } catch (err) {
+    resultEl.innerHTML = `<span style="color:var(--red)">連線失敗: ${escapeHtml(err.message)}</span>`;
+  }
+}
+
+// ============================================================
+// SECTION: Initialization
+// ============================================================
+
+function setFontSize(size) {
+  document.documentElement.className = document.documentElement.className.replace(/font-[sml]/g, '').trim();
+  document.documentElement.classList.add('font-' + size);
+  localStorage.setItem('fontSize', size);
+  document.querySelectorAll('.font-btn').forEach(b => {
+    b.classList.toggle('active', b.textContent.trim().toLowerCase() === size);
+  });
+}
+
+function initFontSize() {
+  const saved = localStorage.getItem('fontSize') || 'm';
+  setFontSize(saved);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  initFontSize();
+  initTabs();
+  initExpenseDefaults();
+  initBudgetYearSelector();
+
+  // Set default date on transaction form
+  const txDateInput = document.querySelector('#tx-form [name="date"]');
+  if (txDateInput) txDateInput.value = todayStr();
+
+  // Load dashboard data
+  loadDashboard();
+
+  // Load dynamic categories
+  loadCategories();
+
+  // Silently refresh USD/TWD rate in background (best-effort, won't block UI)
+  refreshUSDTWDRate(true).then(() => {
+    // Re-render dashboard if rate changed so live numbers reflect new rate
+    if (document.querySelector('#tab-dashboard.active')) loadDashboard();
+  });
+});
+
+async function loadCategories() {
+  try {
+    const cats = await api('/api/expenses/categories');
+    if (Array.isArray(cats) && cats.length > 0) {
+      const select = document.getElementById('expense-category');
+      // Keep default options, add any new ones before __custom__
+      const existing = new Set(Array.from(select.options).map(o => o.value));
+      cats.forEach(c => {
+        if (!existing.has(c) && c !== '__custom__') {
+          const opt = document.createElement('option');
+          opt.value = c;
+          opt.textContent = c;
+          // Insert before the custom option
+          select.insertBefore(opt, select.querySelector('[value="__custom__"]'));
+        }
+      });
+    }
+  } catch (_) {
+    // Silently ignore
+  }
+}
+
+// ============================================================
+// SECTION: Managed Accounts
+// ============================================================
+
+let _managedAccounts = [];
+let _currentManagedAccountId = null;
+let _currentManagedSummary = null;
+
+async function loadManagedAccounts() {
+  try {
+    const accounts = await api('/api/managed/accounts');
+    _managedAccounts = Array.isArray(accounts) ? accounts : [];
+    renderManagedAccountTabs();
+    if (_managedAccounts.length === 0) {
+      document.getElementById('managed-empty-state').style.display = '';
+      document.getElementById('managed-account-view').style.display = 'none';
+      _currentManagedAccountId = null;
+      return;
+    }
+    document.getElementById('managed-empty-state').style.display = 'none';
+    // Keep current selection if still exists; otherwise pick first
+    const stillExists = _managedAccounts.some(a => a.id === _currentManagedAccountId);
+    if (!stillExists) _currentManagedAccountId = _managedAccounts[0].id;
+    await loadManagedAccountSummary(_currentManagedAccountId);
+  } catch (err) {
+    showToast('載入代管帳戶失敗: ' + err.message, 'error');
+  }
+}
+
+function renderManagedAccountTabs() {
+  const tabsEl = document.getElementById('managed-account-tabs');
+  if (_managedAccounts.length === 0) {
+    tabsEl.innerHTML = '';
+    return;
+  }
+  tabsEl.innerHTML = _managedAccounts.map(a => `
+    <button class="sub-tab-btn ${a.id === _currentManagedAccountId ? 'active' : ''}" onclick="selectManagedAccount(${a.id})">${escapeHtml(a.name)}</button>
+  `).join('');
+}
+
+async function selectManagedAccount(id) {
+  _currentManagedAccountId = id;
+  closeManagedSnapshotDetail();
+  renderManagedAccountTabs();
+  await loadManagedAccountSummary(id);
+}
+
+async function loadManagedAccountSummary(id) {
+  try {
+    const summary = await api('/api/managed/accounts/' + id + '/summary');
+    _currentManagedSummary = summary;
+    document.getElementById('managed-account-view').style.display = '';
+
+    document.getElementById('mng-cash-twd').textContent = fmtTWD(summary.account.cash_twd);
+    document.getElementById('mng-cash-usd').textContent = fmtUSD(summary.account.cash_usd);
+    document.getElementById('mng-stock-value').textContent = fmtTWD(summary.stock_value_twd);
+    document.getElementById('mng-unrealized').innerHTML = `<span class="${plClass(summary.unrealized_pl_twd)}">${fmtTWD(summary.unrealized_pl_twd)}</span>`;
+    document.getElementById('mng-total').textContent = fmtTWD(summary.total_value_twd);
+    document.getElementById('mng-realized').innerHTML = `<span class="${plClass(summary.realized_pl_twd)}">${fmtTWD(summary.realized_pl_twd)}</span>`;
+
+    // Holdings
+    const holdings = summary.holdings || [];
+    const hBody = document.getElementById('mng-holdings-body');
+    if (holdings.length === 0) {
+      hBody.innerHTML = '<tr><td colspan="9" class="empty-state">尚無持倉</td></tr>';
+    } else {
+      hBody.innerHTML = holdings.map(h => {
+        const curSym = h.currency === 'USD' ? '$' : 'NT$';
+        return `<tr>
+          <td>${escapeHtml(h.symbol)}</td>
+          <td>${h.market}</td>
+          <td>${fmt(h.shares, 2)}</td>
+          <td>${curSym}${fmt(h.avg_cost, 2)}</td>
+          <td>${curSym}${fmt(h.current_price, 2)}</td>
+          <td>${curSym}${fmt(h.market_value, 2)}</td>
+          <td>${fmtTWD(h.market_value_twd)}</td>
+          <td><span class="${plClass(h.unrealized_pl_twd)}">${fmtTWD(h.unrealized_pl_twd)}</span></td>
+          <td><span class="${plClass(h.pl_percent)}">${fmtPct(h.pl_percent)}</span></td>
+        </tr>`;
+      }).join('');
+    }
+
+    // Transactions
+    const txns = summary.transactions || [];
+    const tBody = document.getElementById('mng-tx-body');
+    if (txns.length === 0) {
+      tBody.innerHTML = '<tr><td colspan="9" class="empty-state">尚無交易</td></tr>';
+    } else {
+      tBody.innerHTML = txns.map(t => {
+        const curSym = t.currency === 'USD' ? '$' : 'NT$';
+        return `<tr>
+          <td>${t.date}</td>
+          <td>${escapeHtml(t.symbol)}</td>
+          <td><span class="${t.action === 'BUY' ? 'tag-buy' : 'tag-sell'}">${t.action === 'BUY' ? '買' : '賣'}</span></td>
+          <td>${fmt(t.shares, 2)}</td>
+          <td>${curSym}${fmt(t.price, 2)}</td>
+          <td>${curSym}${fmt(t.fee, 2)}</td>
+          <td><span class="${plClass(t.realized_pl)}">${curSym}${fmt(t.realized_pl, 2)}</span></td>
+          <td>${escapeHtml(t.note || '')}</td>
+          <td><button class="btn btn-outline btn-sm" onclick="deleteManagedTransaction(${t.id})">刪除</button></td>
+        </tr>`;
+      }).join('');
+    }
+
+    // Cash movements
+    const moves = summary.cash_movements || [];
+    const cBody = document.getElementById('mng-cash-body');
+    if (moves.length === 0) {
+      cBody.innerHTML = '<tr><td colspan="6" class="empty-state">尚無紀錄</td></tr>';
+    } else {
+      cBody.innerHTML = moves.map(m => {
+        const curSym = m.currency === 'USD' ? '$' : 'NT$';
+        const isDeposit = m.type === 'deposit';
+        const sign = isDeposit ? '+' : '-';
+        const cls = isDeposit ? 'positive' : 'negative';
+        const label = isDeposit ? '存入' : '提領';
+        return `<tr>
+          <td>${m.date}</td>
+          <td><span class="${isDeposit ? 'tag-buy' : 'tag-sell'}">${label}</span></td>
+          <td>${m.currency}</td>
+          <td><span class="${cls}">${sign}${curSym}${fmt(m.amount, 2)}</span></td>
+          <td>${escapeHtml(m.note || '')}</td>
+          <td><button class="btn btn-outline btn-sm" onclick="deleteManagedCashMovement(${m.id})">刪除</button></td>
+        </tr>`;
+      }).join('');
+    }
+    await loadManagedSnapshots(id);
+  } catch (err) {
+    showToast('載入帳戶資料失敗: ' + err.message, 'error');
+  }
+}
+
+// ---------- Managed account snapshots (per-account) ----------
+
+let _mngSnapshotChart = null;
+let _mngSnapshots = [];
+
+async function takeManagedSnapshot() {
+  if (!_currentManagedAccountId) {
+    showToast('請先選擇帳戶', 'error');
+    return;
+  }
+  try {
+    const snap = await api('/api/managed/accounts/' + _currentManagedAccountId + '/snapshot', { method: 'POST' });
+    showToast(`快照已記錄！總價值 ${fmtTWD(snap.total_value_twd)}`, 'success');
+    // Rate may have been refreshed, so reload the whole account view
+    await loadManagedAccountSummary(_currentManagedAccountId);
+  } catch (err) {
+    showToast('快照記錄失敗: ' + err.message, 'error');
+  }
+}
+
+async function loadManagedSnapshots(id) {
+  const tbody = document.getElementById('mng-snapshot-body');
+  try {
+    const list = await api('/api/managed/accounts/' + id + '/snapshots');
+    _mngSnapshots = Array.isArray(list) ? list : [];
+
+    // Chart wants chronological order (API returns DESC)
+    renderManagedSnapshotChart([..._mngSnapshots].reverse());
+
+    if (_mngSnapshots.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">尚無快照，點擊上方按鈕記錄</td></tr>';
+      return;
+    }
+    tbody.innerHTML = _mngSnapshots.map((s, idx) => `
+      <tr>
+        <td><a href="#" onclick="viewManagedSnapshotDetail(${idx});return false">${s.date}</a>${s.note ? ` <small class="text-muted">${escapeHtml(s.note)}</small>` : ''}</td>
+        <td>${fmtTWD(s.cash_twd)}</td>
+        <td>${fmtUSD(s.cash_usd)}</td>
+        <td>${fmtTWD(s.stock_value_twd)}</td>
+        <td class="${plClass(s.unrealized_pl_twd)}">${fmtTWD(s.unrealized_pl_twd)}</td>
+        <td><strong>${fmtTWD(s.total_value_twd)}</strong></td>
+        <td>${fmt(s.usd_twd_rate, 2)}</td>
+        <td>
+          <button class="btn btn-outline btn-sm" onclick="viewManagedSnapshotDetail(${idx})">明細</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteManagedSnapshot(${s.id})">刪除</button>
+        </td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    showToast('載入快照失敗: ' + err.message, 'error');
+  }
+}
+
+function renderManagedSnapshotChart(list) {
+  const ctx = document.getElementById('chart-mng-snapshot');
+  if (_mngSnapshotChart) _mngSnapshotChart.destroy();
+  if (!list || list.length === 0) {
+    _mngSnapshotChart = null;
+    return;
+  }
+
+  _mngSnapshotChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: list.map(s => s.date),
+      datasets: [
+        {
+          label: '總價值',
+          data: list.map(s => s.total_value_twd),
+          borderColor: '#4e8cff',
+          backgroundColor: 'rgba(78, 140, 255, 0.08)',
+          fill: true,
+          tension: 0.35,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          borderWidth: 2,
+        },
+        {
+          label: '現金 (TWD計)',
+          data: list.map(s => s.cash_total_twd),
+          borderColor: '#34d399',
+          backgroundColor: 'transparent',
+          tension: 0.35,
+          pointRadius: 3,
+          borderWidth: 1.5,
+          borderDash: [4, 2],
+        },
+        {
+          label: '股票市值',
+          data: list.map(s => s.stock_value_twd),
+          borderColor: '#fbbf24',
+          backgroundColor: 'transparent',
+          tension: 0.35,
+          pointRadius: 3,
+          borderWidth: 1.5,
+          borderDash: [4, 2],
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+          labels: { color: '#8a9ab5', usePointStyle: true, pointStyle: 'line', font: { size: 11 } }
+        },
+        tooltip: {
+          callbacks: { label: c => `${c.dataset.label}: ${fmtTWD(c.parsed.y)}` }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#5c6f8a', font: { size: 11 } }, grid: { color: 'rgba(42,58,78,0.4)' } },
+        y: {
+          ticks: { color: '#5c6f8a', font: { size: 11 }, callback: v => fmt(v) },
+          grid: { color: 'rgba(42,58,78,0.4)' },
+        }
+      }
+    }
+  });
+}
+
+function viewManagedSnapshotDetail(idx) {
+  const s = _mngSnapshots[idx];
+  if (!s) return;
+
+  let details = [];
+  try { details = JSON.parse(s.detail_json); } catch (_) {}
+
+  const card = document.getElementById('mng-snapshot-detail-card');
+  document.getElementById('mng-snapshot-detail-title').textContent = `快照明細 - ${s.date}（匯率 ${fmt(s.usd_twd_rate, 2)}）`;
+
+  const tbody = document.getElementById('mng-snapshot-detail-body');
+  if (!details || details.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">此快照無持倉</td></tr>';
+  } else {
+    const groups = [
+      { key: 'TW', label: '\u{1F1F9}\u{1F1FC} 台股', rows: details.filter(d => d.market === 'TW') },
+      { key: 'US', label: '\u{1F1FA}\u{1F1F8} 美股', rows: details.filter(d => d.market !== 'TW') },
+    ];
+    let html = '';
+    groups.forEach(g => {
+      if (g.rows.length === 0) return;
+      html += `<tr class="market-group-header"><td colspan="7">${g.label}</td></tr>`;
+      html += g.rows.map(d => renderSnapshotDetailRow(d)).join('');
+      const total = g.rows.reduce((a, d) => a + d.value_twd, 0);
+      const pl = g.rows.reduce((a, d) => a + d.pl_twd, 0);
+      html += `<tr class="market-subtotal"><td colspan="5">${g.key === 'TW' ? '台股' : '美股'}小計</td><td>${fmtTWD(total)}</td><td class="${plClass(pl)}">${fmtTWD(pl)}</td></tr>`;
+    });
+    tbody.innerHTML = html;
+  }
+
+  card.style.display = 'block';
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function closeManagedSnapshotDetail() {
+  document.getElementById('mng-snapshot-detail-card').style.display = 'none';
+}
+
+async function deleteManagedSnapshot(id) {
+  if (!confirm('確定要刪除此快照嗎？')) return;
+  try {
+    await api('/api/managed/snapshots/' + id, { method: 'DELETE' });
+    showToast('快照已刪除', 'success');
+    closeManagedSnapshotDetail();
+    await loadManagedSnapshots(_currentManagedAccountId);
+  } catch (err) {
+    showToast('刪除失敗: ' + err.message, 'error');
+  }
+}
+
+function openManagedCashModal(type) {
+  if (!_currentManagedAccountId || !_currentManagedSummary) {
+    showToast('請先選擇帳戶', 'error');
+    return;
+  }
+  const form = document.getElementById('managed-cash-form');
+  form.reset();
+  form.type.value = type;
+  form.date.value = todayStr();
+  form.currency.value = 'TWD';
+  const isDeposit = type === 'deposit';
+  document.getElementById('managed-cash-modal-title').textContent = isDeposit ? '存入現金' : '提領現金';
+  document.getElementById('managed-cash-submit-btn').textContent = isDeposit ? '確認存入' : '確認提領';
+  updateCashHint();
+  form.currency.onchange = updateCashHint;
+  openModal('modal-managed-cash');
+}
+
+function updateCashHint() {
+  if (!_currentManagedSummary) return;
+  const form = document.getElementById('managed-cash-form');
+  const cur = form.currency.value;
+  const bal = cur === 'TWD' ? _currentManagedSummary.account.cash_twd : _currentManagedSummary.account.cash_usd;
+  const symbol = cur === 'TWD' ? 'NT$' : '$';
+  document.getElementById('mng-cash-current-hint').textContent = `目前 ${cur} 餘額: ${symbol}${fmt(bal, 2)}`;
+}
+
+async function submitManagedCash(e) {
+  e.preventDefault();
+  if (!_currentManagedAccountId) return;
+  const form = e.target;
+  const amount = parseFloat(form.amount.value);
+  if (!(amount > 0)) {
+    showToast('金額必須大於 0', 'error');
+    return;
+  }
+  const payload = {
+    type: form.type.value,
+    currency: form.currency.value,
+    amount: amount,
+    date: form.date.value,
+    note: form.note.value.trim(),
+  };
+  try {
+    await api('/api/managed/accounts/' + _currentManagedAccountId + '/cash', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    showToast(payload.type === 'deposit' ? '已存入' : '已提領');
+    closeModal('modal-managed-cash');
+    await loadManagedAccountSummary(_currentManagedAccountId);
+  } catch (err) {
+    showToast('失敗: ' + err.message, 'error');
+  }
+}
+
+async function deleteManagedCashMovement(id) {
+  if (!confirm('確定刪除這筆現金紀錄? 對應的餘額會自動回沖。')) return;
+  try {
+    await api('/api/managed/cash/' + id, { method: 'DELETE' });
+    showToast('紀錄已刪除');
+    await loadManagedAccountSummary(_currentManagedAccountId);
+  } catch (err) {
+    showToast('刪除失敗: ' + err.message, 'error');
+  }
+}
+
+function openManagedAccountModal(edit = false) {
+  const form = document.getElementById('managed-account-form');
+  form.reset();
+  const delBtn = document.getElementById('managed-account-delete-btn');
+  if (edit && _currentManagedSummary) {
+    document.getElementById('managed-account-modal-title').textContent = '編輯代管帳戶';
+    form.id.value = _currentManagedSummary.account.id;
+    form.name.value = _currentManagedSummary.account.name;
+    form.cash_twd.value = _currentManagedSummary.account.cash_twd;
+    form.cash_usd.value = _currentManagedSummary.account.cash_usd;
+    form.note.value = _currentManagedSummary.account.note || '';
+    delBtn.style.display = '';
+  } else {
+    document.getElementById('managed-account-modal-title').textContent = '新增代管帳戶';
+    form.id.value = '';
+    delBtn.style.display = 'none';
+  }
+  openModal('modal-managed-account');
+}
+
+async function submitManagedAccount(e) {
+  e.preventDefault();
+  const form = e.target;
+  const payload = {
+    name: form.name.value.trim(),
+    cash_twd: parseFloat(form.cash_twd.value) || 0,
+    cash_usd: parseFloat(form.cash_usd.value) || 0,
+    note: form.note.value.trim(),
+  };
+  if (!payload.name) {
+    showToast('請輸入帳戶名稱', 'error');
+    return;
+  }
+  try {
+    const id = form.id.value;
+    if (id) {
+      await api('/api/managed/accounts/' + id, { method: 'PUT', body: JSON.stringify(payload) });
+      showToast('帳戶已更新');
+    } else {
+      const created = await api('/api/managed/accounts', { method: 'POST', body: JSON.stringify(payload) });
+      _currentManagedAccountId = created.id;
+      showToast('帳戶已新增');
+    }
+    closeModal('modal-managed-account');
+    await loadManagedAccounts();
+  } catch (err) {
+    showToast('儲存失敗: ' + err.message, 'error');
+  }
+}
+
+async function deleteManagedAccount() {
+  if (!_currentManagedSummary) {
+    showToast('請先選擇帳戶', 'error');
+    return;
+  }
+  const id = _currentManagedSummary.account.id;
+  const name = _currentManagedSummary.account.name;
+  const txCount = (_currentManagedSummary.transactions || []).length;
+  const cashCount = (_currentManagedSummary.cash_movements || []).length;
+  let msg = `確定刪除帳戶「${name}」?`;
+  const warnings = [];
+  if (txCount > 0) warnings.push(`${txCount} 筆交易紀錄`);
+  if (cashCount > 0) warnings.push(`${cashCount} 筆現金紀錄`);
+  if (warnings.length > 0) msg += `\n此帳戶有 ${warnings.join('、')}，會一併刪除（無法復原）。`;
+  if (!confirm(msg)) return;
+  try {
+    const url = '/api/managed/accounts/' + id + (txCount > 0 ? '?force=1' : '');
+    await api(url, { method: 'DELETE' });
+    showToast('帳戶已刪除');
+    closeModal('modal-managed-account');
+    _currentManagedAccountId = null;
+    _currentManagedSummary = null;
+    await loadManagedAccounts();
+  } catch (err) {
+    showToast('刪除失敗: ' + err.message, 'error');
+  }
+}
+
+function openManagedTradeModal(action) {
+  if (!_currentManagedAccountId) {
+    showToast('請先選擇帳戶', 'error');
+    return;
+  }
+  const form = document.getElementById('managed-trade-form');
+  form.reset();
+  form.action.value = action;
+  form.date.value = todayStr();
+  document.getElementById('managed-trade-modal-title').textContent = action === 'BUY' ? '買入' : '賣出';
+  document.getElementById('managed-trade-submit-btn').textContent = action === 'BUY' ? '確認買入' : '確認賣出';
+  onManagedTradeMarketChange(form.market);
+  openModal('modal-managed-trade');
+}
+
+function onManagedTradeMarketChange(select) {
+  const market = select.value;
+  document.getElementById('mng-trade-currency-label').textContent = market === 'TW' ? 'TWD' : 'USD';
+}
+
+async function submitManagedTrade(e) {
+  e.preventDefault();
+  if (!_currentManagedAccountId) return;
+  const form = e.target;
+  const market = form.market.value;
+  let symbol = form.symbol.value.trim();
+  // For TW market, auto-append .TW if user only entered numeric code
+  if (market === 'TW' && /^\d+$/.test(symbol) && !symbol.endsWith('.TW')) {
+    symbol = symbol + '.TW';
+  }
+  const payload = {
+    symbol: symbol,
+    market: market,
+    action: form.action.value,
+    shares: parseFloat(form.shares.value),
+    price: parseFloat(form.price.value),
+    fee: parseFloat(form.fee.value) || 0,
+    currency: market === 'TW' ? 'TWD' : 'USD',
+    date: form.date.value,
+    note: form.note.value.trim(),
+  };
+  try {
+    await api('/api/managed/accounts/' + _currentManagedAccountId + '/transactions', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    showToast(payload.action === 'BUY' ? '買入已記錄' : '賣出已記錄');
+    closeModal('modal-managed-trade');
+    await loadManagedAccountSummary(_currentManagedAccountId);
+  } catch (err) {
+    showToast('交易失敗: ' + err.message, 'error');
+  }
+}
+
+async function deleteManagedTransaction(id) {
+  if (!confirm('確定刪除這筆交易? 對應的現金變動會自動回沖。')) return;
+  try {
+    await api('/api/managed/transactions/' + id, { method: 'DELETE' });
+    showToast('交易已刪除');
+    await loadManagedAccountSummary(_currentManagedAccountId);
+  } catch (err) {
+    showToast('刪除失敗: ' + err.message, 'error');
+  }
+}

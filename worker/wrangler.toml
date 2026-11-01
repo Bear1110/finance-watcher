@@ -1,0 +1,4 @@
+# 部署：在 worker/ 目錄執行 `npx wrangler deploy`（第一次先 `npx wrangler login`）
+name = "finance-watcher-yahoo"
+main = "yahoo-proxy.js"
+compatibility_date = "2026-10-01"

@@ -1,0 +1,246 @@
+// Market data: quotes, USD/TWD rate, daily price history and dividend history.
+//
+// Every request is a Yahoo Finance chart call. Browsers cannot call Yahoo
+// directly (no CORS), so requests go through a pass-through proxy
+// (worker/yahoo-proxy.js) whose URL comes from settings or config.js. Without a
+// proxy, quotes and the USD/TWD rate fall back to a provider registered by the
+// cloud layer (GOOGLEFINANCE in the user's sheet); history and dividends are
+// then unavailable.
+
+import { DEFAULT_YAHOO_PROXY } from '../config.js';
+import { getSetting } from './db.js';
+
+const QUOTE_TTL_MS = 5 * 60 * 1000;
+const FOREX_TTL_MS = 30 * 60 * 1000;
+const DIVIDEND_TTL_MS = 6 * 60 * 60 * 1000;
+export const USDTWD_SYMBOL = 'USDTWD=X';
+
+export class MarketUnavailableError extends Error {
+  constructor(msg = '沒有設定行情代理（設定 → 行情來源），無法取得 Yahoo 歷史資料') {
+    super(msg);
+    this.name = 'MarketUnavailableError';
+  }
+}
+
+export function proxyURL() {
+  const u = (getSetting('yahoo_proxy_url') || DEFAULT_YAHOO_PROXY || '').trim();
+  return u.replace(/\/+$/, '');
+}
+
+export function hasProxy() {
+  return proxyURL() !== '';
+}
+
+// Fallback for quotes when there is no proxy: async (symbols) => { [symbol]: { price, prevClose, name, currency } }
+let quoteFallback = null;
+export function setQuoteFallback(fn) {
+  quoteFallback = fn;
+}
+
+/** GET a Yahoo chart path (`/v8/finance/chart/SYM?...`) through the proxy. */
+async function yahooGetJSON(path, label) {
+  const base = proxyURL();
+  if (!base) throw new MarketUnavailableError();
+  let resp;
+  try {
+    resp = await fetch(base + path, { signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined });
+  } catch (e) {
+    throw new Error(`fetch ${label}: ${e.message}`);
+  }
+  if (!resp.ok) throw new Error(`yahoo API returned ${resp.status} for ${label}`);
+  return resp.json();
+}
+
+const chartPath = (symbol, query) => `/v8/finance/chart/${encodeURIComponent(symbol)}?${query}`;
+
+// ---------------------------------------------------------------- quotes
+
+const quoteCache = new Map(); // symbol -> quote
+const inflight = new Map(); // symbol -> Promise
+let lastFetchAt = null;
+
+export function lastFetchTime() {
+  return lastFetchAt;
+}
+
+export function invalidateCache() {
+  quoteCache.clear();
+  lastFetchAt = null;
+}
+
+function cached(symbol) {
+  const q = quoteCache.get(symbol);
+  if (!q) return null;
+  if (Date.now() - Date.parse(q.fetched_at) > QUOTE_TTL_MS) return null;
+  return q;
+}
+
+function makeQuote(symbol, price, prevClose, currency, name) {
+  const q = {
+    symbol, price, change: 0, change_percent: 0,
+    currency: currency || '', name: name || '',
+    fetched_at: new Date().toISOString(),
+  };
+  if (prevClose > 0) {
+    q.change = price - prevClose;
+    q.change_percent = q.change / prevClose * 100;
+  }
+  return q;
+}
+
+async function fetchQuoteYahoo(symbol) {
+  const yr = await yahooGetJSON(chartPath(symbol, 'interval=1d&range=1d'), symbol);
+  if (yr.chart?.error) throw new Error(`yahoo API error for ${symbol}: ${yr.chart.error.description}`);
+  const res = yr.chart?.result?.[0];
+  if (!res) throw new Error(`no results for ${symbol}`);
+  const m = res.meta;
+  return makeQuote(symbol, m.regularMarketPrice, m.chartPreviousClose, m.currency, m.shortName);
+}
+
+export async function fetchQuote(symbol) {
+  const c = cached(symbol);
+  if (c) return c;
+  if (inflight.has(symbol)) return inflight.get(symbol);
+  const p = (async () => {
+    let q;
+    if (hasProxy()) {
+      q = await fetchQuoteYahoo(symbol);
+    } else {
+      const m = await fallbackQuotes([symbol]);
+      q = m[symbol];
+      if (!q) throw new Error(`no quote for ${symbol}`);
+    }
+    quoteCache.set(symbol, q);
+    lastFetchAt = new Date();
+    return q;
+  })();
+  inflight.set(symbol, p);
+  try {
+    return await p;
+  } finally {
+    inflight.delete(symbol);
+  }
+}
+
+async function fallbackQuotes(symbols) {
+  if (!quoteFallback) throw new MarketUnavailableError('沒有設定行情代理，也尚未登入 Google（GOOGLEFINANCE 報價需要登入）');
+  const raw = await quoteFallback(symbols);
+  const out = {};
+  for (const [sym, r] of Object.entries(raw || {})) {
+    if (r && r.price > 0) out[sym] = makeQuote(sym, r.price, r.prevClose, r.currency, r.name);
+  }
+  return out;
+}
+
+/** Fault-tolerant batch fetch: missing symbols are simply absent from the result. */
+export async function fetchQuotes(symbols) {
+  const results = {};
+  const toFetch = [];
+  for (const s of symbols) {
+    const c = cached(s);
+    if (c) results[s] = c; else toFetch.push(s);
+  }
+  if (!toFetch.length) return results;
+  if (!hasProxy()) {
+    try {
+      const m = await fallbackQuotes(toFetch);
+      for (const [s, q] of Object.entries(m)) { quoteCache.set(s, q); results[s] = q; }
+      lastFetchAt = new Date();
+    } catch (e) {
+      console.warn('quote fallback failed', e);
+    }
+    return results;
+  }
+  await Promise.all(toFetch.map(async (s) => {
+    try {
+      results[s] = await fetchQuote(s);
+    } catch (e) {
+      console.warn(`failed to fetch quote for ${s}:`, e.message);
+    }
+  }));
+  return results;
+}
+
+// ---------------------------------------------------------------- forex
+
+let cachedRate = 0;
+let cachedRateAt = null;
+
+/** Live USD/TWD rate: { rate, at: Date }. Cached 30 minutes. */
+export async function fetchUSDTWDRate() {
+  if (cachedRateAt && Date.now() - cachedRateAt.getTime() < FOREX_TTL_MS && cachedRate > 0) {
+    return { rate: cachedRate, at: cachedRateAt };
+  }
+  const rate = hasProxy()
+    ? (await fetchQuoteYahoo(USDTWD_SYMBOL)).price
+    : (await fallbackQuotes([USDTWD_SYMBOL]))[USDTWD_SYMBOL]?.price;
+  if (!(rate > 0)) throw new Error(`invalid rate: ${rate}`);
+  cachedRate = rate;
+  cachedRateAt = new Date();
+  return { rate, at: cachedRateAt };
+}
+
+export function invalidateForexCache() {
+  cachedRate = 0;
+  cachedRateAt = null;
+}
+
+// ---------------------------------------------------------------- daily closes
+
+const unix = (d) => Math.floor(d.getTime() / 1000);
+
+// End of the current UTC hour: a stable period2 lets the proxy's edge cache
+// answer repeat history requests instead of every call missing.
+const periodEnd = () => Math.ceil(Date.now() / 3600000) * 3600;
+
+/**
+ * Daily closes for symbol from `since` (Date) to now, oldest first:
+ * [{ date, close, adj_close }]. close is split-adjusted, adj_close also folds
+ * in dividends. The last bar may be today's in-progress price.
+ */
+export async function fetchDailyCloses(symbol, since) {
+  const body = await yahooGetJSON(
+    chartPath(symbol, `interval=1d&period1=${unix(since)}&period2=${periodEnd()}`),
+    `${symbol} history`);
+  if (body.chart?.error) throw new Error(`yahoo history error for ${symbol}: ${body.chart.error.description}`);
+  const res = body.chart?.result?.[0];
+  if (!res || !res.indicators?.quote?.length) return [];
+  const closes = res.indicators.quote[0].close || [];
+  const adj = res.indicators.adjclose?.[0]?.adjclose || [];
+  const offset = res.meta?.gmtoffset || 0;
+  const out = [];
+  (res.timestamp || []).forEach((ts, i) => {
+    const c = closes[i];
+    if (c == null || !(c > 0)) return;
+    // Bars are stamped at market open; the exchange's offset keeps the date right.
+    const date = new Date((ts + offset) * 1000).toISOString().slice(0, 10);
+    const bar = { date, close: c, adj_close: adj[i] > 0 ? adj[i] : c };
+    if (out.length && out[out.length - 1].date === date) out[out.length - 1] = bar;
+    else out.push(bar);
+  });
+  return out;
+}
+
+// ---------------------------------------------------------------- dividends
+
+const dividendCache = new Map(); // symbol|since -> { at, evs }
+
+/** Ex-dividend events since `since` (Date): [{ ex_date, per_share }], oldest first. */
+export async function fetchDividendHistory(symbol, since) {
+  const key = `${symbol}|${since.toISOString().slice(0, 10)}`;
+  const e = dividendCache.get(key);
+  if (e && Date.now() - e.at < DIVIDEND_TTL_MS) return e.evs;
+  const body = await yahooGetJSON(
+    chartPath(symbol, `interval=1mo&events=div&period1=${unix(since)}&period2=${periodEnd()}`),
+    `${symbol} dividends`);
+  const res = body.chart?.result?.[0];
+  const evs = [];
+  for (const d of Object.values(res?.events?.dividends || {})) {
+    if (!(d.amount > 0)) continue;
+    // Fixed UTC+8 so the calendar date doesn't shift with the browser's timezone.
+    evs.push({ ex_date: new Date((d.date + 8 * 3600) * 1000).toISOString().slice(0, 10), per_share: d.amount });
+  }
+  evs.sort((a, b) => (a.ex_date < b.ex_date ? -1 : a.ex_date > b.ex_date ? 1 : 0));
+  dividendCache.set(key, { at: Date.now(), evs });
+  return evs;
+}
