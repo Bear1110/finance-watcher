@@ -44,8 +44,7 @@ export function xirr(flows, d0) {
 /**
  * GET /api/stocks/xirr → {"ALL": {...}, "TW": {...}, "US": {...}}
  * BUYs are outflows, SELLs and dividends inflows, current market value is the
- * terminal inflow. Imported-history SELLs arrive from loadPerfTxns as a
- * one-day round trip.
+ * terminal inflow (imported-history SELLs included, see loadPerfTxns).
  * Foreign amounts use today's rate, so it is an approximation.
  */
 async function xirrHandler() {

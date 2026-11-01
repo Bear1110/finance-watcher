@@ -4,7 +4,7 @@
 
 import * as db from './db.js';
 import { route } from './router.js';
-import { isHistorySell, cmp } from './util.js';
+import { isSelfHistorySell, cmp } from './util.js';
 import { hasProxy } from './market.js';
 import { loadPerfTxns, perfOrigin, loadPriceHistory } from './twr.js';
 import { fmtNum, isDateOnly } from './twr_calc.js';
@@ -37,7 +37,7 @@ async function check() {
   }
   let suggested = '';
   for (const t of txns) {
-    if (t.date > lastImport && !t.transfer) {
+    if (t.date > lastImport && !t.transfer && !t.synthetic) {
       suggested = t.date;
       break;
     }
@@ -57,7 +57,7 @@ async function check() {
   // 2. Sells with no buy records inside the performance window.
   const orphanIn = [];
   let orphanBefore = 0;
-  const historySells = db.where('stock_transactions', (t) => t.account_id == null && isHistorySell(t))
+  const historySells = db.where('stock_transactions', isSelfHistorySell)
     .sort((a, b) => cmp(a.date, b.date));
   for (const t of historySells) {
     if (t.date >= origin) orphanIn.push(`${t.date} ${t.symbol} 賣出 ${fmtNum(t.shares)} 股`);

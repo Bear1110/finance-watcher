@@ -18,6 +18,9 @@ export const isCounted = (t) => t.account_id == null && !isHistorySell(t);
 /** Imported-history SELLs: fixed realized_pl, no lots. */
 export const isHistorySell = (t) => t.action === 'SELL' && t.pl_manual === 1 && t.lots_consumed === 0;
 
+/** Self-account history SELLs (the ones performance estimates as a round trip). */
+export const isSelfHistorySell = (t) => t.account_id == null && isHistorySell(t);
+
 /** Text setting ('' when missing). */
 export const settingString = (key) => getSetting(key);
 

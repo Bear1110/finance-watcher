@@ -4,7 +4,7 @@
 
 import * as db from './db.js';
 import { route } from './router.js';
-import { isCounted, isHistorySell, settingString, storedUSDTWDRate, cmp, round4 } from './util.js';
+import { isHistorySell, settingString, storedUSDTWDRate, cmp, round4 } from './util.js';
 import { fetchDailyCloses, fetchQuotes, hasProxy, MarketUnavailableError, USDTWD_SYMBOL } from './market.js';
 import { queryDividends } from './dividends.js';
 import {
@@ -127,33 +127,32 @@ export function savePriceHistory(sym, closes, resetFrom, syncedAt) {
   });
 }
 
-const perfTxn = (t, over = {}) => ({
-  symbol: t.symbol, market: t.market, action: t.action, shares: t.shares, price: t.price,
+const perfTxn = (t) => ({
+  id: t.id, symbol: t.symbol, market: t.market, action: t.action, shares: t.shares, price: t.price,
   fee: t.fee, tax: t.tax, currency: t.currency, date: t.date, transfer: t.is_transfer === 1,
-  synthetic: false, ...over,
 });
 
 /**
  * Self trades for performance and XIRR, oldest first (perfTxn shape): the
  * counted trades, plus each imported-history SELL (「歷史已實現損益」, no BUY on
  * record) as a one-day round trip, bought the day before at the cost its stored
- * realized_pl implies. The ledger and holdings never see these synthetic rows.
+ * realized_pl implies. That BUY is marked `synthetic` (its price is made up);
+ * the ledger and holdings never see it.
  */
 export function loadPerfTxns() {
   const out = [];
-  for (const t of db.all('stock_transactions')) {
-    if (isCounted(t)) {
-      out.push({ ...perfTxn(t), _id: t.id });
-    } else if (t.account_id == null && isHistorySell(t) && isDateOnly(t.date) && t.shares > 0) {
-      const cost = t.shares * t.price - t.fee - t.tax - t.realized_pl;
-      if (!(cost > 0)) continue;
-      out.push({ ...perfTxn(t, { action: 'BUY', date: addDays(t.date, -1), price: cost / t.shares, fee: 0, tax: 0, synthetic: true }), _id: t.id });
-      out.push({ ...perfTxn(t, { synthetic: true }), _id: t.id });
+  for (const t of db.where('stock_transactions', (r) => r.account_id == null)) {
+    const p = perfTxn(t);
+    if (!isHistorySell(t)) {
+      out.push(p);
+      continue;
     }
+    const cost = t.shares * t.price - t.fee - t.tax - t.realized_pl;
+    if (!isDateOnly(t.date) || !(t.shares > 0) || !(cost > 0)) continue;
+    out.push({ ...p, action: 'BUY', date: addDays(t.date, -1), price: cost / t.shares, fee: 0, tax: 0, synthetic: true }, p);
   }
-  // Same order as before (date, then id); a round trip's BUY sorts on the day before.
-  out.sort((a, b) => cmp(a.date, b.date) || a._id - b._id);
-  return out.map(({ _id, ...t }) => t);
+  // Date, then id; a round trip's BUY sorts on the day before.
+  return out.sort((a, b) => cmp(a.date, b.date) || a.id - b.id);
 }
 
 /**

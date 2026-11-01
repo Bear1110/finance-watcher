@@ -83,6 +83,7 @@ test('loadPerfTxns turns a history SELL into a synthetic BUY the day before', ()
   assert.equal(sell.action, 'SELL');
   assert.equal(sell.date, daysAgo(180));
   assert.equal(sell.price, 120);
-  // Real trades are not marked.
-  assert.equal(loadPerfTxns().find((t) => t.symbol === 'AAA').synthetic, false);
+  // Only the made-up BUY is marked; the SELL and real trades keep their price checks.
+  assert.ok(!sell.synthetic);
+  assert.ok(!loadPerfTxns().find((t) => t.symbol === 'AAA').synthetic);
 });
