@@ -6,7 +6,7 @@ import * as db from './db.js';
 import { route } from './router.js';
 import { fetchQuotes, invalidateCache, lastFetchTime } from './market.js';
 import {
-  HttpError, badRequest, body, storedUSDTWDRate, toTWD, refreshAndPersistRate, fmtLocal, round2, cmp,
+  HttpError, badRequest, body, storedUSDTWDRate, toTWD, refreshAndPersistRate, fmtLocal, round2, cmp, sellCostBasis, sellReturnPct,
 } from './util.js';
 import { replaySymbol, normalizeTxn, applyAutoFee, uncoveredWarnings, fmtShares } from './ledger.js';
 
@@ -288,27 +288,29 @@ function realizedSummary(req) {
     let totalShares = 0;
     let totalRevenue = 0;
     let totalRealizedPL = 0;
+    let totalCost = 0;
     let bestPct = -Number.MAX_VALUE;
     let worstPct = Number.MAX_VALUE;
 
     for (const t of trades) {
       const revenue = t.shares * t.price;
-      const cost = revenue - t.realized_pl;
-      const tradePct = cost > 0 ? (t.realized_pl / cost) * 100 : 0;
+      const tradePct = sellReturnPct(t); // null: no real cost (配股), left out of best/worst
 
       totalShares += t.shares;
       totalRevenue += revenue;
+      totalCost += sellCostBasis(t);
       totalRealizedPL += t.realized_pl;
-      if (tradePct > bestPct) bestPct = tradePct;
-      if (tradePct < worstPct) worstPct = tradePct;
-
-      if (tradePct > bestOverallPct) {
-        bestOverallPct = tradePct;
-        bestTrade = { symbol: t.symbol, pl: t.realized_pl, pct: round2(tradePct) };
-      }
-      if (tradePct < worstOverallPct) {
-        worstOverallPct = tradePct;
-        worstTrade = { symbol: t.symbol, pl: t.realized_pl, pct: round2(tradePct) };
+      if (tradePct != null) {
+        if (tradePct > bestPct) bestPct = tradePct;
+        if (tradePct < worstPct) worstPct = tradePct;
+        if (tradePct > bestOverallPct) {
+          bestOverallPct = tradePct;
+          bestTrade = { symbol: t.symbol, pl: t.realized_pl, pct: round2(tradePct) };
+        }
+        if (tradePct < worstOverallPct) {
+          worstOverallPct = tradePct;
+          worstTrade = { symbol: t.symbol, pl: t.realized_pl, pct: round2(tradePct) };
+        }
       }
 
       if (t.realized_pl > 0) winningTrades++;
@@ -316,8 +318,8 @@ function realizedSummary(req) {
       else flatTrades++;
     }
 
-    const totalCost = totalRevenue - totalRealizedPL;
     const avgReturnPct = totalCost > 0 ? (totalRealizedPL / totalCost) * 100 : 0;
+    const hasPct = bestPct !== -Number.MAX_VALUE;
 
     byStock.push({
       symbol: sym,
@@ -328,8 +330,8 @@ function realizedSummary(req) {
       total_cost: round2(totalCost),
       total_realized_pl: round2(totalRealizedPL),
       avg_return_pct: round2(avgReturnPct),
-      best_trade_pct: round2(bestPct),
-      worst_trade_pct: round2(worstPct),
+      best_trade_pct: hasPct ? round2(bestPct) : null,
+      worst_trade_pct: hasPct ? round2(worstPct) : null,
       currency: meta.currency,
     });
 

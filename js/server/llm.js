@@ -5,7 +5,7 @@
 import * as db from './db.js';
 import { route } from './router.js';
 import { fetchQuotes } from './market.js';
-import { HttpError, badRequest, body, cmp, round2, storedUSDTWDRate } from './util.js';
+import { HttpError, badRequest, body, cmp, round2, storedUSDTWDRate, sellCostBasis, sellReturnPct } from './util.js';
 import { holdingDetail } from './stocks.js';
 
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
@@ -82,21 +82,22 @@ function buildRealizedSummary() {
   let wins = 0;
   let losses = 0;
   for (const [sym, trades] of bySymbol) {
-    let totalShares = 0, totalRev = 0, totalPL = 0;
+    let totalShares = 0, totalRev = 0, totalPL = 0, totalCostBasis = 0;
     let bestPct = -Number.MAX_VALUE, worstPct = Number.MAX_VALUE;
     for (const t of trades) {
       const rev = t.shares * t.price;
       totalShares += t.shares;
       totalRev += rev;
       totalPL += t.realized_pl;
-      const cost = rev - t.realized_pl;
-      const pct = cost > 0 ? t.realized_pl / cost * 100 : 0;
-      if (pct > bestPct) bestPct = pct;
-      if (pct < worstPct) worstPct = pct;
+      totalCostBasis += sellCostBasis(t);
+      const pct = sellReturnPct(t); // null: no real cost (配股)
+      if (pct != null && pct > bestPct) bestPct = pct;
+      if (pct != null && pct < worstPct) worstPct = pct;
       if (t.realized_pl >= 0) wins++; else losses++;
     }
     totalTrades += trades.length;
-    const totalCost = totalRev - totalPL;
+    const totalCost = totalCostBasis;
+    const hasPct = bestPct !== -Number.MAX_VALUE;
     const avgRet = totalCost > 0 ? totalPL / totalCost * 100 : 0;
     const cur = trades[0].currency;
     overallPLTWD += cur === 'USD' ? totalPL * rate : totalPL;
@@ -104,7 +105,7 @@ function buildRealizedSummary() {
       symbol: sym, market: trades[0].market, total_trades: trades.length,
       total_shares_sold: totalShares, total_revenue: totalRev,
       total_cost: totalCost, total_realized_pl: totalPL,
-      avg_return_pct: round2(avgRet), best_trade_pct: round2(bestPct), worst_trade_pct: round2(worstPct),
+      avg_return_pct: round2(avgRet), best_trade_pct: hasPct ? round2(bestPct) : null, worst_trade_pct: hasPct ? round2(worstPct) : null,
       currency: cur,
     });
   }
@@ -184,6 +185,7 @@ export async function generateAutoPrompt(sections) {
 
 const f = (v, d) => Number(v).toFixed(d);
 const sf = (v, d) => (v >= 0 ? '+' : '') + f(v, d);
+const pctOrDash = (v) => (v == null ? '--' : sf(v, 2) + '%'); // null: no real cost (配股)
 const CN_NUMS = ['一', '二', '三', '四', '五', '六', '七', '八'];
 
 /** Build the analysis prompt. data.sections is a Set (null = all). */
@@ -283,7 +285,7 @@ export function generateFinancialPrompt(data) {
     sb += '|------|------|---------|-----------|----------|-------|-------|\n';
     for (const s of data.realized.by_stock) {
       const cur = s.currency === 'TWD' ? 'NT$' : 'US$';
-      sb += `| ${s.symbol} | ${s.market} | ${s.total_trades} | ${cur} ${f(s.total_realized_pl, 0)} | ${sf(s.avg_return_pct, 2)}% | ${sf(s.best_trade_pct, 2)}% | ${sf(s.worst_trade_pct, 2)}% |\n`;
+      sb += `| ${s.symbol} | ${s.market} | ${s.total_trades} | ${cur} ${f(s.total_realized_pl, 0)} | ${sf(s.avg_return_pct, 2)}% | ${pctOrDash(s.best_trade_pct)} | ${pctOrDash(s.worst_trade_pct)} |\n`;
     }
     sb += '\n';
   }

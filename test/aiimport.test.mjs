@@ -343,3 +343,23 @@ test('clear stock data: one market of the self account only; dry run only counts
   assert.equal(db.all('expenses').length, 1);
   await assert.rejects(post('/api/stocks/clear', {}), /market/);
 });
+
+test('realized summary: a zero-cost sale (配股) has no % and is left out of best/worst', async () => {
+  db._reset({
+    settings: [{ id: 1, key: 'usd_twd_rate', value: '30' }],
+    stock_transactions: [
+      tx({ id: 1, symbol: '4128.TWO', action: 'SELL', shares: 50, price: 14.4, fee: 1, tax: 2, realized_pl: 717, pl_manual: 1, lots_consumed: 0, date: '2026-08-04' }),
+      tx({ id: 2, symbol: '2892.TW', action: 'BUY', shares: 4000, price: 26.4, fee: 150, date: '2023-09-06' }),
+      tx({ id: 3, symbol: '2892.TW', action: 'SELL', shares: 4000, price: 29.6, fee: 168, tax: 355, realized_pl: 12127, date: '2026-05-11' }),
+    ],
+  });
+  const s = await handle('/api/transactions/summary');
+  const zero = s.by_stock.find((x) => x.symbol === '4128.TWO');
+  assert.equal(zero.best_trade_pct, null);
+  assert.equal(zero.total_cost, 0);
+  // 2892: cost basis = 118400 − 168 − 355 − 12127 = 105750 (4000 × 26.4 + 150 buy fee)
+  const real = s.by_stock.find((x) => x.symbol === '2892.TW');
+  assert.equal(real.total_cost, 105750);
+  assert.equal(real.best_trade_pct, Math.round(12127 / 105750 * 10000) / 100);
+  assert.equal(s.overall.best_trade.symbol, '2892.TW');
+});

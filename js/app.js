@@ -1095,10 +1095,11 @@ function renderRealizedSummary() {
     totalPLTwd += plTwd;
     totalCostTwd += toTWD(s.total_cost, s.currency, rate);
 
-    if (!bestTrade || s.best_trade_pct > bestTrade.pct) {
+    // null: every sale of this stock had no real cost (配股), so there is no % to compare
+    if (s.best_trade_pct != null && (!bestTrade || s.best_trade_pct > bestTrade.pct)) {
       bestTrade = { symbol: s.symbol, pct: s.best_trade_pct };
     }
-    if (!worstTrade || s.worst_trade_pct < worstTrade.pct) {
+    if (s.worst_trade_pct != null && (!worstTrade || s.worst_trade_pct < worstTrade.pct)) {
       worstTrade = { symbol: s.symbol, pct: s.worst_trade_pct };
     }
   });

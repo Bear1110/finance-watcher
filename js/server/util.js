@@ -21,6 +21,18 @@ export const isHistorySell = (t) => t.action === 'SELL' && t.pl_manual === 1 && 
 /** Self-account history SELLs (the ones performance estimates as a round trip). */
 export const isSelfHistorySell = (t) => t.account_id == null && isHistorySell(t);
 
+/** What the shares of a SELL cost to buy (buy fee included): proceeds − sell fee − tax − realized P&L. */
+export const sellCostBasis = (t) => t.shares * t.price - (t.fee || 0) - (t.tax || 0) - t.realized_pl;
+
+/**
+ * % return of one SELL, or null when the shares cost (next to) nothing — e.g. bonus shares from a
+ * stock dividend (配股), where P&L ≈ proceeds and a percentage would be meaningless (+23900%).
+ */
+export function sellReturnPct(t) {
+  const cost = sellCostBasis(t);
+  return cost > t.shares * t.price * 0.01 ? (t.realized_pl / cost) * 100 : null;
+}
+
 /** Text setting ('' when missing). */
 export const settingString = (key) => getSetting(key);
 
