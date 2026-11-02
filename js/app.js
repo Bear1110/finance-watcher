@@ -7,8 +7,22 @@
 // SECTION: Utility Functions
 // ============================================================
 
-/** Format number with commas */
+// Privacy mode (eye toggle): amounts and share counts render as MASK.
+// fmt() and the money formatters built on it are masked; prices, FX rates
+// and percentages use fmtNum()/fmtPrice()/fmtPct() and stay visible.
+const MASK = '****';
+let privacyMode = false;
+try { privacyMode = localStorage.getItem('privacyMode') === '1'; } catch (e) {}
+
+/** Format an amount / share count with commas (masked in privacy mode) */
 function fmt(n, decimals = 0) {
+  if (n == null || isNaN(n)) return '--';
+  if (privacyMode) return (n < 0 ? '-' : '') + MASK;
+  return fmtNum(n, decimals);
+}
+
+/** Format a number with commas, never masked (prices, rates) */
+function fmtNum(n, decimals = 0) {
   if (n == null || isNaN(n)) return '--';
   return Number(n).toLocaleString('en-US', {
     minimumFractionDigits: decimals,
@@ -57,7 +71,7 @@ function fmtCur(n, currency) {
 /** Format a per-share price in native currency (always 2 decimals, TW prices can be fractional) */
 function fmtPrice(n, currency) {
   if (n == null || isNaN(n)) return '--';
-  return (currency === 'USD' ? '$' : 'NT$') + fmt(n, 2);
+  return (currency === 'USD' ? '$' : 'NT$') + fmtNum(n, 2);
 }
 
 /** Convert a native-currency amount to TWD */
@@ -206,6 +220,22 @@ function initTabs() {
   });
 }
 
+function applyPrivacyUI() {
+  document.querySelectorAll('.privacy-toggle').forEach(btn => {
+    btn.setAttribute('aria-pressed', privacyMode ? 'true' : 'false');
+    btn.title = privacyMode ? '顯示金額' : '隱藏金額';
+  });
+}
+
+function togglePrivacy() {
+  privacyMode = !privacyMode;
+  try { localStorage.setItem('privacyMode', privacyMode ? '1' : '0'); } catch (e) {}
+  applyPrivacyUI();
+  // Re-render the active tab so every formatted number picks up the new mode
+  const active = document.querySelector('.tab-btn.active');
+  if (active) onTabActivated(active.dataset.tab);
+}
+
 function onTabActivated(tab) {
   switch (tab) {
     case 'dashboard': loadDashboard(); break;
@@ -350,7 +380,7 @@ async function loadDashboard() {
           <td>${t.symbol || '--'}</td>
           <td><span class="${t.action === 'BUY' ? 'tag-buy' : 'tag-sell'}">${t.action === 'BUY' ? '買' : '賣'}</span></td>
           <td>${fmt(t.shares)}</td>
-          <td>${fmt(t.price, 2)}</td>
+          <td>${fmtNum(t.price, 2)}</td>
         </tr>
       `).join('');
     }
@@ -575,7 +605,7 @@ function renderSnapshotTable(assets) {
       <td>${fmtUSD(a.cash_usd)}</td>
       <td>${fmtTWD(a.stock_tw_value)}</td>
       <td>${fmtTWD(a.stock_us_value)}</td>
-      <td>${fmt(a.usd_twd_rate, 2)}</td>
+      <td>${fmtNum(a.usd_twd_rate, 2)}</td>
       <td><strong>${fmtTWD(a.total_asset)}</strong></td>
       <td>${a.note || ''}</td>
       <td>
@@ -1241,7 +1271,7 @@ async function loadTransactions() {
           <td><strong>${t.symbol || '--'}</strong></td>
           <td><span class="${t.action === 'BUY' ? 'tag-buy' : 'tag-sell'}">${t.action === 'BUY' ? '買' : '賣'}</span></td>
           <td>${fmt(t.shares)}</td>
-          <td>${fmt(t.price, 2)}</td>
+          <td>${fmtNum(t.price, 2)}</td>
           <td>${fmt(t.fee, 0)}</td>
           <td>${t.tax ? fmt(t.tax, 0) : '--'}</td>
           <td class="${plClass(t.realized_pl)}">${t.realized_pl ? fmtPL(t.realized_pl) : '--'}</td>
@@ -1301,7 +1331,7 @@ async function loadStockSnapshots() {
         <td>${fmtTWD(s.us_value_twd)}</td>
         <td><strong>${fmtTWD(s.total_value_twd)}</strong></td>
         <td class="${plClass(s.total_pl_twd)}">${fmtTWD(s.total_pl_twd)}</td>
-        <td>${fmt(s.usd_twd_rate, 2)}</td>
+        <td>${fmtNum(s.usd_twd_rate, 2)}</td>
         <td>
           <button class="btn btn-outline btn-sm" onclick="viewSnapshotDetail(${idx})">明細</button>
           <button class="btn btn-danger btn-sm" onclick="deleteStockSnapshot(${s.id})">刪除</button>
@@ -1436,14 +1466,13 @@ function viewSnapshotDetail(idx) {
 }
 
 function renderSnapshotDetailRow(d) {
-  const cs = d.currency === 'USD' ? '$' : 'NT$';
   return `
     <tr>
       <td><strong>${d.symbol}</strong></td>
       <td>${d.market === 'TW' ? '台股' : '美股'}</td>
       <td>${fmt(d.shares)}</td>
-      <td>${cs}${fmt(d.avg_cost, 2)}</td>
-      <td>${cs}${fmt(d.current_price, 2)}</td>
+      <td>${fmtPrice(d.avg_cost, d.currency)}</td>
+      <td>${fmtPrice(d.current_price, d.currency)}</td>
       <td>${fmtTWD(d.value_twd)}</td>
       <td class="${plClass(d.pl_twd)}">${fmtTWD(d.pl_twd)}</td>
     </tr>
@@ -2284,7 +2313,7 @@ function renderDividendSuggestions() {
         <td><input type="checkbox" class="div-suggest-cb" data-idx="${i}" checked></td>
         <td>${s.ex_date}</td>
         <td><strong>${escapeHtml(s.symbol)}</strong></td>
-        <td>${s.currency === 'TWD' ? 'NT$' : '$'}${fmt(s.per_share, 4)}</td>
+        <td>${s.currency === 'TWD' ? 'NT$' : '$'}${fmtNum(s.per_share, 4)}</td>
         <td>${fmt(s.shares)}</td>
         <td class="positive">${fc(s.amount)}</td>
         <td>${s.withheld ? fc(s.withheld) : '--'}</td>
@@ -3040,6 +3069,7 @@ function initFontSize() {
 
 document.addEventListener('DOMContentLoaded', () => {
   initFontSize();
+  applyPrivacyUI();
   initTabs();
   initExpenseDefaults();
   initBudgetYearSelector();
@@ -3155,8 +3185,8 @@ async function loadManagedAccountSummary(id) {
           <td>${escapeHtml(h.symbol)}</td>
           <td>${h.market}</td>
           <td>${fmt(h.shares, 2)}</td>
-          <td>${curSym}${fmt(h.avg_cost, 2)}</td>
-          <td>${curSym}${fmt(h.current_price, 2)}</td>
+          <td>${fmtPrice(h.avg_cost, h.currency)}</td>
+          <td>${fmtPrice(h.current_price, h.currency)}</td>
           <td>${curSym}${fmt(h.market_value, 2)}</td>
           <td>${fmtTWD(h.market_value_twd)}</td>
           <td><span class="${plClass(h.unrealized_pl_twd)}">${fmtTWD(h.unrealized_pl_twd)}</span></td>
@@ -3178,7 +3208,7 @@ async function loadManagedAccountSummary(id) {
           <td>${escapeHtml(t.symbol)}</td>
           <td><span class="${t.action === 'BUY' ? 'tag-buy' : 'tag-sell'}">${t.action === 'BUY' ? '買' : '賣'}</span></td>
           <td>${fmt(t.shares, 2)}</td>
-          <td>${curSym}${fmt(t.price, 2)}</td>
+          <td>${fmtPrice(t.price, t.currency)}</td>
           <td>${curSym}${fmt(t.fee, 2)}</td>
           <td><span class="${plClass(t.realized_pl)}">${curSym}${fmt(t.realized_pl, 2)}</span></td>
           <td>${escapeHtml(t.note || '')}</td>
@@ -3256,7 +3286,7 @@ async function loadManagedSnapshots(id) {
         <td>${fmtTWD(s.stock_value_twd)}</td>
         <td class="${plClass(s.unrealized_pl_twd)}">${fmtTWD(s.unrealized_pl_twd)}</td>
         <td><strong>${fmtTWD(s.total_value_twd)}</strong></td>
-        <td>${fmt(s.usd_twd_rate, 2)}</td>
+        <td>${fmtNum(s.usd_twd_rate, 2)}</td>
         <td>
           <button class="btn btn-outline btn-sm" onclick="viewManagedSnapshotDetail(${idx})">明細</button>
           <button class="btn btn-danger btn-sm" onclick="deleteManagedSnapshot(${s.id})">刪除</button>
@@ -3346,7 +3376,7 @@ function viewManagedSnapshotDetail(idx) {
   try { details = JSON.parse(s.detail_json); } catch (_) {}
 
   const card = document.getElementById('mng-snapshot-detail-card');
-  document.getElementById('mng-snapshot-detail-title').textContent = `快照明細 - ${s.date}（匯率 ${fmt(s.usd_twd_rate, 2)}）`;
+  document.getElementById('mng-snapshot-detail-title').textContent = `快照明細 - ${s.date}（匯率 ${fmtNum(s.usd_twd_rate, 2)}）`;
 
   const tbody = document.getElementById('mng-snapshot-detail-body');
   if (!details || details.length === 0) {
