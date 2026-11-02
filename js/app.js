@@ -2564,19 +2564,29 @@ function initExpenseDefaults() {
   initMonthSelector();
 }
 
-function initYearSelector(id) {
+/** Years from next year back to `startYear` (a rebuild keeps the current choice). */
+function initYearSelector(id, startYear = 2020) {
   const select = document.getElementById(id);
   if (!select) return;
   const currentYear = new Date().getFullYear();
-  const startYear = 2020; // earliest possible data
+  const chosen = Number(select.value) || currentYear;
   select.innerHTML = '';
   for (let y = currentYear + 1; y >= startYear; y--) {
     const opt = document.createElement('option');
     opt.value = y;
     opt.textContent = y + '\u5E74';
-    if (y === currentYear) opt.selected = true;
+    if (y === chosen) opt.selected = true;
     select.appendChild(opt);
   }
+}
+
+/** Reaches a year selector back to the oldest record, so older imports can be browsed. */
+function extendYearSelector(id, dates) {
+  const select = document.getElementById(id);
+  const years = dates.map(d => Number(String(d).slice(0, 4))).filter(y => y > 1900);
+  if (!select || !years.length) return;
+  const first = Math.min(...years);
+  if (first < Number(select.options[select.options.length - 1]?.value)) initYearSelector(id, first);
 }
 
 function toggleCustomCategory(select) {
@@ -2707,7 +2717,7 @@ async function deleteExpenseFromModal() {
 
 // --- 收支 page: period summary, category ranking, monthly chart, records table ---
 
-let _expAutoMonth = true;      // first load picks the latest month that has data
+let _expAutoMonth = true;      // first load / a year change picks the latest month that has data
 let _expCatType = 'expense';   // category ranking shows expense or income
 let _expCatFilter = null;      // raw category clicked in the ranking ('' = 未分類); null = no filter
 let _expStats = null;          // /api/expenses/stats of the selected year
@@ -2735,6 +2745,7 @@ async function loadExpenses() {
     const [expenses, stats] = await Promise.all([api('/api/expenses'), api(`/api/expenses/stats?year=${expYear()}`)]);
     _expAll = Array.isArray(expenses) ? expenses : [];
     _expStats = stats;
+    extendYearSelector('exp-year-filter', _expAll.map(e => e.date));
     if (_expAutoMonth) {
       _expAutoMonth = false;
       const withData = stats.months.filter(m => m.income || m.expense).map(m => m.month);

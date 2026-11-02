@@ -673,7 +673,7 @@
     <section id="tab-expenses" class="tab-content">
       <!-- Period + summary -->
       <div class="exp-period">
-        <select id="exp-year-filter" onchange="loadExpenses()" class="input-sm" aria-label="年度"></select>
+        <select id="exp-year-filter" onchange="_expAutoMonth = true; loadExpenses()" class="input-sm" aria-label="年度"></select>
         <select id="exp-month-filter" onchange="renderExpensePage()" class="input-sm" aria-label="月份"></select>
       </div>
 
