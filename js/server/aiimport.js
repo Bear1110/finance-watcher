@@ -297,7 +297,10 @@ const transactions = {
       const before = round4(current - net(rows.filter((r) => r.symbol === sym)) - net(kept));
 
       let transfer = null;
-      if (before < -1e-6) {
+      if (!mine.length && !holding) {
+        // Not tracked in the app yet: nothing to replace or work back, the statement is all there is
+        checks.push(`${sym}：App 裡原本沒有這檔，直接新增對帳單的交易`);
+      } else if (before < -1e-6) {
         problems.push(`${sym}：倒推期間開始前要有 ${fmtShares(before)} 股（負數），資料兜不起來（漏抓、分割沒換算，或目前持股本來就不對）`);
       } else if (before > 1e-6) {
         const tShares = transfers.reduce((n, t) => n + t.shares, 0);

@@ -301,3 +301,20 @@ test('replace without a 查詢期間: each symbol uses its own first..last trade
   // trade, so it stays. With the global start (2020-08-13, from 2886) it was dragged to 2020-08-12.
   assert.deepEqual(s.transfer, { date: '2021-01-14', shares: 20000, price: 15 });
 });
+
+test('replace: a stock the app has never had is simply added, not a negative 匯入持倉', async () => {
+  seedReplace();
+  const text = JSON.stringify({ transactions: [
+    { date: '2024-10-18', symbol: '00881', market: 'TW', action: 'SELL', shares: 5000, price: 25.1, fee: 178, tax: 125, realized_pl: 42340 },
+    { date: '2024-11-14', symbol: '00881', market: 'TW', action: 'BUY', shares: 2000, price: 24.34, fee: 69, tax: 0 },
+    { date: '2025-09-02', symbol: '00881', market: 'TW', action: 'BUY', shares: 3000, price: 26.4, fee: 112, tax: 0 },
+    { date: '2022-04-25', symbol: '0056', market: 'TW', action: 'BUY', shares: 5000, price: 32.09, fee: 45, tax: 0 },
+  ] });
+  const p = (await parseImport(text, ['transactions'], 'replace')).transactions.plan;
+  assert.equal(p.ok, true, p.problems.join());
+  assert.ok(p.checks.some((c) => c.includes('0056.TW：App 裡原本沒有這檔')));
+  assert.equal(p.symbols.find((s) => s.symbol === '0056.TW').transfer, null);
+  await post('/api/ai-import/commit', { text, kinds: ['transactions'], mode: 'replace' });
+  assert.equal(db.findBy('stock_holdings', 'symbol', '0056.TW').shares, 5000);
+  assert.equal(db.findBy('stock_holdings', 'symbol', '00881.TW').shares, 33000);
+});
