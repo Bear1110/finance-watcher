@@ -433,17 +433,19 @@ route('POST', '/api/transactions', recordTransaction);
 route('PUT', '/api/transactions/{id}', updateTransaction);
 route('DELETE', '/api/transactions/{id}', deleteTransaction);
 route('GET', '/api/transactions/summary', realizedSummary);
-// Wipe the self account's trades and holdings (e.g. before importing full broker statements).
-// Dividends, snapshots, expenses and managed accounts stay. { dry: true } only counts.
+// Wipe the self account's trades and holdings of one market (e.g. before importing full broker
+// statements). Dividends, snapshots, expenses and managed accounts stay.
+// Body: { market: 'TW' | 'US' | 'ALL', dry }: dry only counts.
 route('POST', '/api/stocks/clear', async (req) => {
-  let dry = false;
-  try { dry = !!body(req).dry; } catch { /* no body */ }
-  const self = (t) => t.account_id == null;
-  const counts = { transactions: db.where('stock_transactions', self).length, holdings: db.all('stock_holdings').length };
-  if (dry) return counts;
+  const r = body(req);
+  if (!['TW', 'US', 'ALL'].includes(r.market)) throw badRequest('market must be TW, US or ALL');
+  const inMarket = (x) => r.market === 'ALL' || x.market === r.market;
+  const txn = (t) => t.account_id == null && inMarket(t);
+  const counts = { transactions: db.where('stock_transactions', txn).length, holdings: db.where('stock_holdings', inMarket).length };
+  if (r.dry) return counts;
   await db.transaction(() => {
-    db.removeWhere('stock_transactions', self);
-    db.removeWhere('stock_holdings', () => true);
+    db.removeWhere('stock_transactions', txn);
+    db.removeWhere('stock_holdings', inMarket);
   });
   return counts;
 });

@@ -320,17 +320,22 @@ test('replace: a stock the app has never had is simply added, not a negative 匯
   assert.equal(db.findBy('stock_holdings', 'symbol', '00881.TW').shares, 33000);
 });
 
-test('clear stock data: removes self-account trades and holdings only; dry run only counts', async () => {
-  seedReplace();
-  db.insert('stock_transactions', tx({ symbol: 'NVDA', market: 'US', currency: 'USD', action: 'BUY', shares: 1, price: 100, date: '2025-01-01', account_id: 7 }));
+test('clear stock data: one market of the self account only; dry run only counts', async () => {
+  seedReplace(); // 00881.TW ×3 + 2330.TW, both TW holdings
+  db.insert('stock_transactions', tx({ symbol: 'NVDA', market: 'US', currency: 'USD', action: 'BUY', shares: 10, price: 100, date: '2025-01-01' }));
+  db.insert('stock_holdings', { symbol: 'NVDA', market: 'US', shares: 10, avg_cost: 100, currency: 'USD' });
+  db.insert('stock_transactions', tx({ symbol: '2330.TW', action: 'BUY', shares: 1, price: 900, date: '2025-01-01', account_id: 7 })); // managed
   db.insert('dividends', { symbol: '00881.TW', amount: 1000, date: '2025-01-20' });
   db.insert('expenses', { date: '2025-01-01', type: 'expense', amount: 50, category: '飲料' });
-  assert.deepEqual(await post('/api/stocks/clear', { dry: true }), { transactions: 4, holdings: 2 });
-  assert.equal(db.where('stock_transactions', (t) => t.account_id == null).length, 4);
-  assert.deepEqual(await post('/api/stocks/clear', {}), { transactions: 4, holdings: 2 });
-  assert.equal(db.where('stock_transactions', (t) => t.account_id == null).length, 0);
-  assert.equal(db.all('stock_holdings').length, 0);
-  assert.equal(db.where('stock_transactions', (t) => t.account_id === 7).length, 1); // managed account stays
+
+  assert.deepEqual(await post('/api/stocks/clear', { market: 'TW', dry: true }), { transactions: 4, holdings: 2 });
+  assert.equal(db.where('stock_transactions', (t) => t.account_id == null).length, 5); // dry: nothing gone
+  assert.deepEqual(await post('/api/stocks/clear', { market: 'TW' }), { transactions: 4, holdings: 2 });
+
+  assert.deepEqual(db.where('stock_transactions', (t) => t.account_id == null).map((t) => t.symbol), ['NVDA']);
+  assert.deepEqual(db.all('stock_holdings').map((h) => h.symbol), ['NVDA']);
+  assert.equal(db.where('stock_transactions', (t) => t.account_id === 7).length, 1);
   assert.equal(db.all('dividends').length, 1);
   assert.equal(db.all('expenses').length, 1);
+  await assert.rejects(post('/api/stocks/clear', {}), /market/);
 });

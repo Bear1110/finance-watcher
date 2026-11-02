@@ -1948,3 +1948,5 @@ body[data-tab="expenses"] .fab { display: flex; }
 .replace-symbol { margin-top: 8px; font-size: 0.88rem; }
 .replace-symbol summary { cursor: pointer; line-height: 1.6; }
 .replace-symbol ul { margin: 6px 0 0; padding-left: 18px; color: var(--text-secondary); }
+
+.clear-stock { display: inline-flex; gap: 8px; align-items: center; }
