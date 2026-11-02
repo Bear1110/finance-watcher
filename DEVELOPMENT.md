@@ -49,7 +49,7 @@ Yahoo Finance 沒有 CORS，瀏覽器不能直接呼叫。`market.js` 的所有�
 
 ```sh
 python -m http.server 8000   # ES modules 必須透過 HTTP 載入
-node --test                  # 單元測試（FIFO、TWR、代管帳戶、股利估算）
+node --test                  # 單元測試（FIFO、TWR、代管帳戶、股利估算、收支統計）
 ```
 
 改了 `js/` 底下的檔案清單時，記得同步 `sw.js` 的 `SHELL` 並把 `VERSION` 加一。

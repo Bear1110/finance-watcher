@@ -66,26 +66,54 @@ function sumTWD(rows, rate) {
   return rows.reduce((s, e) => s + (e.currency === 'USD' ? e.amount * rate : e.amount), 0);
 }
 
-function getBudgets(req) {
-  let year = new Date().getFullYear();
+function yearParam(req) {
   const ys = req.query.get('year');
-  if (ys && /^-?\d+$/.test(ys)) year = Number(ys);
+  return ys && /^-?\d+$/.test(ys) ? Number(ys) : new Date().getFullYear();
+}
+
+/**
+ * Actual totals of one year in TWD (USD at the stored rate), index 0 = January:
+ * { income, expense, byCategory: { income: {cat: amt}, expense: {cat: amt} } }.
+ * Anything not 'income' counts as expense.
+ */
+export function monthlyActuals(year) {
+  const rate = storedUSDTWDRate();
+  const months = Array.from({ length: 12 }, () => ({ income: 0, expense: 0, byCategory: { income: {}, expense: {} } }));
+  for (const e of db.where('expenses', (e) => e.date.startsWith(`${year}-`))) {
+    const m = Number(e.date.slice(5, 7));
+    if (!(m >= 1 && m <= 12)) continue;
+    const type = e.type === 'income' ? 'income' : 'expense';
+    const v = e.currency === 'USD' ? e.amount * rate : e.amount;
+    const slot = months[m - 1];
+    const cat = e.category || '未分類';
+    slot[type] += v;
+    slot.byCategory[type][cat] = (slot.byCategory[type][cat] || 0) + v;
+  }
+  return months;
+}
+
+/** Per-month income/expense, category sums and planned expense for the 收支 page charts. */
+function getStats(req) {
+  const year = yearParam(req);
+  const planned = new Map(db.where('budgets', (b) => b.year === year).map((b) => [b.month, b.planned_expense]));
+  const months = monthlyActuals(year).map((a, i) => ({
+    month: i + 1,
+    income: a.income,
+    expense: a.expense,
+    planned_expense: planned.get(i + 1) || 0,
+    by_category: a.byCategory,
+  }));
+  const dec = monthlyActuals(year - 1)[11];
+  return { year, months, prev_december: { income: dec.income, expense: dec.expense } };
+}
+
+function getBudgets(req) {
+  const year = yearParam(req);
 
   const budgetMap = new Map();
   for (const b of db.where('budgets', (b) => b.year === year)) budgetMap.set(b.month, b);
 
-  const rate = storedUSDTWDRate();
-  const prefix = `${year}-`;
-  const actual = new Map(); // month -> [income, expense]
-  for (const e of db.where('expenses', (e) => e.date.startsWith(prefix))) {
-    const m = Number(e.date.slice(5, 7));
-    if (!(m >= 1 && m <= 12)) continue;
-    const pair = actual.get(m) || [0, 0];
-    const v = e.currency === 'USD' ? e.amount * rate : e.amount;
-    // Grouped by type: anything not 'income' lands in the expense slot
-    if (e.type === 'income') pair[0] += v; else pair[1] += v;
-    actual.set(m, pair);
-  }
+  const actual = monthlyActuals(year);
 
   const resp = {
     year, months: [],
@@ -94,13 +122,13 @@ function getBudgets(req) {
   };
   for (let m = 1; m <= 12; m++) {
     const b = budgetMap.get(m);
-    const a = actual.get(m) || [0, 0];
+    const a = actual[m - 1];
     const d = {
       month: m,
       planned_income: b ? b.planned_income : 0,
       planned_expense: b ? b.planned_expense : 0,
-      actual_income: a[0],
-      actual_expense: a[1],
+      actual_income: a.income,
+      actual_expense: a.expense,
     };
     d.income_diff = d.actual_income - d.planned_income;
     d.expense_diff = d.actual_expense - d.planned_expense;
@@ -145,3 +173,4 @@ route('PUT', '/api/expenses/{id}', updateExpense);
 route('DELETE', '/api/expenses/{id}', remove);
 route('GET', '/api/expenses/summary', monthlySummary);
 route('GET', '/api/expenses/categories', categories);
+route('GET', '/api/expenses/stats', getStats);

@@ -2524,12 +2524,12 @@ async function saveBudget(year, month, field, value) {
   }
 }
 
-let expensePieChart = null;
 
 function initExpenseDefaults() {
   const dateInput = document.querySelector('#expense-form [name="date"]');
   if (dateInput) dateInput.value = todayStr();
   initYearSelector('exp-year-filter');
+  initMonthSelector();
 }
 
 function initYearSelector(id) {
@@ -2678,106 +2678,221 @@ async function deleteExpense(id) {
   }
 }
 
+// --- 收支 page: period summary, category ranking, monthly chart, records table ---
+
+let _expAutoMonth = true;      // first load picks the latest month that has data
+let _expCatType = 'expense';   // category ranking shows expense or income
+let _expCatFilter = null;      // category clicked in the ranking; filters the table
+let _expStats = null;          // /api/expenses/stats of the selected year
+let _expAll = [];              // /api/expenses
+let _expMonthlyChart = null;
+
+/** Series colors from CSS (validated for CVD separation on the card surface). */
+const seriesColor = (name) => getComputedStyle(document.documentElement).getPropertyValue(`--series-${name}`).trim();
+
+function initMonthSelector() {
+  const select = document.getElementById('exp-month-filter');
+  select.innerHTML = '<option value="0">全年</option>' +
+    Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}">${i + 1}月</option>`).join('');
+  select.value = String(new Date().getMonth() + 1);
+}
+
+const expYear = () => Number(document.getElementById('exp-year-filter').value) || new Date().getFullYear();
+const expMonth = () => Number(document.getElementById('exp-month-filter').value) || 0; // 0 = whole year
+
 async function loadExpenses() {
-  const year = document.getElementById('exp-year-filter')?.value || new Date().getFullYear();
-  const typeFilter = document.getElementById('exp-type-filter').value;
-
   try {
-    const expenses = await api('/api/expenses');
-    const list = Array.isArray(expenses) ? expenses : [];
-
-    // Filter by year and type
-    let filtered = list.filter(e => e.date && e.date.startsWith(String(year)));
-    if (typeFilter !== 'all') {
-      filtered = filtered.filter(e => (e.type || 'expense') === typeFilter);
+    const [expenses, stats] = await Promise.all([api('/api/expenses'), api(`/api/expenses/stats?year=${expYear()}`)]);
+    _expAll = Array.isArray(expenses) ? expenses : [];
+    _expStats = stats;
+    if (_expAutoMonth) {
+      _expAutoMonth = false;
+      const withData = stats.months.filter(m => m.income || m.expense).map(m => m.month);
+      if (withData.length && !withData.includes(expMonth())) {
+        document.getElementById('exp-month-filter').value = String(Math.max(...withData));
+      }
     }
-
-    // Table
-    const tbody = document.getElementById('expense-body');
-    if (filtered.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" class="empty-state">此年度尚無紀錄</td></tr>';
-    } else {
-      window._expenseList = filtered;
-      tbody.innerHTML = filtered.map((e, idx) => {
-        const t = e.type || 'expense';
-        return `
-          <tr>
-            <td>${e.date || '--'}</td>
-            <td><span class="tag-${t}">${t === 'income' ? '收入' : '支出'}</span></td>
-            <td>${e.category || '--'}</td>
-            <td>${fmtTWD(e.amount)}</td>
-            <td>${e.note || ''}</td>
-            <td>
-              <button class="btn btn-outline btn-sm" onclick="editExpenseByIndex(${idx})">編輯</button>
-              <button class="btn btn-danger btn-sm" onclick="deleteExpense(${e.id})">刪除</button>
-            </td>
-          </tr>
-        `;
-      }).join('');
-    }
-
+    renderExpensePage();
   } catch (err) {
     showToast('載入收支資料失敗: ' + err.message, 'error');
   }
 }
 
-const PIE_COLORS = [
-  '#4e8cff', '#34d399', '#f87171', '#fbbf24', '#a78bfa',
-  '#f472b6', '#38bdf8', '#fb923c', '#6ee7b7', '#e879f9',
-];
+/** Everything below the period selector, from the cached data (no fetch). */
+function renderExpensePage() {
+  if (!_expStats) return; // not loaded yet
+  const month = expMonth();
+  renderExpenseSummary(_expStats, month);
+  renderCategoryRank(_expStats, month);
+  renderMonthlyChart(_expStats, month);
+  renderExpenseTable(month);
+}
 
-function renderExpensePieChart(catMap) {
-  const ctx = document.getElementById('chart-expense-pie');
-  if (expensePieChart) expensePieChart.destroy();
+/** Percent change vs. a previous value, or '' when there is nothing to compare. */
+function changeText(cur, prev, label) {
+  if (!prev) return '';
+  const pct = (cur - prev) / prev * 100;
+  return `${label} ${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`;
+}
 
-  const labels = Object.keys(catMap);
-  const data = Object.values(catMap);
+const savingRate = (income, expense) => (income > 0 ? `${((income - expense) / income * 100).toFixed(1)}%` : '--');
 
-  if (labels.length === 0) {
-    // Clear the chart area
-    expensePieChart = new Chart(ctx, {
-      type: 'doughnut',
-      data: { labels: ['無資料'], datasets: [{ data: [1], backgroundColor: ['#2a3a4e'] }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } },
-    });
-    document.getElementById('expense-category-legend').innerHTML = '';
+function renderExpenseSummary(stats, month) {
+  const sumOf = (ms, k) => ms.reduce((s, m) => s + m[k], 0);
+  const months = month ? [stats.months[month - 1]] : stats.months;
+  const income = sumOf(months, 'income');
+  const expense = sumOf(months, 'expense');
+  // Budget progress only counts months that have a budget (a year with one budgeted month
+  // compares that month alone, not the whole year's spending)
+  const budgeted = months.filter(m => m.planned_expense > 0);
+  const planned = sumOf(budgeted, 'planned_expense');
+  const net = income - expense;
+  const prev = month ? (month > 1 ? stats.months[month - 2] : stats.prev_december) : null;
+  const active = stats.months.filter(m => m.income || m.expense).length;
+  const set = (id, html, cls = '') => {
+    const el = document.getElementById(id);
+    el.innerHTML = html;
+    el.classList.remove('positive', 'negative');
+    if (cls) el.classList.add(cls);
+  };
+
+  set('exp-sum-income', fmtTWD(income));
+  set('exp-sum-expense', fmtTWD(expense));
+  set('exp-sum-net', fmtPL(net), plClass(net));
+  set('exp-sum-rate', savingRate(income, expense), income > 0 ? plClass(net) : '');
+
+  if (month) {
+    const hasPrev = prev.income || prev.expense;
+    set('exp-sum-income-sub', changeText(income, prev.income, '較上月'));
+    set('exp-sum-net-sub', hasPrev ? `上月 ${fmtPL(prev.income - prev.expense)}` : '');
+    set('exp-sum-rate-sub', prev.income > 0 ? `上月 ${savingRate(prev.income, prev.expense)}` : '');
+  } else {
+    set('exp-sum-income-sub', active ? `月平均 ${fmtTWD(income / active)}` : '');
+    set('exp-sum-net-sub', active ? `月平均 ${fmtPL(net / active)}` : '');
+    set('exp-sum-rate-sub', active ? `${active} 個月有紀錄` : '');
+  }
+  if (planned > 0) {
+    const used = sumOf(budgeted, 'expense') / planned * 100;
+    const scope = !month && budgeted.length < 12 ? `${budgeted.length} 個月` : '';
+    set('exp-sum-expense-sub', `${scope}預算 ${fmtTWD(planned)} · 已用 ${used.toFixed(0)}%` +
+      `<div class="budget-mini"><div class="budget-mini-fill${used > 100 ? ' over' : ''}" style="width:${Math.min(used, 100)}%"></div></div>`);
+  } else if (month) {
+    set('exp-sum-expense-sub', changeText(expense, prev.expense, '較上月'));
+  } else {
+    set('exp-sum-expense-sub', active ? `月平均 ${fmtTWD(expense / active)}` : '');
+  }
+}
+
+function renderCategoryRank(stats, month) {
+  const totals = {};
+  for (const m of month ? [stats.months[month - 1]] : stats.months) {
+    for (const [c, v] of Object.entries(m.by_category[_expCatType])) totals[c] = (totals[c] || 0) + v;
+  }
+  const rows = Object.entries(totals).sort((a, b) => b[1] - a[1]);
+  const el = document.getElementById('exp-cat-list');
+  if (!rows.length) {
+    el.innerHTML = `<p class="empty-state">這段期間沒有${_expCatType === 'income' ? '收入' : '支出'}紀錄</p>`;
     return;
   }
+  const sum = rows.reduce((s, r) => s + r[1], 0);
+  const max = rows[0][1];
+  el.style.setProperty('--cat-color', seriesColor(_expCatType));
+  el.innerHTML = rows.map(([c, v]) => `
+    <button type="button" class="cat-row${c === _expCatFilter ? ' active' : ''}" data-cat="${escapeHtml(c).replace(/"/g, '&quot;')}" onclick="setCategoryFilter(this.dataset.cat)">
+      <span class="cat-name">${escapeHtml(c)}</span>
+      <span class="cat-track"><span class="cat-fill" style="width:${(v / max * 100).toFixed(1)}%"></span></span>
+      <span class="cat-amt">${fmtTWD(v)}</span>
+      <span class="cat-pct">${(v / sum * 100).toFixed(1)}%</span>
+    </button>`).join('');
+}
 
-  expensePieChart = new Chart(ctx, {
-    type: 'doughnut',
+function renderMonthlyChart(stats, month) {
+  if (_expMonthlyChart) _expMonthlyChart.destroy();
+  // The selected month stays solid; the others fade so the selection reads at a glance
+  const colors = (c) => stats.months.map(m => (!month || m.month === month ? c : c + '59'));
+  const bar = (label, key, name) => ({
+    label, data: stats.months.map(m => m[key]), backgroundColor: colors(seriesColor(name)),
+    borderRadius: 4, borderSkipped: 'bottom',
+  });
+  _expMonthlyChart = new Chart(document.getElementById('chart-exp-monthly'), {
+    type: 'bar',
     data: {
-      labels,
-      datasets: [{
-        data,
-        backgroundColor: PIE_COLORS.slice(0, labels.length),
-        borderWidth: 0,
-        hoverOffset: 6,
-      }]
+      labels: stats.months.map(m => `${m.month}月`),
+      datasets: [bar('收入', 'income', 'income'), bar('支出', 'expense', 'expense')],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      cutout: '60%',
+      datasets: { bar: { categoryPercentage: 0.7, barPercentage: 0.9 } },
+      interaction: { mode: 'index', intersect: false },
+      onClick: (_, els) => {
+        if (!els.length) return;
+        document.getElementById('exp-month-filter').value = String(els[0].index + 1);
+        renderExpensePage();
+      },
+      onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; },
       plugins: {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            label: ctx => `${ctx.label}: NT$ ${fmt(ctx.parsed)}`
-          }
-        }
+            label: c => `${c.dataset.label}: ${fmtTWD(c.parsed.y)}`,
+            footer: items => `結餘: ${fmtPL(items[0].parsed.y - items[1].parsed.y)}`,
+          },
+        },
       },
-    }
+      scales: {
+        x: { ticks: { color: '#5c6f8a', font: { size: 11 }, maxRotation: 0, autoSkip: true }, grid: { display: false } },
+        y: { beginAtZero: true, ticks: { color: '#5c6f8a', font: { size: 11 }, precision: 0, callback: v => fmt(v) }, grid: { color: 'rgba(42,58,78,0.4)' } },
+      },
+    },
   });
+}
 
-  // Custom legend
-  const legend = document.getElementById('expense-category-legend');
-  legend.innerHTML = labels.map((l, i) => `
-    <span class="legend-item">
-      <span class="legend-dot" style="background:${PIE_COLORS[i % PIE_COLORS.length]}"></span>
-      ${l}: ${fmtTWD(data[i])}
-    </span>
-  `).join('');
+function setCategoryType(type) {
+  _expCatType = type;
+  document.querySelectorAll('[data-cat-type]').forEach(b => b.classList.toggle('active', b.dataset.catType === type));
+  document.getElementById('exp-cat-title').textContent = type === 'income' ? '收入分類' : '支出分類';
+  if (_expStats) renderCategoryRank(_expStats, expMonth());
+}
+
+function setCategoryFilter(cat) {
+  _expCatFilter = cat && cat !== _expCatFilter ? cat : null; // clicking the active row clears it
+  const chip = document.getElementById('exp-cat-chip');
+  chip.style.display = _expCatFilter ? '' : 'none';
+  chip.textContent = _expCatFilter ? `分類：${_expCatFilter} ✕` : '';
+  if (!_expStats) return;
+  renderCategoryRank(_expStats, expMonth());
+  renderExpenseTable(expMonth());
+}
+
+function renderExpenseTable(month) {
+  const prefix = month ? `${expYear()}-${String(month).padStart(2, '0')}` : String(expYear());
+  const typeFilter = document.getElementById('exp-type-filter').value;
+  const filtered = _expAll.filter(e => e.date && e.date.startsWith(prefix) &&
+    (typeFilter === 'all' || (e.type || 'expense') === typeFilter) &&
+    (!_expCatFilter || (e.category || '未分類') === _expCatFilter));
+  window._expenseList = filtered;
+  const tbody = document.getElementById('expense-body');
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="empty-state">${month ? '這個月' : '此年度'}尚無紀錄</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = filtered.map((e, idx) => {
+    const t = e.type || 'expense';
+    return `
+      <tr>
+        <td>${e.date || '--'}</td>
+        <td><span class="tag-${t}">${t === 'income' ? '收入' : '支出'}</span></td>
+        <td>${escapeHtml(e.category || '--')}</td>
+        <td>${fmtTWD(e.amount)}</td>
+        <td>${escapeHtml(e.note || '')}</td>
+        <td>
+          <button class="btn btn-outline btn-sm" onclick="editExpenseByIndex(${idx})">編輯</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteExpense(${e.id})">刪除</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
 }
 
 // ============================================================
