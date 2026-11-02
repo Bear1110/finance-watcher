@@ -107,15 +107,31 @@ function renderMarkdown(text) {
 // SECTION: Toast Notifications
 // ============================================================
 
-function showToast(message, type = 'info') {
+/**
+ * action: { label, run } adds a button and makes the toast sticky (stays until clicked);
+ * id: only one toast with this id is shown at a time.
+ */
+function showToast(message, type = 'info', { action, id } = {}) {
+  if (id && document.getElementById(id)) return;
   const container = document.getElementById('toast-container');
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
-  toast.textContent = message;
+  if (id) toast.id = id;
+  const text = document.createElement('span');
+  text.textContent = message;
+  toast.appendChild(text);
   container.appendChild(toast);
-  setTimeout(() => {
-    if (toast.parentNode) toast.parentNode.removeChild(toast);
-  }, 3000);
+  if (action) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-primary btn-sm';
+    btn.textContent = action.label;
+    btn.addEventListener('click', () => { toast.remove(); action.run(); });
+    toast.appendChild(btn);
+    toast.classList.add('toast-sticky');
+    return;
+  }
+  setTimeout(() => toast.remove(), 3000);
 }
 
 // ============================================================

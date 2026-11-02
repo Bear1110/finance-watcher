@@ -236,12 +236,7 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 }
 
 // 網站有新部署時，顯示一則不會自動消失的提示，點了重新整理
-watchForUpdate(() => {
-  if (document.getElementById('update-toast')) return;
-  const el = document.createElement('div');
-  el.id = 'update-toast';
-  el.className = 'toast toast-info toast-sticky';
-  el.innerHTML = '<span>有新版本可用</span><button type="button" class="toast-action">重新整理</button>';
-  el.querySelector('button').addEventListener('click', () => location.reload());
-  document.getElementById('toast-container').append(el);
-});
+watchForUpdate(() => window.showToast?.('有新版本可用', 'info', {
+  id: 'update-toast',
+  action: { label: '重新整理', run: () => location.reload() },
+}));
