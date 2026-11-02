@@ -184,6 +184,37 @@ function downloadFile(filename, content, type) {
 }
 
 // ============================================================
+// SECTION: Icons — line icons in the nav's style, filled into <span data-icon="name">
+// ============================================================
+
+const ICONS = {
+  briefcase: '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>',
+  pie: '<path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>',
+  dollar: '<circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8M12 18V6"/>',
+  list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  coins: '<circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18M7 6h1v4M16.71 13.88l.7.71-2.82 2.82"/>',
+  cloud: '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
+  sliders: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
+  trending: '<polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>',
+  type: '<path d="M4 7V4h16v3M9 20h6M12 4v16"/>',
+  database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>',
+  check: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+  info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+  alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4M12 17h.01"/>',
+  refresh: '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/>',
+  sparkles: '<path d="M12 3l1.9 5.8L20 10.7l-6.1 1.9L12 18.5l-1.9-5.9L4 10.7l6.1-1.9z"/><path d="M19 17v4M17 19h4"/>',
+};
+
+function applyIcons(root = document) {
+  root.querySelectorAll('[data-icon]').forEach(el => {
+    const paths = ICONS[el.dataset.icon];
+    if (paths) el.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+  });
+}
+
+// ============================================================
 // SECTION: Tab Navigation
 // ============================================================
 
@@ -209,6 +240,8 @@ function initTabs() {
       parent.querySelectorAll('.subtab-content').forEach(c => c.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById('subtab-' + btn.dataset.subtab).classList.add('active');
+      // Charts need a visible canvas to size, so 組合分析 draws when opened
+      if (btn.dataset.subtab === 'portfolio') loadPortfolioAnalysis();
     });
   });
 
@@ -242,8 +275,9 @@ function onTabActivated(tab) {
   document.body.dataset.tab = tab; // CSS shows tab-specific controls (e.g. the 收支 + button)
   switch (tab) {
     case 'dashboard': loadDashboard(); break;
-    case 'stocks': loadHoldings(); loadTransactions(); loadRealizedSummary(); loadDividends(); loadXirr(); loadHoldingsTrend(); break;
-    case 'portfolio': loadPortfolioAnalysis(); break;
+    case 'stocks': loadHoldings(); loadTransactions(); loadRealizedSummary(); loadDividends(); loadXirr(); loadHoldingsTrend();
+      if (document.getElementById('subtab-portfolio').classList.contains('active')) loadPortfolioAnalysis();
+      break;
     case 'expenses': loadExpenses(); break;
     case 'managed': loadManagedAccounts(); break;
     case 'llm': initAIImport(); break;
@@ -2449,11 +2483,18 @@ async function saveBudget(year, month, field, value) {
 
 // EXPENSE_CATEGORIES (the dialog's presets) comes from js/server/expenses.js via main.js.
 const CATEGORY_HINTS = { 住房: '住房 (房租/水電)' };
+/** An emoji per category, so lists read at a glance; categories added later get the tag. */
+const CATEGORY_EMOJI = {
+  飲食: '🍜', 飲料: '🧋', 交通: '🚗', 住房: '🏠', 娛樂: '🎮', 醫療: '💊', 日用品: '🧻', 購物: '🛍️', 送禮: '🎁',
+  其他支出: '📦', 保險: '🛡️', 薪資: '💼', 股利: '📈', 獎金: '🎉', 其他收入: '💰', '': '❔',
+};
 /** Display name of a category; records without one show as 未分類. */
 const catLabel = (c) => c || '未分類';
+/** Emoji + name, for lists and tables */
+const catDisplay = (c) => `${CATEGORY_EMOJI[c || ''] || '🏷️'} ${catLabel(c)}`;
 
 function buildCategoryOptions() {
-  const opts = (list) => list.map(c => `<option value="${c}">${CATEGORY_HINTS[c] || c}</option>`).join('');
+  const opts = (list) => list.map(c => `<option value="${c}">${CATEGORY_EMOJI[c] || '🏷️'} ${CATEGORY_HINTS[c] || c}</option>`).join('');
   document.getElementById('expense-category').innerHTML =
     `<optgroup label="支出" id="cat-expense-group">${opts(EXPENSE_CATEGORIES.expense)}</optgroup>` +
     `<optgroup label="收入" id="cat-income-group">${opts(EXPENSE_CATEGORIES.income)}</optgroup>` +
@@ -2731,7 +2772,7 @@ function renderCategoryRank(stats, month) {
   el.style.setProperty('--cat-color', seriesColor(_expCatType));
   el.innerHTML = rows.map(([c, v]) => `
     <button type="button" class="cat-row${c === _expCatFilter ? ' active' : ''}" data-cat="${escapeHtml(c).replace(/"/g, '&quot;')}" onclick="setCategoryFilter(this.dataset.cat)">
-      <span class="cat-name">${escapeHtml(catLabel(c))}</span>
+      <span class="cat-name">${escapeHtml(catDisplay(c))}</span>
       <span class="source-bar cat-track"><span style="width:${(v / max * 100).toFixed(1)}%"></span></span>
       <span class="cat-amt">${fmtTWD(v)}</span>
       <span class="cat-pct">${(v / sum * 100).toFixed(1)}%</span>
@@ -2821,7 +2862,7 @@ function renderExpenseTable(month) {
       <tr>
         <td>${e.date || '--'}</td>
         <td><span class="tag-${t}">${t === 'income' ? '收入' : '支出'}</span></td>
-        <td>${escapeHtml(catLabel(e.category))}</td>
+        <td>${escapeHtml(catDisplay(e.category))}</td>
         <td>${fmtTWD(e.amount)}</td>
         <td>${escapeHtml(e.note || '')}</td>
         <td>
@@ -3018,7 +3059,7 @@ const IMPORT_COLUMNS = {
   expenses: [
     ['日期', e => e.date],
     ['類型', e => `<span class="tag-${e.type}">${e.type === 'income' ? '收入' : '支出'}</span>`],
-    ['分類', e => escapeHtml(catLabel(e.category))],
+    ['分類', e => escapeHtml(catDisplay(e.category))],
     ['金額', e => fmtCur(e.amount, e.currency)],
     ['備註', e => escapeHtml(e.note || '')],
   ],
@@ -3244,6 +3285,7 @@ function initFontSize() {
 
 document.addEventListener('DOMContentLoaded', () => {
   initFontSize();
+  applyIcons();
   applyPrivacyUI();
   initTabs();
   initExpenseDefaults();
@@ -3277,7 +3319,7 @@ async function loadCategories() {
         if (!existing.has(c) && c !== '__custom__') {
           const opt = document.createElement('option');
           opt.value = c;
-          opt.textContent = c;
+          opt.textContent = catDisplay(c);
           // Insert before the custom option
           select.insertBefore(opt, select.querySelector('[value="__custom__"]'));
         }
