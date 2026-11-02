@@ -49,7 +49,6 @@
       <button class="tab-btn active" data-tab="dashboard"><span class="tab-icon" data-icon="grid"></span><span class="tab-label">總覽</span></button>
       <button class="tab-btn" data-tab="stocks"><span class="tab-icon" data-icon="trending"></span><span class="tab-label">股票</span></button>
       <button class="tab-btn" data-tab="expenses"><span class="tab-icon" data-icon="wallet"></span><span class="tab-label">收支</span></button>
-      <button class="tab-btn" data-tab="llm"><span class="tab-icon" data-icon="sparkles"></span><span class="tab-label">AI</span></button>
       <button class="tab-btn" data-tab="settings"><span class="tab-icon" data-icon="gear"></span><span class="tab-label">設定</span></button>
     </div>
     <button type="button" class="privacy-toggle nav-privacy" onclick="togglePrivacy()" aria-label="顯示/隱藏金額" aria-pressed="false"><svg class="eye-open" aria-hidden="true"><use href="#i-eye"/></svg><svg class="eye-closed" aria-hidden="true"><use href="#i-eye-off"/></svg></button>
@@ -65,6 +64,7 @@
     <section id="tab-dashboard" class="tab-content active">
       <!-- Net worth hero -->
       <div class="hero-card">
+        <button type="button" class="btn btn-outline btn-sm hero-ai" onclick="goToTab('llm')"><span class="i" data-icon="sparkles"></span>AI 分析</button>
         <div class="hero-label">淨資產 <button type="button" class="privacy-toggle hero-privacy" onclick="togglePrivacy()" aria-label="顯示/隱藏金額" aria-pressed="false"><svg class="eye-open" aria-hidden="true"><use href="#i-eye"/></svg><svg class="eye-closed" aria-hidden="true"><use href="#i-eye-off"/></svg></button></div>
         <div class="hero-value" id="dash-net-worth">--</div>
         <div class="hero-sub" id="dash-net-date">--</div>
@@ -673,7 +673,7 @@
     <section id="tab-expenses" class="tab-content">
       <!-- Period + summary -->
       <div class="exp-period">
-        <select id="exp-year-filter" onchange="_expAutoMonth = true; loadExpenses()" class="input-sm" aria-label="年度"></select>
+        <select id="exp-year-filter" onchange="onExpYearChange()" class="input-sm" aria-label="年度"></select>
         <select id="exp-month-filter" onchange="renderExpensePage()" class="input-sm" aria-label="月份"></select>
       </div>
 
@@ -808,7 +808,7 @@
 
     <!-- ==================== MANAGED ACCOUNTS TAB ==================== -->
     <section id="tab-managed" class="tab-content">
-      <button type="button" class="back-link" onclick="goToTab('settings')">‹ 設定</button>
+      <button type="button" class="back-link" onclick="goBack()"></button>
       <div class="card" style="margin-bottom:16px">
         <div class="card-header">
           <h3>代管帳戶</h3>
@@ -989,6 +989,7 @@
 
     <!-- ==================== LLM TAB ==================== -->
     <section id="tab-llm" class="tab-content">
+      <button type="button" class="back-link" onclick="goBack()"></button>
       <!-- Step 1: Select data to include -->
       <div class="card" style="margin-bottom:20px">
         <div class="card-header">
@@ -1064,6 +1065,11 @@
       <button type="button" class="card settings-link" onclick="goToTab('managed')">
         <span class="settings-link-icon" data-icon="users"></span>
         <span class="settings-link-text"><strong>代管帳戶</strong><span>代他人保管的現金與持股，不計入總覽</span></span>
+        <span class="settings-link-chevron" aria-hidden="true">›</span>
+      </button>
+      <button type="button" class="card settings-link" onclick="goToTab('llm')">
+        <span class="settings-link-icon" data-icon="sparkles"></span>
+        <span class="settings-link-text"><strong>AI 分析與匯入</strong><span>財務分析提示詞、記帳與對帳單匯入</span></span>
         <span class="settings-link-chevron" aria-hidden="true">›</span>
       </button>
 

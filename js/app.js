@@ -263,16 +263,24 @@ function initTapTips() {
 // SECTION: Tab Navigation
 // ============================================================
 
-// Pages without their own nav button, and the nav button that stays highlighted for them
-const TAB_PARENT = { managed: 'settings' };
+// Pages without their own nav button: the nav tab they were opened from stays
+// highlighted, and their back link (text filled in here) returns there.
+const SUB_PAGES = new Set(['managed', 'llm']);
+const activeNav = () => document.querySelector('.tab-btn.active');
 
 function showTab(tab) {
-  const nav = TAB_PARENT[tab] || tab;
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === nav));
+  if (SUB_PAGES.has(tab)) {
+    const label = activeNav().querySelector('.tab-label').textContent;
+    document.querySelectorAll(`#tab-${tab} > .back-link`).forEach(b => { b.textContent = `‹ ${label}`; });
+  } else {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  }
   document.querySelectorAll('.tab-content').forEach(tc => tc.classList.toggle('active', tc.id === 'tab-' + tab));
   window.scrollTo(0, 0);
   onTabActivated(tab);
 }
+
+const goBack = () => showTab(activeNav().dataset.tab);
 
 function initTabs() {
   document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => showTab(btn.dataset.tab)));
@@ -2580,13 +2588,14 @@ function initYearSelector(id, startYear = 2020) {
   }
 }
 
-/** Reaches a year selector back to the oldest record, so older imports can be browsed. */
-function extendYearSelector(id, dates) {
-  const select = document.getElementById(id);
-  const years = dates.map(d => Number(String(d).slice(0, 4))).filter(y => y > 1900);
-  if (!select || !years.length) return;
-  const first = Math.min(...years);
-  if (first < Number(select.options[select.options.length - 1]?.value)) initYearSelector(id, first);
+/** 收支 and 預算 year pickers reach back to the oldest record (rebuilt only when that changes). */
+let _expStartYear = 2020;
+function setExpenseStartYear(firstYear) {
+  const start = Math.min(2020, firstYear || 2020);
+  if (start === _expStartYear) return;
+  _expStartYear = start;
+  initYearSelector('exp-year-filter', start);
+  initYearSelector('budget-year', start);
 }
 
 function toggleCustomCategory(select) {
@@ -2718,6 +2727,10 @@ async function deleteExpenseFromModal() {
 // --- 收支 page: period summary, category ranking, monthly chart, records table ---
 
 let _expAutoMonth = true;      // first load / a year change picks the latest month that has data
+function onExpYearChange() {
+  _expAutoMonth = true;
+  loadExpenses();
+}
 let _expCatType = 'expense';   // category ranking shows expense or income
 let _expCatFilter = null;      // raw category clicked in the ranking ('' = 未分類); null = no filter
 let _expStats = null;          // /api/expenses/stats of the selected year
@@ -2745,7 +2758,7 @@ async function loadExpenses() {
     const [expenses, stats] = await Promise.all([api('/api/expenses'), api(`/api/expenses/stats?year=${expYear()}`)]);
     _expAll = Array.isArray(expenses) ? expenses : [];
     _expStats = stats;
-    extendYearSelector('exp-year-filter', _expAll.map(e => e.date));
+    setExpenseStartYear(stats.first_year);
     if (_expAutoMonth) {
       _expAutoMonth = false;
       const withData = stats.months.filter(m => m.income || m.expense).map(m => m.month);
@@ -3094,7 +3107,7 @@ async function refreshAIImportPrompt() {
   setAILinks('import', prompt);
 }
 
-/** From another tab (e.g. 收支): jump to the AI tab with only that kind checked. */
+/** From another tab (e.g. 收支): open the AI page with only that kind checked. */
 async function openAIImport(kind) {
   goToTab('llm');
   await initAIImport(kind);

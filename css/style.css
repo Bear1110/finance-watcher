@@ -1094,6 +1094,7 @@ select option {
 
 /* Dashboard hero */
 .hero-card {
+  position: relative;
   background: linear-gradient(135deg, #1e3a5f 0%, #2a1a4e 100%);
   border-radius: 16px;
   padding: 32px;
@@ -2060,3 +2061,6 @@ body[data-tab="expenses"] .fab { display: flex; }
 
 .tab-icon svg, .settings-link-icon svg, .fab [data-icon] svg { width: 100%; height: 100%; display: block; }
 .fab [data-icon] { width: 26px; height: 26px; }
+
+/* 總覽 hero: entry to the AI page (no nav tab of its own) */
+.hero-ai { position: absolute; top: 12px; right: 12px; }

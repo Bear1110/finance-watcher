@@ -93,6 +93,13 @@ function monthlyActuals(year) {
   return months;
 }
 
+/** Year of the oldest record (null when there are none), so the year pickers reach it. */
+function firstYear() {
+  let first = '';
+  for (const e of db.all('expenses')) if (e.date && (!first || e.date < first)) first = e.date;
+  return first ? Number(first.slice(0, 4)) : null;
+}
+
 /** Per-month income/expense, category sums and planned expense for the 收支 page charts. */
 function getStats(req) {
   const year = yearParam(req);
@@ -105,7 +112,7 @@ function getStats(req) {
     by_category: a.byCategory,
   }));
   const dec = monthlyActuals(year - 1)[11];
-  return { year, months, prev_december: { income: dec.income, expense: dec.expense } };
+  return { year, months, prev_december: { income: dec.income, expense: dec.expense }, first_year: firstYear() };
 }
 
 function getBudgets(req) {
