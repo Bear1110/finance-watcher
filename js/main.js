@@ -23,6 +23,8 @@ import './server/reports.js';
 import './server/llm.js';
 import './server/managed.js';
 import './server/settings.js';
+import './server/aiimport.js';
+import { EXPENSE_CATEGORIES } from './server/expenses.js';
 
 db.load();
 
@@ -222,12 +224,20 @@ Object.assign(window, {
   LocalAPI: { handle },
   fwRefresh, renderCloudStatus, cloudSignIn, cloudSyncNow, cloudSignOut,
   onSyncPillClick, saveProxyURL, downloadBackup, clearLocalData, reloadApp,
+  EXPENSE_CATEGORIES,
 });
 
 window.localApiReady = Promise.resolve();
 
 document.getElementById('import-file')?.addEventListener('change', onImportFile);
 sync.onStatus(renderCloudStatus);
+
+// AI 對話紀錄已停用：清掉舊資料（含其他裝置同步下來的），刪除會跟著同步到試算表
+function dropLegacyConversations() {
+  if (db.all('llm_conversations').length) db.removeWhere('llm_conversations', () => true);
+}
+dropLegacyConversations();
+db.onChange(dropLegacyConversations);
 db.onChange(() => renderCloudStatus());
 sync.initSync();
 

@@ -369,12 +369,6 @@ export function generateFinancialPrompt(data) {
 
 // ---------------------------------------------------------------- routes
 
-const convoJSON = (c) => ({ id: c.id, prompt: c.prompt, response: c.response, provider: c.provider, created_at: c.created_at });
-
-route('GET', '/api/llm/conversations', () => db.all('llm_conversations')
-  .sort((a, b) => cmp(b.created_at, a.created_at) || b.id - a.id)
-  .map(convoJSON));
-
 route('POST', '/api/llm/analyze', async (req) => {
   const r = body(req);
   const apiKey = db.getSetting('gemini_api_key');
@@ -388,7 +382,7 @@ route('POST', '/api/llm/analyze', async (req) => {
   } catch (e) {
     throw new HttpError(500, 'Gemini API error: ' + e.message);
   }
-  return convoJSON(db.insert('llm_conversations', { prompt, response, provider: 'gemini' }));
+  return { response, provider: 'gemini' };
 });
 
 route('POST', '/api/llm/prompt', async (req) => {
@@ -397,9 +391,3 @@ route('POST', '/api/llm/prompt', async (req) => {
   return { prompt: await generateAutoPrompt(r.sections) };
 });
 
-route('POST', '/api/llm/import', (req) => {
-  const r = body(req);
-  return convoJSON(db.insert('llm_conversations', {
-    prompt: r.prompt || '', response: r.response || '', provider: 'manual',
-  }));
-});

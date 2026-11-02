@@ -4,6 +4,12 @@ import * as db from './db.js';
 import { route } from './router.js';
 import { badRequest, body, cmp, isDate, storedUSDTWDRate } from './util.js';
 
+/** Preset categories (add/edit dialog and AI import prompt); the first of each list is that type's default. */
+export const EXPENSE_CATEGORIES = {
+  expense: ['飲食', '飲料', '交通', '住房', '娛樂', '醫療', '日用品', '購物', '送禮', '其他支出'],
+  income: ['薪資', '股利', '獎金', '其他收入'],
+};
+
 export const expenseJSON = (e) => ({ id: e.id, type: e.type, amount: e.amount, currency: e.currency, category: e.category, note: e.note, date: e.date, created_at: e.created_at });
 
 function list(req) {
@@ -22,7 +28,7 @@ function list(req) {
 }
 
 /** Validates input and fills defaults (type=expense, currency=TWD). */
-function normalizeExpense(e) {
+export function normalizeExpense(e) {
   const out = {
     type: e.type || 'expense',
     amount: Number(e.amount) || 0,

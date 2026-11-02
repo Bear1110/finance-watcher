@@ -68,6 +68,7 @@ export const SCHEMA = {
     columns: { id: 'int', key: 'text', value: 'text' },
     defaults: {},
   },
+  // Legacy: no longer written. Kept so main.js can delete leftover rows and the deletes sync to the sheet.
   llm_conversations: {
     synced: true,
     columns: { id: 'int', prompt: 'text', response: 'text', provider: 'text', created_at: 'text' },

@@ -15,6 +15,7 @@
 | `assets.js` / `expenses.js` / `dividends.js` / `managed.js` / `settings.js` / `reports.js` / `llm.js` / `export.js` | 各功能頁 |
 | `twr.js` / `twr_calc.js` / `performance.js` / `datacheck.js` | 投資績效（TWR / XIRR）與資料檢查 |
 | `market.js` | 報價、匯率、歷史股價、股利歷史 |
+| `aiimport.js` | AI 匯入：產生只有格式說明的提示詞、寬鬆解析 AI 回覆、預覽與判斷重複、整批寫入 |
 
 ## 資料與同步
 
@@ -25,6 +26,18 @@
 - 分頁用固定 sheetId 辨識（`js/cloud/sheets.js` 的 `SHEET_IDS`，只能新增不能改號），使用者改分頁名稱不會壞；欄位依標題名稱對應
 - 寫入分頁時先覆寫、再清掉多出來的尾巴，寫到一半失敗也不會留下空分頁
 - 只存在本機、不同步的設定：`gemini_api_key`、`yahoo_proxy_url`（`db.LOCAL_SETTINGS`）
+
+## AI 匯入
+
+流程：勾選種類 → 產生提示詞（只有格式說明，不含使用者資料）→ 用 `chatgpt.com/?q=` / `claude.ai/new?q=` 開啟或複製 →
+使用者在 AI 那邊貼上自己的資料或截圖 → 把回覆貼回來 → `/api/ai-import/parse` 預覽 → `/api/ai-import/commit` 寫入。
+
+回覆格式是一個外框分區：`{ "format": "finance-watcher-import", "version": 1, "expenses": [...] }`。
+新增一種可匯入的資料（股票交易、股利、資產快照…）只要在 `aiimport.js` 的 `KINDS` 登記一項
+（`label`、`example`、`prompt()`、`normalize()`、`key()`、`existing()`、`insert()`），
+再在 `app.js` 的 `renderImportSection()` 補上預覽表格。
+
+舊的「AI 對話紀錄」已停用；`llm_conversations` 表只為了把刪除同步到試算表而保留。
 
 ## 行情
 
@@ -49,7 +62,7 @@ Yahoo Finance 沒有 CORS，瀏覽器不能直接呼叫。`market.js` 的所有�
 
 ```sh
 python -m http.server 8000   # ES modules 必須透過 HTTP 載入
-node --test                  # 單元測試（FIFO、TWR、代管帳戶、股利估算、收支統計）
+node --test                  # 單元測試（FIFO、TWR、代管帳戶、股利估算、收支統計、AI 匯入）
 ```
 
 改了 `js/` 底下的檔案清單時，記得同步 `sw.js` 的 `SHELL` 並把 `VERSION` 加一。

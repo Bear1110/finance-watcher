@@ -748,79 +748,6 @@ select option {
   margin-bottom: 0.3rem;
 }
 
-/* Conversation items */
-.conv-item {
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  margin-bottom: 0.75rem;
-  overflow: hidden;
-}
-
-.conv-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.6rem 1rem;
-  cursor: pointer;
-  background: var(--bg-secondary);
-  transition: background var(--transition);
-}
-
-.conv-header:hover {
-  background: var(--bg-card-hover);
-}
-
-.conv-date {
-  color: var(--text-secondary);
-  font-size: 0.85rem;
-}
-
-.conv-toggle {
-  color: var(--text-muted);
-  font-size: 0.8rem;
-  transition: transform var(--transition);
-}
-
-.conv-item.open .conv-toggle {
-  transform: rotate(180deg);
-}
-
-.conv-body {
-  display: none;
-  padding: 1rem;
-  border-top: 1px solid var(--border-color);
-}
-
-.conv-item.open .conv-body {
-  display: block;
-}
-
-.conv-section-label {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 0.3rem;
-  margin-top: 0.75rem;
-}
-
-.conv-section-label:first-child {
-  margin-top: 0;
-}
-
-.conv-text {
-  background: var(--bg-input);
-  border-radius: var(--radius-sm);
-  padding: 0.75rem;
-  font-size: 0.88rem;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
 /* --- Loading --- */
 .loading-box {
   display: flex;
@@ -1962,3 +1889,31 @@ body[data-tab="expenses"] .fab { display: flex; }
     bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 1rem);
   }
 }
+
+/* --- AI import --- */
+.ai-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ai-actions > span { display: contents; }
+
+.import-step {
+  margin: 16px 0 8px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.import-preview { margin-top: 16px; }
+.import-preview .table-wrap { margin: 8px 0 12px; }
+.import-summary { margin: 0; }
+
+.import-errors {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  font-size: 0.85rem;
+  color: var(--yellow);
+}
+
+.import-error { color: var(--red); }

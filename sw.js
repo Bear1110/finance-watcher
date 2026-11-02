@@ -2,7 +2,7 @@
 // Google 的 API、登入、Yahoo 代理一律不經快取。
 // 採「網路優先」，一般部署會自動拿到新版；SHELL 清單有增減時請把 VERSION 加一。
 
-const VERSION = 'v3'; // 網站版本見 js/version.js
+const VERSION = 'v4'; // 網站版本見 js/version.js
 const CACHE = `finance-watcher-${VERSION}`;
 const SHELL = [
   './',
@@ -16,6 +16,7 @@ const SHELL = [
   'js/cloud/auth.js',
   'js/cloud/sheets.js',
   'js/cloud/sync.js',
+  'js/server/aiimport.js',
   'js/server/assets.js',
   'js/server/datacheck.js',
   'js/server/db.js',

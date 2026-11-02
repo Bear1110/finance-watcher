@@ -247,7 +247,7 @@ function onTabActivated(tab) {
     case 'portfolio': loadPortfolioAnalysis(); break;
     case 'expenses': loadExpenses(); break;
     case 'managed': loadManagedAccounts(); break;
-    case 'llm': loadConversations(); break;
+    case 'llm': initAIImport(); break;
     case 'settings': loadSettings(); loadDataCheck(); break;
   }
 }
@@ -2529,11 +2529,7 @@ async function saveBudget(year, month, field, value) {
 }
 
 
-/** Category choices in the add/edit dialog; the first of each list is that type's default. */
-const EXPENSE_CATEGORIES = {
-  expense: ['飲食', '飲料', '交通', '住房', '娛樂', '醫療', '日用品', '購物', '送禮', '其他支出'],
-  income: ['薪資', '股利', '獎金', '其他收入'],
-};
+// EXPENSE_CATEGORIES (the dialog's presets) comes from js/server/expenses.js via main.js.
 const CATEGORY_HINTS = { 住房: '住房 (房租/水電)' };
 /** Display name of a category; records without one show as 未分類. */
 const catLabel = (c) => c || '未分類';
@@ -2946,6 +2942,7 @@ async function generatePrompt() {
     });
     const prompt = result.prompt || '';
     document.getElementById('generated-prompt').value = prompt;
+    setAILinks('analysis', prompt);
     document.getElementById('prompt-area').style.display = 'block';
     showToast('Prompt 已產生', 'success');
   } catch (err) {
@@ -2973,7 +2970,6 @@ async function generateAndSendToAPI() {
     resultEl.innerHTML = renderMarkdown(response);
     resultEl.style.display = 'block';
     showToast('AI 分析完成', 'success');
-    loadConversations();
   } catch (err) {
     showToast('AI 分析失敗: ' + err.message, 'error');
   } finally {
@@ -3001,7 +2997,6 @@ async function sendPromptToAPI() {
     resultEl.innerHTML = renderMarkdown(response);
     resultEl.style.display = 'block';
     showToast('AI 分析完成', 'success');
-    loadConversations();
   } catch (err) {
     showToast('AI 分析失敗: ' + err.message, 'error');
   } finally {
@@ -3010,71 +3005,125 @@ async function sendPromptToAPI() {
 }
 
 function copyPrompt() {
-  const textarea = document.getElementById('generated-prompt');
-  navigator.clipboard.writeText(textarea.value).then(() => {
-    showToast('已複製到剪貼簿', 'success');
-  }).catch(() => {
-    textarea.select();
-    document.execCommand('copy');
-    showToast('已複製到剪貼簿', 'success');
-  });
+  copyText(document.getElementById('generated-prompt').value);
 }
 
-async function importLLMResponse() {
-  const prompt = document.getElementById('generated-prompt').value;
-  const response = document.getElementById('llm-response-input').value.trim();
+// ============================================================
+// SECTION: AI links + AI import
+// ============================================================
 
-  if (!response) {
-    showToast('請先貼上 LLM 回應', 'error');
+// Encoded prompts longer than this are offered as copy-only: chat sites reject very long URLs.
+const AI_LINK_MAX = 7000;
+
+/**
+ * Point the "開啟 ChatGPT / Claude" links in the block `#${prefix}-ai-links` at a prompt
+ * (?q= pre-fills the chat box). Hidden when the prompt is too long for a URL.
+ */
+function setAILinks(prefix, prompt) {
+  const q = encodeURIComponent(prompt);
+  const ok = q.length <= AI_LINK_MAX;
+  document.getElementById(`${prefix}-chatgpt`).href = `https://chatgpt.com/?q=${q}`;
+  document.getElementById(`${prefix}-claude`).href = `https://claude.ai/new?q=${q}`;
+  document.getElementById(`${prefix}-ai-links`).style.display = ok ? '' : 'none';
+  const hint = document.getElementById(`${prefix}-ai-too-long`);
+  if (hint) hint.style.display = ok ? 'none' : '';
+}
+
+function copyText(text) {
+  navigator.clipboard.writeText(text)
+    .then(() => showToast('已複製到剪貼簿', 'success'))
+    .catch(() => showToast('複製失敗，請手動選取複製', 'error'));
+}
+
+let _aiImportPrompt = '';
+let _aiImportKindsLoaded = false;
+
+/** Builds the kind checkboxes once, then refreshes the prompt and links. */
+async function initAIImport(preselect) {
+  try {
+    if (!_aiImportKindsLoaded) {
+      const kinds = await api('/api/ai-import/kinds');
+      document.getElementById('ai-import-kinds').innerHTML = kinds.map(k => `
+        <label class="llm-check"><input type="checkbox" value="${k.id}" checked onchange="refreshAIImportPrompt()"> ${escapeHtml(k.label)}</label>`).join('');
+      _aiImportKindsLoaded = true;
+    }
+    if (preselect) {
+      document.querySelectorAll('#ai-import-kinds input').forEach(cb => { cb.checked = cb.value === preselect; });
+    }
+    await refreshAIImportPrompt();
+  } catch (err) {
+    showToast('AI 匯入初始化失敗: ' + err.message, 'error');
+  }
+}
+
+const aiImportKinds = () => [...document.querySelectorAll('#ai-import-kinds input:checked')].map(cb => cb.value);
+
+async function refreshAIImportPrompt() {
+  const kinds = aiImportKinds();
+  document.getElementById('ai-import-steps').style.display = kinds.length ? '' : 'none';
+  if (!kinds.length) return;
+  const { prompt } = await api('/api/ai-import/prompt', { method: 'POST', body: JSON.stringify({ kinds }) });
+  _aiImportPrompt = prompt;
+  setAILinks('import', prompt);
+}
+
+/** From another tab (e.g. 收支): jump to the AI tab with only that kind checked. */
+async function openAIImport(kind) {
+  goToTab('llm');
+  await initAIImport(kind);
+  document.getElementById('ai-import-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function previewAIImport() {
+  const text = document.getElementById('ai-import-text').value;
+  const out = document.getElementById('ai-import-preview');
+  if (!text.trim()) {
+    showToast('請先貼上 AI 的回覆', 'error');
     return;
   }
-
   try {
-    await api('/api/llm/import', {
-      method: 'POST',
-      body: JSON.stringify({ prompt, response }),
-    });
-    showToast('回應已儲存', 'success');
-    document.getElementById('llm-response-input').value = '';
-    loadConversations();
+    const parsed = await api('/api/ai-import/parse', { method: 'POST', body: JSON.stringify({ text, kinds: aiImportKinds() }) });
+    const total = Object.values(parsed).reduce((n, r) => n + r.records.length, 0);
+    out.innerHTML = Object.entries(parsed).map(([kind, r]) => renderImportSection(kind, r)).join('') +
+      (total ? `<button class="btn btn-primary" onclick="commitAIImport()">確認匯入 ${total} 筆</button>`
+             : '<p class="form-hint">沒有新的資料可以匯入。</p>');
   } catch (err) {
-    showToast('儲存失敗: ' + err.message, 'error');
+    out.innerHTML = `<p class="import-error">${escapeHtml(err.message)}</p>`;
   }
 }
 
-async function loadConversations() {
-  try {
-    const convs = await api('/api/llm/conversations');
-    const list = Array.isArray(convs) ? convs : [];
-    const container = document.getElementById('llm-conversations');
-
-    if (list.length === 0) {
-      container.innerHTML = '<div class="empty-state">尚無對話紀錄</div>';
-      return;
-    }
-
-    container.innerHTML = list.map((c, i) => `
-      <div class="conv-item" onclick="toggleConversation(this)">
-        <div class="conv-header">
-          <span class="conv-date">${c.date || c.created_at || '--'}</span>
-          <span class="conv-toggle">&#x25BC;</span>
-        </div>
-        <div class="conv-body">
-          <div class="conv-section-label">Prompt</div>
-          <div class="conv-text">${escapeHtml(c.prompt || '--')}</div>
-          <div class="conv-section-label">回應</div>
-          <div class="conv-text">${escapeHtml(c.response || '--')}</div>
-        </div>
-      </div>
-    `).join('');
-  } catch (err) {
-    // Silently fail for conversations
-    document.getElementById('llm-conversations').innerHTML = '<div class="empty-state">載入對話紀錄失敗</div>';
-  }
+/** Preview of one kind: counts, the rows to add (first 100) and the rows that were skipped. */
+function renderImportSection(kind, r) {
+  const head = `<p class="import-summary"><strong>${kind === 'expenses' ? '收支' : escapeHtml(kind)}</strong>：新增 ${r.records.length} 筆` +
+    (r.duplicates ? `，略過 ${r.duplicates} 筆重複` : '') + (r.errors.length ? `，${r.errors.length} 筆無法解析` : '') + '</p>';
+  const rows = r.records.slice(0, 100).map(e => `
+    <tr>
+      <td>${e.date}</td>
+      <td><span class="tag-${e.type}">${e.type === 'income' ? '收入' : '支出'}</span></td>
+      <td>${escapeHtml(catLabel(e.category))}</td>
+      <td>${e.currency === 'USD' ? fmtUSD(e.amount) : fmtTWD(e.amount)}</td>
+      <td>${escapeHtml(e.note || '')}</td>
+    </tr>`).join('');
+  const table = r.records.length ? `<div class="table-wrap"><table>
+    <thead><tr><th>日期</th><th>類型</th><th>分類</th><th>金額</th><th>備註</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>` +
+    (r.records.length > 100 ? `<p class="form-hint">只顯示前 100 筆。</p>` : '') : '';
+  const errors = r.errors.length ? `<ul class="import-errors">${r.errors.map(x => `<li>第 ${x.index + 1} 筆：${escapeHtml(x.error)}</li>`).join('')}</ul>` : '';
+  return head + table + errors;
 }
 
-function toggleConversation(el) {
-  el.classList.toggle('open');
+async function commitAIImport() {
+  const text = document.getElementById('ai-import-text').value;
+  try {
+    const counts = await api('/api/ai-import/commit', { method: 'POST', body: JSON.stringify({ text, kinds: aiImportKinds() }) });
+    const n = Object.values(counts).reduce((a, b) => a + b, 0);
+    showToast(`已匯入 ${n} 筆`, 'success');
+    document.getElementById('ai-import-text').value = '';
+    document.getElementById('ai-import-preview').innerHTML = '';
+    loadCategories();
+  } catch (err) {
+    showToast('匯入失敗: ' + err.message, 'error');
+  }
 }
 
 function escapeHtml(text) {
