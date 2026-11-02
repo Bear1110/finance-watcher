@@ -289,8 +289,7 @@ function realizedSummary(req) {
     let totalRevenue = 0;
     let totalRealizedPL = 0;
     let totalCost = 0;
-    let bestPct = -Number.MAX_VALUE;
-    let worstPct = Number.MAX_VALUE;
+    const pcts = [];
 
     for (const t of trades) {
       const revenue = t.shares * t.price;
@@ -301,8 +300,7 @@ function realizedSummary(req) {
       totalCost += sellCostBasis(t);
       totalRealizedPL += t.realized_pl;
       if (tradePct != null) {
-        if (tradePct > bestPct) bestPct = tradePct;
-        if (tradePct < worstPct) worstPct = tradePct;
+        pcts.push(tradePct);
         if (tradePct > bestOverallPct) {
           bestOverallPct = tradePct;
           bestTrade = { symbol: t.symbol, pl: t.realized_pl, pct: round2(tradePct) };
@@ -319,7 +317,6 @@ function realizedSummary(req) {
     }
 
     const avgReturnPct = totalCost > 0 ? (totalRealizedPL / totalCost) * 100 : 0;
-    const hasPct = bestPct !== -Number.MAX_VALUE;
 
     byStock.push({
       symbol: sym,
@@ -330,8 +327,8 @@ function realizedSummary(req) {
       total_cost: round2(totalCost),
       total_realized_pl: round2(totalRealizedPL),
       avg_return_pct: round2(avgReturnPct),
-      best_trade_pct: hasPct ? round2(bestPct) : null,
-      worst_trade_pct: hasPct ? round2(worstPct) : null,
+      best_trade_pct: pcts.length ? round2(Math.max(...pcts)) : null, // null: only 配股 sales
+      worst_trade_pct: pcts.length ? round2(Math.min(...pcts)) : null,
       currency: meta.currency,
     });
 

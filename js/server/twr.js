@@ -4,7 +4,7 @@
 
 import * as db from './db.js';
 import { route } from './router.js';
-import { isHistorySell, settingString, storedUSDTWDRate, cmp, round4 } from './util.js';
+import { isHistorySell, sellCostBasis, settingString, storedUSDTWDRate, cmp, round4 } from './util.js';
 import { fetchDailyCloses, fetchQuotes, hasProxy, MarketUnavailableError, USDTWD_SYMBOL } from './market.js';
 import { queryDividends } from './dividends.js';
 import {
@@ -147,7 +147,7 @@ export function loadPerfTxns() {
       out.push(p);
       continue;
     }
-    const cost = t.shares * t.price - t.fee - t.tax - t.realized_pl;
+    const cost = sellCostBasis(t);
     if (!isDateOnly(t.date) || !(t.shares > 0) || !(cost > 0)) continue;
     out.push({ ...p, action: 'BUY', date: addDays(t.date, -1), price: cost / t.shares, fee: 0, tax: 0, synthetic: true }, p);
   }

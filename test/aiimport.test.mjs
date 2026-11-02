@@ -190,7 +190,7 @@ test('replace plan: period, totals, rows to remove, 匯入持倉 worked back fro
   const r = (await parseImport(replaceText(GOOD), ['transactions'], 'replace')).transactions;
   const p = r.plan;
   assert.equal(p.ok, true, p.problems.join());
-  assert.equal(p.start, '2024-10-01');
+  assert.equal(p.symbols[0].start, '2024-10-01');
   assert.ok(p.checks.some((c) => c.includes('股數合計 10000 與對帳單相符')));
   assert.ok(p.checks.some((c) => c.includes('價金合計 253,380 與對帳單相符')));
   const s = p.symbols[0];
@@ -238,7 +238,7 @@ test('replace is blocked when the totals do not match or the holdings cannot be 
   db.update('stock_holdings', 1, { shares: 33000 });
   const none = (await parseImport(replaceText(null), ['transactions'], 'replace')).transactions.plan;
   assert.equal(none.ok, true);
-  assert.equal(none.start, '2024-10-18');
+  assert.equal(none.symbols[0].start, '2024-10-18');
   assert.ok(none.checks.some((c) => c.includes('沒有合計列')));
 });
 
@@ -295,7 +295,7 @@ test('replace without a 查詢期間: each symbol uses its own first..last trade
   ] });
   const p = (await parseImport(text, ['transactions'], 'replace')).transactions.plan;
   assert.equal(p.ok, true, p.problems.join());
-  assert.equal(p.perSymbol, true);
+  assert.ok(p.checks.some((c) => c.includes('沒有查詢期間')));
   const s = p.symbols.find((x) => x.symbol === '00881.TW');
   assert.equal(s.start, '2022-02-14');
   // 115000 now − 95000 in the statement; the old 匯入持倉 date (2021) is before 00881's own first

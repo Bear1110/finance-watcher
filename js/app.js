@@ -2967,7 +2967,7 @@ async function generateAndSendToAPI() {
       method: 'POST',
       body: JSON.stringify({ auto: true, sections }),
     });
-    const response = result.response || result.text || '';
+    const response = result.response || '';
     resultEl.innerHTML = renderMarkdown(response);
     resultEl.style.display = 'block';
     showToast('AI 分析完成', 'success');
@@ -2994,7 +2994,7 @@ async function sendPromptToAPI() {
       method: 'POST',
       body: JSON.stringify({ prompt }),
     });
-    const response = result.response || result.text || '';
+    const response = result.response || '';
     resultEl.innerHTML = renderMarkdown(response);
     resultEl.style.display = 'block';
     showToast('AI 分析完成', 'success');
@@ -3026,8 +3026,7 @@ function setAILinks(prefix, prompt) {
   document.getElementById(`${prefix}-chatgpt`).href = `https://chatgpt.com/?q=${q}`;
   document.getElementById(`${prefix}-claude`).href = `https://claude.ai/new?q=${q}`;
   document.getElementById(`${prefix}-ai-links`).style.display = ok ? '' : 'none';
-  const hint = document.getElementById(`${prefix}-ai-too-long`);
-  if (hint) hint.style.display = ok ? 'none' : '';
+  document.getElementById(`${prefix}-ai-too-long`).style.display = ok ? 'none' : '';
 }
 
 function copyText(text) {
@@ -3037,19 +3036,17 @@ function copyText(text) {
 }
 
 let _aiImportPrompt = '';
-let _aiImportKindsLoaded = false;
 let _aiImportMode = 'add'; // 'replace' = 以對帳單取代 (stock trades)
 let _aiImportKindLabels = {}; // kind id -> label, from /api/ai-import/kinds
 
 /** Builds the kind checkboxes once, then refreshes the prompt and links. */
 async function initAIImport(preselect) {
   try {
-    if (!_aiImportKindsLoaded) {
+    if (!Object.keys(_aiImportKindLabels).length) {
       const kinds = await api('/api/ai-import/kinds');
       document.getElementById('ai-import-kinds').innerHTML = kinds.map(k => `
         <label class="llm-check"><input type="checkbox" value="${k.id}" checked onchange="refreshAIImportPrompt()"> ${escapeHtml(k.label)}</label>`).join('');
       _aiImportKindLabels = Object.fromEntries(kinds.map(k => [k.id, k.label]));
-      _aiImportKindsLoaded = true;
     }
     if (preselect) {
       document.querySelectorAll('#ai-import-kinds input').forEach(cb => { cb.checked = cb.value === preselect; });
@@ -3141,7 +3138,7 @@ function renderReplacePlan(plan) {
   const syms = plan.symbols.map(s => escapeHtml(s.symbol)).join('、');
   let html = `<div class="replace-box">
     <label class="llm-check"><input type="checkbox" ${on ? 'checked' : ''} onchange="setAIImportMode(this.checked)"> 以對帳單取代這幾檔股票的交易</label>
-    <p class="form-hint">把${plan.perSymbol ? '' : ` ${plan.start} ~ ${plan.end} 期間內`} ${syms} 的舊交易換成這份對帳單；期間開始前的持股用一筆「匯入持倉」補上（由目前持股倒推）。
+    <p class="form-hint">把 ${syms} 在下面各自期間內的舊交易換成這份對帳單；期間開始前的持股用一筆「匯入持倉」補上（由目前持股倒推）。
     同一檔股票如果在別的券商帳戶也有交易，請不要勾：那些交易會一起被刪掉。</p>`;
   if (on) {
     html += plan.problems.map(x => `<p class="replace-problem">✗ ${escapeHtml(x)}</p>`).join('') +

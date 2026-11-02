@@ -20,13 +20,15 @@
 
 import * as db from './db.js';
 import { route } from './router.js';
-import { badRequest, body, isCounted, round4 } from './util.js';
+import { badRequest, body, isCounted, isDate, round4 } from './util.js';
 import { EXPENSE_CATEGORIES, normalizeExpense } from './expenses.js';
 import { normalizeTxn, applyAutoFee, replaySymbol, ledgerOrder, fmtShares } from './ledger.js';
-import { fetchDailyCloses, hasProxy } from './market.js';
+import { hasProxy } from './market.js';
+import { syncPriceHistory } from './twr.js';
+import { addDays } from './twr_calc.js';
 
-export const IMPORT_FORMAT = 'finance-watcher-import';
-export const IMPORT_VERSION = 1;
+const IMPORT_FORMAT = 'finance-watcher-import';
+const IMPORT_VERSION = 1;
 
 const str = (v) => String(v ?? '').trim();
 
@@ -35,15 +37,12 @@ function normDate(v) {
   const m = str(v).match(/^(\d{4})[-/.]?(\d{1,2})(?:[-/.]?(\d{1,2}))?(?!\d)/);
   if (!m) return null;
   const [, y, mo, d = '1'] = m;
-  if (+mo < 1 || +mo > 12 || +d < 1 || +d > 31) return null;
-  return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  const out = `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  return isDate(out) ? out : null;
 }
 
 /** "1,200", "NT$ 1200", "-350元" → number (sign kept), or NaN. */
 const normAmount = (v) => (typeof v === 'number' ? v : Number(str(v).replace(/[,\s]|NT\$|US\$|\$|元|＄|股/gi, '')));
-
-/** "2024-10-18" → "2024-10-17" */
-const dayBefore = (d) => new Date(Date.parse(`${d}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
 
 /** null / "" / undefined stay null; anything else is a number (NaN if unreadable). */
 const optAmount = (v) => (v == null || str(v) === '' ? null : normAmount(v));
@@ -125,14 +124,14 @@ function normSymbol(v, market) {
   return s;
 }
 
-// Daily closes per symbol for the split check; parse and commit read the same text twice.
-const closesCache = new Map(); // symbol -> { since, at, closes }
-async function closesSince(symbol, since) {
-  const c = closesCache.get(symbol);
-  if (c && c.since <= since && Date.now() - c.at < 10 * 60 * 1000) return c.closes;
-  const closes = await fetchDailyCloses(symbol, new Date(`${since}T00:00:00Z`));
-  closesCache.set(symbol, { since, at: Date.now(), closes });
-  return closes;
+/** Rows grouped by symbol: Map(symbol → rows), in input order. */
+function bySymbol(rows) {
+  const out = new Map();
+  for (const r of rows) {
+    if (!out.has(r.symbol)) out.set(r.symbol, []);
+    out.get(r.symbol).push(r);
+  }
+  return out;
 }
 
 const transactions = {
@@ -183,9 +182,7 @@ const transactions = {
       txn.flags.push('費用為估算');
     }
     txn.realized_pl = action === 'SELL' ? pl : null; // null = not given
-    // As printed on the statement (before any split conversion), for the 合計 check
-    txn.stmt_shares = txn.shares;
-    txn.stmt_amount = Math.round(txn.shares * txn.price);
+    txn.stmt_shares = txn.shares; // as printed (before split conversion), for the 合計 check
     return { row: txn };
   },
 
@@ -194,32 +191,35 @@ const transactions = {
    * convert to today's units (shares × k, price ÷ k), the units Yahoo's history and the ledger use.
    */
   async prepare(res) {
-    const symbols = [...new Set(res.records.map((r) => r.symbol))];
-    if (!symbols.length) return;
+    const groups = bySymbol(res.records);
+    if (!groups.size) return;
     if (!hasProxy()) {
       res.warnings.push('沒有行情代理，無法檢查股票分割：分割前的交易請自行換算成分割後的股數與價格。');
       return;
     }
-    for (const sym of symbols) {
-      const rows = res.records.filter((r) => r.symbol === sym);
-      const since = rows.reduce((m, r) => (r.date < m ? r.date : m), rows[0].date);
-      let closes = await closesSince(sym, since).catch(() => null);
-      // A bare TW code was guessed as .TW (上市); if Yahoo only knows .TWO (上櫃), use that
-      if (!closes?.length && sym.endsWith('.TW')) {
+    const firstDate = (rows) => rows.reduce((m, r) => (r.date < m ? r.date : m), rows[0].date);
+    // All symbols in one go (fetched in parallel, kept in price_history for performance / data check)
+    const closes = await syncPriceHistory(Object.fromEntries([...groups].map(([sym, rows]) => [sym, firstDate(rows)])));
+    // A bare TW code was guessed as .TW (上市); if Yahoo only knows .TWO (上櫃), use that
+    const missing = [...groups.keys()].filter((sym) => !closes[sym]?.length && sym.endsWith('.TW'));
+    if (missing.length) {
+      const alt = await syncPriceHistory(Object.fromEntries(missing.map((sym) => [`${sym}O`, firstDate(groups.get(sym))])));
+      for (const sym of missing) {
         const two = `${sym}O`;
-        const alt = await closesSince(two, since).catch(() => null);
-        if (alt?.length) {
-          for (const r of rows) r.symbol = two;
-          res.warnings.push(`${sym.slice(0, -3)} 是上櫃股票，代號改為 ${two}。`);
-          closes = alt;
-        }
+        if (!alt[two]?.length) continue;
+        for (const r of groups.get(sym)) r.symbol = two;
+        res.warnings.push(`${sym.slice(0, -3)} 是上櫃股票，代號改為 ${two}。`);
+        closes[sym] = alt[two];
       }
-      if (!closes?.length) {
+    }
+    for (const [sym, rows] of groups) {
+      const list = closes[sym];
+      if (!list?.length) {
         res.warnings.push(`${rows[0].symbol} 抓不到歷史股價，無法檢查股票分割。`);
         continue;
       }
       for (const r of rows) {
-        const bar = closes.filter((c) => c.date <= r.date).pop();
+        const bar = list.filter((c) => c.date <= r.date).pop();
         if (!bar) continue;
         const ratio = r.price / bar.close;
         const k = Math.round(ratio >= 1 ? ratio : 1 / ratio);
@@ -259,7 +259,7 @@ const transactions = {
     const pStart = normDate(summary?.period_start);
     const pEnd = normDate(summary?.period_end);
     const start = pStart || dates[0];
-    const end = pEnd || dates[dates.length - 1];
+    const end = pEnd || dates[dates.length - 1]; // only checks rows against a printed period
     const problems = [];
     const checks = [];
 
@@ -267,7 +267,7 @@ const transactions = {
     const totShares = optAmount(summary?.total_shares);
     const totAmount = optAmount(summary?.total_amount);
     const sumShares = rows.reduce((n, r) => n + r.stmt_shares, 0);
-    const sumAmount = rows.reduce((n, r) => n + r.stmt_amount, 0);
+    const sumAmount = Math.round(rows.reduce((n, r) => n + r.shares * r.price, 0)); // unchanged by split conversion
     if (totShares == null && totAmount == null) {
       checks.push('對帳單沒有合計列，無法核對 AI 有沒有漏抓：請自己對一下筆數');
     }
@@ -283,9 +283,8 @@ const transactions = {
 
     const net = (list) => list.reduce((n, t) => n + (t.action === 'BUY' ? t.shares : -t.shares), 0);
     const slim = (t) => ({ id: t.id, date: t.date, action: t.action, shares: t.shares, price: t.price, note: t.note, history: !isCounted(t) });
-    const symbols = [...new Set(rows.map((r) => r.symbol))].sort();
-    const out = symbols.map((sym) => {
-      const own = rows.filter((r) => r.symbol === sym).map((r) => r.date).sort();
+    const out = [...bySymbol(rows)].sort(([a], [b]) => (a < b ? -1 : 1)).map(([sym, mineRows]) => {
+      const own = mineRows.map((r) => r.date).sort();
       const sStart = pStart || own[0];
       const sEnd = pEnd || own[own.length - 1];
       const mine = db.where('stock_transactions', (t) => t.symbol === sym && t.account_id == null);
@@ -294,7 +293,7 @@ const transactions = {
       const kept = mine.filter((t) => !transfers.includes(t) && !remove.includes(t) && isCounted(t));
       const holding = db.findBy('stock_holdings', 'symbol', sym);
       const current = holding?.shares || 0;
-      const before = round4(current - net(rows.filter((r) => r.symbol === sym)) - net(kept));
+      const before = round4(current - net(mineRows) - net(kept));
 
       let transfer = null;
       if (!mine.length && !holding) {
@@ -306,14 +305,14 @@ const transactions = {
         const tShares = transfers.reduce((n, t) => n + t.shares, 0);
         const price = tShares > 0 ? round4(transfers.reduce((n, t) => n + t.shares * t.price, 0) / tShares) : holding?.avg_cost || 0;
         const oldest = transfers.map((t) => t.date).sort()[0];
-        transfer = { date: oldest && oldest < sStart ? oldest : dayBefore(sStart), shares: before, price };
+        transfer = { date: oldest && oldest < sStart ? oldest : addDays(sStart, -1), shares: before, price };
         if (!transfers.length) checks.push(`${sym}：期間開始前的 ${fmtShares(before)} 股原本沒有匯入持倉，會以目前均價建立一筆`);
         if (!(price > 0)) problems.push(`${sym}：期間開始前有 ${fmtShares(before)} 股，但沒有成本可以沿用`);
       }
-      return { symbol: sym, start: sStart, end: sEnd, current, remove: remove.map(slim), transfers: transfers.map(slim), transfer };
+      return { symbol: sym, market: mineRows[0].market, currency: mineRows[0].currency, start: sStart, end: sEnd, current, remove: remove.map(slim), transfers: transfers.map(slim), transfer };
     });
     if (!pStart || !pEnd) checks.push('資料沒有查詢期間：每檔股票只取代它在資料裡第一筆到最後一筆之間的交易');
-    return { start, end, perSymbol: !pStart || !pEnd, problems, checks, symbols: out, ok: problems.length === 0 };
+    return { problems, checks, symbols: out, ok: problems.length === 0 };
   },
 
   /**
@@ -323,10 +322,8 @@ const transactions = {
    * With a replace plan the existing trades are the ones that stay plus the new 匯入持倉.
    */
   review(res, plan) {
-    const bySymbol = new Map();
-    for (const r of res.records) bySymbol.set(r.symbol, [...(bySymbol.get(r.symbol) || []), r]);
     const drop = new Set();
-    for (const [sym, rows] of bySymbol) {
+    for (const [sym, rows] of bySymbol(res.records)) {
       let old = db.where('stock_transactions', (t) => t.symbol === sym && isCounted(t));
       if (plan) {
         const p = plan.symbols.find((s) => s.symbol === sym);
@@ -341,7 +338,7 @@ const transactions = {
         }
       }
       // Existing rows first on the same date, then this import in order (ids only break ties)
-      const all = [...old, ...rows.map((r, i) => ({ ...r, id: Number.MAX_SAFE_INTEGER - rows.length + i, ref: r }))].sort(ledgerOrder);
+      const all = [...old, ...rows.map((r) => ({ ...r, id: Number.MAX_SAFE_INTEGER, ref: r }))].sort(ledgerOrder);
       let held = 0;
       for (const t of all) {
         if (t.action === 'BUY') { held += t.shares; continue; }
@@ -367,7 +364,7 @@ const transactions = {
           db.insert('stock_transactions', {
             symbol: p.symbol, action: 'BUY', shares: p.transfer.shares, price: p.transfer.price, fee: 0, tax: 0,
             date: p.transfer.date, realized_pl: 0, is_transfer: 1, note: '匯入持倉（以對帳單取代時由目前持股倒推）',
-            ...(({ market, currency }) => ({ market, currency }))(records.find((r) => r.symbol === p.symbol)),
+            market: p.market, currency: p.currency,
           });
         }
       }
@@ -389,7 +386,7 @@ const transactions = {
   },
 };
 
-export const KINDS = { expenses, transactions };
+const KINDS = { expenses, transactions };
 
 // ---------------------------------------------------------------- prompt
 

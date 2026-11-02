@@ -82,22 +82,19 @@ function buildRealizedSummary() {
   let wins = 0;
   let losses = 0;
   for (const [sym, trades] of bySymbol) {
-    let totalShares = 0, totalRev = 0, totalPL = 0, totalCostBasis = 0;
-    let bestPct = -Number.MAX_VALUE, worstPct = Number.MAX_VALUE;
+    let totalShares = 0, totalRev = 0, totalPL = 0, totalCost = 0;
+    const pcts = [];
     for (const t of trades) {
       const rev = t.shares * t.price;
       totalShares += t.shares;
       totalRev += rev;
       totalPL += t.realized_pl;
-      totalCostBasis += sellCostBasis(t);
+      totalCost += sellCostBasis(t);
       const pct = sellReturnPct(t); // null: no real cost (配股)
-      if (pct != null && pct > bestPct) bestPct = pct;
-      if (pct != null && pct < worstPct) worstPct = pct;
+      if (pct != null) pcts.push(pct);
       if (t.realized_pl >= 0) wins++; else losses++;
     }
     totalTrades += trades.length;
-    const totalCost = totalCostBasis;
-    const hasPct = bestPct !== -Number.MAX_VALUE;
     const avgRet = totalCost > 0 ? totalPL / totalCost * 100 : 0;
     const cur = trades[0].currency;
     overallPLTWD += cur === 'USD' ? totalPL * rate : totalPL;
@@ -105,7 +102,7 @@ function buildRealizedSummary() {
       symbol: sym, market: trades[0].market, total_trades: trades.length,
       total_shares_sold: totalShares, total_revenue: totalRev,
       total_cost: totalCost, total_realized_pl: totalPL,
-      avg_return_pct: round2(avgRet), best_trade_pct: hasPct ? round2(bestPct) : null, worst_trade_pct: hasPct ? round2(worstPct) : null,
+      avg_return_pct: round2(avgRet), best_trade_pct: pcts.length ? round2(Math.max(...pcts)) : null, worst_trade_pct: pcts.length ? round2(Math.min(...pcts)) : null,
       currency: cur,
     });
   }
@@ -384,7 +381,7 @@ route('POST', '/api/llm/analyze', async (req) => {
   } catch (e) {
     throw new HttpError(500, 'Gemini API error: ' + e.message);
   }
-  return { response, provider: 'gemini' };
+  return { response };
 });
 
 route('POST', '/api/llm/prompt', async (req) => {
