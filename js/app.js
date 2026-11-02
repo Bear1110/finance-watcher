@@ -237,6 +237,7 @@ function togglePrivacy() {
 }
 
 function onTabActivated(tab) {
+  document.body.dataset.tab = tab; // CSS shows tab-specific controls (e.g. the 收支 + button)
   switch (tab) {
     case 'dashboard': loadDashboard(); break;
     case 'stocks': loadHoldings(); loadTransactions(); loadRealizedSummary(); loadStockSnapshots(); loadDividends(); loadXirr(); break;
@@ -2573,15 +2574,28 @@ function setExpenseType(type) {
   }
 }
 
-function cancelExpenseEdit() {
+/** Clears the add/edit form back to a new expense dated today. */
+function resetExpenseForm() {
   const form = document.getElementById('expense-form');
   form.reset();
   form.querySelector('[name="id"]').value = '';
   form.querySelector('[name="date"]').value = todayStr();
   setExpenseType('expense');
-  form.querySelector('button[type="submit"]').textContent = '新增';
-  document.getElementById('expense-cancel-btn').style.display = 'none';
   document.getElementById('custom-category-group').style.display = 'none';
+}
+
+/** Shows the expense modal in add or edit mode and focuses the amount. */
+function showExpenseModal(editing) {
+  document.getElementById('expense-modal-title').textContent = editing ? '編輯紀錄' : '新增紀錄';
+  document.getElementById('expense-continue-btn').style.display = editing ? 'none' : '';
+  document.getElementById('expense-delete-btn').style.display = editing ? '' : 'none';
+  openModal('modal-expense');
+  document.querySelector('#expense-form [name="amount"]').focus();
+}
+
+function openExpenseModal() {
+  resetExpenseForm();
+  showExpenseModal(false);
 }
 
 async function submitExpense(e) {
@@ -2613,7 +2627,14 @@ async function submitExpense(e) {
       await api('/api/expenses', { method: 'POST', body: JSON.stringify(data) });
       showToast('紀錄已新增', 'success');
     }
-    cancelExpenseEdit();
+    if (!id && e.submitter?.dataset.continue) {
+      // Keep type, category and date; clear the rest for the next entry
+      form.querySelector('[name="amount"]').value = '';
+      form.querySelector('[name="note"]').value = '';
+      form.querySelector('[name="amount"]').focus();
+    } else {
+      closeModal('modal-expense');
+    }
     document.getElementById('exp-type-filter').value = 'all';
     loadExpenses();
     // Also refresh budget if visible
@@ -2663,19 +2684,25 @@ function editExpense(id, amount, category, date, note, type) {
     incGroup.disabled = true;
   }
 
-  form.querySelector('button[type="submit"]').textContent = '更新';
-  document.getElementById('expense-cancel-btn').style.display = 'inline-flex';
+  showExpenseModal(true);
 }
 
 async function deleteExpense(id) {
-  if (!confirm('確定要刪除此筆支出嗎？')) return;
+  if (!confirm('確定要刪除這筆紀錄嗎？')) return false;
   try {
     await api(`/api/expenses/${id}`, { method: 'DELETE' });
-    showToast('支出已刪除', 'success');
+    showToast('紀錄已刪除', 'success');
     loadExpenses();
+    return true;
   } catch (err) {
     showToast('刪除失敗: ' + err.message, 'error');
+    return false;
   }
+}
+
+async function deleteExpenseFromModal() {
+  const id = document.querySelector('#expense-form [name="id"]').value;
+  if (id && await deleteExpense(id)) closeModal('modal-expense');
 }
 
 // --- 收支 page: period summary, category ranking, monthly chart, records table ---
