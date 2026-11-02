@@ -3037,6 +3037,7 @@ function copyText(text) {
 
 let _aiImportPrompt = '';
 let _aiImportKindsLoaded = false;
+let _aiImportMode = 'add'; // 'replace' = 以對帳單取代 (stock trades)
 let _aiImportKindLabels = {}; // kind id -> label, from /api/ai-import/kinds
 
 /** Builds the kind checkboxes once, then refreshes the prompt and links. */
@@ -3084,11 +3085,14 @@ async function previewAIImport() {
     return;
   }
   try {
-    const parsed = await api('/api/ai-import/parse', { method: 'POST', body: JSON.stringify({ text, kinds: aiImportKinds() }) });
+    const parsed = await api('/api/ai-import/parse', { method: 'POST', body: JSON.stringify({ text, kinds: aiImportKinds(), mode: _aiImportMode }) });
+    const replacing = _aiImportMode === 'replace' && Object.values(parsed).some(r => r.plan);
+    const blocked = replacing && Object.values(parsed).some(r => r.plan && !r.plan.ok);
     const total = Object.values(parsed).reduce((n, r) => n + r.records.length, 0);
     out.innerHTML = Object.entries(parsed).map(([kind, r]) => renderImportSection(kind, r)).join('') +
-      (total ? `<button class="btn btn-primary" onclick="commitAIImport()">確認匯入 ${total} 筆</button>`
-             : '<p class="form-hint">沒有新的資料可以匯入。</p>');
+      (blocked ? '<p class="import-error">上面列的問題解決前不能取代；可以取消勾選，改用一般匯入（只新增、略過重複）。</p>'
+        : total ? `<button class="btn btn-primary" onclick="commitAIImport()">${replacing ? '確認取代並匯入' : '確認匯入'} ${total} 筆</button>`
+        : '<p class="form-hint">沒有新的資料可以匯入。</p>');
   } catch (err) {
     out.innerHTML = `<p class="import-error">${escapeHtml(err.message)}</p>`;
   }
@@ -3127,17 +3131,47 @@ function renderImportSection(kind, r) {
     <tbody>${r.records.slice(0, 100).map(row => `<tr>${cols.map(([, cell]) => `<td>${cell(row)}</td>`).join('')}</tr>`).join('')}</tbody>
     </table></div>` + (r.records.length > 100 ? '<p class="form-hint">只顯示前 100 筆。</p>' : '') : '';
   const errors = r.errors.length ? `<ul class="import-errors">${r.errors.map(x => `<li>第 ${x.index + 1} 筆：${escapeHtml(x.error)}</li>`).join('')}</ul>` : '';
-  return head + warnings + table + errors;
+  return head + (r.plan ? renderReplacePlan(r.plan) : '') + warnings + table + errors;
+}
+
+/** The 「以對帳單取代」 option; when checked, what will be removed and the reworked 匯入持倉. */
+function renderReplacePlan(plan) {
+  const on = _aiImportMode === 'replace';
+  const syms = plan.symbols.map(s => escapeHtml(s.symbol)).join('、');
+  let html = `<div class="replace-box">
+    <label class="llm-check"><input type="checkbox" ${on ? 'checked' : ''} onchange="setAIImportMode(this.checked)"> 以對帳單取代這幾檔股票的交易</label>
+    <p class="form-hint">把 ${plan.start} ~ ${plan.end} 期間內 ${syms} 的舊交易換成這份對帳單；期間開始前的持股用一筆「匯入持倉」補上（由目前持股倒推）。
+    同一檔股票如果在別的券商帳戶也有交易，請不要勾：那些交易會一起被刪掉。</p>`;
+  if (on) {
+    html += plan.problems.map(x => `<p class="replace-problem">✗ ${escapeHtml(x)}</p>`).join('') +
+      plan.checks.map(x => `<p class="replace-check">✓ ${escapeHtml(x)}</p>`).join('');
+    html += plan.symbols.map(s => {
+      const before = s.transfers.length
+        ? s.transfers.map(t => `${t.date} ${fmt(t.shares)} 股`).join('、') : '（沒有）';
+      const after = s.transfer ? `${s.transfer.date} ${fmt(s.transfer.shares)} 股 @ ${fmtNum(s.transfer.price, 2)}` : '（刪除）';
+      const rows = s.remove.map(t => `<li>${t.date} ${t.action === 'BUY' ? '買進' : '賣出'} ${fmt(t.shares)} 股 @ ${fmtNum(t.price, 2)}${t.history ? '（歷史損益）' : ''}${t.note ? ' · ' + escapeHtml(t.note) : ''}</li>`).join('');
+      return `<details class="replace-symbol"><summary><strong>${escapeHtml(s.symbol)}</strong>：刪除 ${s.remove.length} 筆舊交易；
+        匯入持倉 ${before} → ${after}；匯入後持股 ${fmt(s.current)} 股（不變）</summary>
+        ${rows ? `<ul>${rows}</ul>` : '<p class="form-hint">期間內沒有舊交易。</p>'}</details>`;
+    }).join('');
+  }
+  return html + '</div>';
+}
+
+function setAIImportMode(replace) {
+  _aiImportMode = replace ? 'replace' : 'add';
+  previewAIImport();
 }
 
 async function commitAIImport() {
   const text = document.getElementById('ai-import-text').value;
   try {
-    const counts = await api('/api/ai-import/commit', { method: 'POST', body: JSON.stringify({ text, kinds: aiImportKinds() }) });
+    const counts = await api('/api/ai-import/commit', { method: 'POST', body: JSON.stringify({ text, kinds: aiImportKinds(), mode: _aiImportMode }) });
     const n = Object.values(counts).reduce((a, b) => a + b, 0);
     showToast(`已匯入 ${n} 筆`, 'success');
     document.getElementById('ai-import-text').value = '';
     document.getElementById('ai-import-preview').innerHTML = '';
+    _aiImportMode = 'add';
     loadCategories();
   } catch (err) {
     showToast('匯入失敗: ' + err.message, 'error');

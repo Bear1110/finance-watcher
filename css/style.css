@@ -1931,3 +1931,20 @@ body[data-tab="expenses"] .fab { display: flex; }
   font-size: 0.75rem;
   color: var(--yellow);
 }
+
+/* 以對帳單取代 */
+.replace-box {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.replace-box .llm-check { border: none; padding: 0; }
+.replace-box .form-hint { margin: 6px 0; }
+.replace-check, .replace-problem { margin: 4px 0; font-size: 0.85rem; }
+.replace-check { color: var(--green); }
+.replace-problem { color: var(--red); }
+.replace-symbol { margin-top: 8px; font-size: 0.88rem; }
+.replace-symbol summary { cursor: pointer; line-height: 1.6; }
+.replace-symbol ul { margin: 6px 0 0; padding-left: 18px; color: var(--text-secondary); }

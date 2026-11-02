@@ -10,9 +10,13 @@
 //   normalize(raw, ctx)               一筆 → { row } 或 { error }
 //   prepare(res)  (async，選用)        判斷重複之前的整批處理（例如股票分割換算）
 //   key(row) / existing()             判斷重複
-//   review(res)   (選用)               判斷重複之後的整批檢查（例如賣出時持股夠不夠）
-//   insertAll(records) (async)        寫入（在 db.transaction 裡）
+//   plan(res, summary)  (選用)         「以對帳單取代」：要刪哪些、匯入持倉改成什麼、合計對不對得上
+//   review(res, plan)   (選用)         判斷重複之後的整批檢查（例如賣出時持股夠不夠）
+//   insertAll(records, plan) (async)  寫入（在 db.transaction 裡；plan 只在取代模式時給）
 // 之後加股利、資產快照只要再登記一項。
+//
+// 模式：add（預設）只新增、略過重複；replace（有 plan() 的種類才有）把對帳單期間內這幾檔股票的
+// 舊交易換成這份對帳單，期間開始前的持股用「匯入持倉」補上（股數由目前持股倒推）。
 
 import * as db from './db.js';
 import { route } from './router.js';
@@ -37,6 +41,9 @@ function normDate(v) {
 
 /** "1,200", "NT$ 1200", "-350元" → number (sign kept), or NaN. */
 const normAmount = (v) => (typeof v === 'number' ? v : Number(str(v).replace(/[,\s]|NT\$|US\$|\$|元|＄|股/gi, '')));
+
+/** "2024-10-18" → "2024-10-17" */
+const dayBefore = (d) => new Date(Date.parse(`${d}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
 
 /** null / "" / undefined stay null; anything else is a number (NaN if unreadable). */
 const optAmount = (v) => (v == null || str(v) === '' ? null : normAmount(v));
@@ -145,8 +152,11 @@ const transactions = {
 - fee：手續費；tax：交易稅（買進通常是 0）。資料沒寫就給 null，App 會估算台股的費用。
 - realized_pl：資料有列出這筆賣出的損益就照抄（虧損用負數），沒有就 null；買進一律 null。
 - note：委託書號等補充，沒有就 ""。
-- 股票分割前的交易照資料上的股數、價格寫，不要自己換算（App 會比對歷史股價換算）。`;
+- 股票分割前的交易照資料上的股數、價格寫，不要自己換算（App 會比對歷史股價換算）。
+- transactions_summary：對帳單上印的查詢期間（period_start / period_end）與「合計」列的
+  股數（total_shares）、價金（total_amount）照抄；資料上沒有的欄位給 null。`;
   },
+  summaryExample: { period_start: '2024-10-01', period_end: '2025-10-31', total_shares: 58000, total_amount: 1783620 },
   normalize(raw) {
     const date = normDate(raw.date);
     if (!date) return { error: `日期看不懂：${str(raw.date) || '（空白）'}` };
@@ -173,6 +183,9 @@ const transactions = {
       txn.flags.push('費用為估算');
     }
     txn.realized_pl = action === 'SELL' ? pl : null; // null = not given
+    // As printed on the statement (before any split conversion), for the 合計 check
+    txn.stmt_shares = txn.shares;
+    txn.stmt_amount = Math.round(txn.shares * txn.price);
     return { row: txn };
   },
 
@@ -219,20 +232,92 @@ const transactions = {
   existing: () => db.where('stock_transactions', (t) => t.account_id == null),
 
   /**
+   * 「以對帳單取代」: for every symbol in the statement, the self-account trades inside the
+   * statement period are removed and the statement's rows go in instead. Holdings before the
+   * period can't be read from the statement, so they are worked back from today's holdings:
+   *   shares before = current holdings − net of the statement − net of the trades that stay
+   * and kept as one 匯入持倉 (transfer BUY) at its old date, or the day before the period,
+   * at the old transfer's cost (today's average cost if there was none).
+   * `problems` block the replace; `checks` are shown as information.
+   */
+  plan(res, summary) {
+    const rows = res.records;
+    if (!rows.length) return null;
+    const dates = rows.map((r) => r.date).sort();
+    const start = normDate(summary?.period_start) || dates[0];
+    const end = normDate(summary?.period_end) || dates[dates.length - 1];
+    const problems = [];
+    const checks = [];
+
+    if (dates[0] < start || dates[dates.length - 1] > end) problems.push(`有交易不在查詢期間 ${start} ~ ${end} 內，期間可能抄錯`);
+    const totShares = optAmount(summary?.total_shares);
+    const totAmount = optAmount(summary?.total_amount);
+    const sumShares = rows.reduce((n, r) => n + r.stmt_shares, 0);
+    const sumAmount = rows.reduce((n, r) => n + r.stmt_amount, 0);
+    if (totShares == null && totAmount == null) {
+      checks.push('對帳單沒有合計列，無法核對 AI 有沒有漏抓：請自己對一下筆數');
+    }
+    if (totShares != null) {
+      if (Math.abs(sumShares - totShares) < 1e-6) checks.push(`股數合計 ${fmtShares(sumShares)} 與對帳單相符`);
+      else problems.push(`股數合計 ${fmtShares(sumShares)} 與對帳單的 ${fmtShares(totShares)} 不符，AI 可能漏抓或多抓`);
+    }
+    if (totAmount != null) {
+      // Each row's 價金 is rounded on the statement: allow 1 per row
+      if (Math.abs(sumAmount - totAmount) <= rows.length) checks.push(`價金合計 ${sumAmount.toLocaleString('en-US')} 與對帳單相符`);
+      else problems.push(`價金合計 ${sumAmount.toLocaleString('en-US')} 與對帳單的 ${totAmount.toLocaleString('en-US')} 不符，AI 可能漏抓或多抓`);
+    }
+
+    const net = (list) => list.reduce((n, t) => n + (t.action === 'BUY' ? t.shares : -t.shares), 0);
+    const slim = (t) => ({ id: t.id, date: t.date, action: t.action, shares: t.shares, price: t.price, note: t.note, history: !isCounted(t) });
+    const symbols = [...new Set(rows.map((r) => r.symbol))].sort();
+    const out = symbols.map((sym) => {
+      const mine = db.where('stock_transactions', (t) => t.symbol === sym && t.account_id == null);
+      const transfers = mine.filter((t) => t.is_transfer === 1 && t.action === 'BUY');
+      const remove = mine.filter((t) => !transfers.includes(t) && t.date >= start && t.date <= end);
+      const kept = mine.filter((t) => !transfers.includes(t) && !remove.includes(t) && isCounted(t));
+      const holding = db.findBy('stock_holdings', 'symbol', sym);
+      const current = holding?.shares || 0;
+      const before = round4(current - net(rows.filter((r) => r.symbol === sym)) - net(kept));
+
+      let transfer = null;
+      if (before < -1e-6) {
+        problems.push(`${sym}：倒推期間開始前要有 ${fmtShares(before)} 股（負數），資料兜不起來（漏抓、分割沒換算，或目前持股本來就不對）`);
+      } else if (before > 1e-6) {
+        const tShares = transfers.reduce((n, t) => n + t.shares, 0);
+        const price = tShares > 0 ? round4(transfers.reduce((n, t) => n + t.shares * t.price, 0) / tShares) : holding?.avg_cost || 0;
+        const oldest = transfers.map((t) => t.date).sort()[0];
+        transfer = { date: oldest && oldest < start ? oldest : dayBefore(start), shares: before, price };
+        if (!transfers.length) checks.push(`${sym}：期間開始前的 ${fmtShares(before)} 股原本沒有匯入持倉，會以目前均價建立一筆`);
+        if (!(price > 0)) problems.push(`${sym}：期間開始前有 ${fmtShares(before)} 股，但沒有成本可以沿用`);
+      }
+      return { symbol: sym, current, remove: remove.map(slim), transfers: transfers.map(slim), transfer };
+    });
+    return { start, end, problems, checks, symbols: out, ok: problems.length === 0 };
+  },
+
+  /**
    * A SELL needs enough shares held on its date (existing trades + earlier rows of this import).
    * Without them it can only be imported as a history sell (fixed realized_pl, no shares taken),
    * which needs the statement's P&L; otherwise it is reported as an error.
+   * With a replace plan the existing trades are the ones that stay plus the new 匯入持倉.
    */
-  review(res) {
+  review(res, plan) {
     const bySymbol = new Map();
     for (const r of res.records) bySymbol.set(r.symbol, [...(bySymbol.get(r.symbol) || []), r]);
     const drop = new Set();
     for (const [sym, rows] of bySymbol) {
-      const old = db.where('stock_transactions', (t) => t.symbol === sym && isCounted(t));
-      const transfer = old.find((t) => t.is_transfer === 1 && t.action === 'BUY');
-      if (transfer && rows.some((r) => r.action === 'BUY')) {
-        res.warnings.push(`${sym} 已有「匯入持倉」建立的 ${fmtShares(transfer.shares)} 股（${transfer.date}）。` +
-          '如果這次匯入的買進已包含這些持股，持股會重複計算：請先到交易紀錄刪掉那筆匯入持倉再匯入。');
+      let old = db.where('stock_transactions', (t) => t.symbol === sym && isCounted(t));
+      if (plan) {
+        const p = plan.symbols.find((s) => s.symbol === sym);
+        const gone = new Set([...p.remove, ...p.transfers].map((t) => t.id));
+        old = old.filter((t) => !gone.has(t.id));
+        if (p.transfer) old.push({ ...p.transfer, id: 0, action: 'BUY' });
+      } else {
+        const transfer = old.find((t) => t.is_transfer === 1 && t.action === 'BUY');
+        if (transfer && rows.some((r) => r.action === 'BUY')) {
+          res.warnings.push(`${sym} 已有「匯入持倉」建立的 ${fmtShares(transfer.shares)} 股（${transfer.date}）。` +
+            '如果這次匯入的買進已包含這些持股，持股會重複計算：可以勾選「以對帳單取代」，或先到交易紀錄刪掉那筆匯入持倉。');
+        }
       }
       // Existing rows first on the same date, then this import in order (ids only break ties)
       const all = [...old, ...rows.map((r, i) => ({ ...r, id: Number.MAX_SAFE_INTEGER - rows.length + i, ref: r }))].sort(ledgerOrder);
@@ -253,7 +338,19 @@ const transactions = {
     res.records = res.records.filter((r) => !drop.has(r));
   },
 
-  async insertAll(records) {
+  async insertAll(records, plan) {
+    if (plan) {
+      for (const p of plan.symbols) {
+        for (const t of [...p.remove, ...p.transfers]) db.remove('stock_transactions', t.id);
+        if (p.transfer) {
+          db.insert('stock_transactions', {
+            symbol: p.symbol, action: 'BUY', shares: p.transfer.shares, price: p.transfer.price, fee: 0, tax: 0,
+            date: p.transfer.date, realized_pl: 0, is_transfer: 1, note: '匯入持倉（以對帳單取代時由目前持股倒推）',
+            ...(({ market, currency }) => ({ market, currency }))(records.find((r) => r.symbol === p.symbol)),
+          });
+        }
+      }
+    }
     const ids = new Set();
     for (const r of records) {
       const row = db.insert('stock_transactions', {
@@ -280,7 +377,10 @@ export function buildPrompt(kinds) {
   const chosen = kinds.filter((k) => KINDS[k]);
   if (!chosen.length) throw badRequest('請至少選一種資料');
   const example = { format: IMPORT_FORMAT, version: IMPORT_VERSION };
-  for (const k of chosen) example[k] = KINDS[k].example;
+  for (const k of chosen) {
+    example[k] = KINDS[k].example;
+    if (KINDS[k].summaryExample) example[`${k}_summary`] = KINDS[k].summaryExample;
+  }
   return `你是幫我把資料匯入理財 App「Finance Watcher」的助手。
 接下來我會貼上資料（文字、表格或截圖）。請把其中每一筆轉成下面格式的 JSON，只回覆一個 JSON code block，不要其他說明：
 
@@ -314,11 +414,13 @@ export function extractJson(text) {
 }
 
 /**
- * Per kind: { records, duplicates, errors: [{ index, error }], warnings }. Rows equal to an
- * existing record (or an earlier row in the same paste) are skipped as duplicates.
- * A bare array is read as the first requested kind.
+ * Per kind: { records, duplicates, errors: [{ index, error }], warnings, plan }.
+ * add mode: rows equal to an existing record (or an earlier row in the same paste) are skipped.
+ * replace mode (kinds with plan()): nothing is skipped as a duplicate (the statement is the
+ * record of what happened), and `plan` says what gets replaced. `plan` is filled in add mode
+ * too, so the preview can offer the replace option. A bare array is read as the first kind.
  */
-export async function parseImport(text, kinds = Object.keys(KINDS)) {
+export async function parseImport(text, kinds = Object.keys(KINDS), mode = 'add') {
   const data = extractJson(text);
   const sections = Array.isArray(data) ? { [kinds[0]]: data } : data;
   const out = {};
@@ -339,14 +441,23 @@ export async function parseImport(text, kinds = Object.keys(KINDS)) {
       }
     });
     await kind.prepare?.(res);
-    const seen = new Set(kind.existing().map(kind.key));
-    res.records = res.records.filter((r) => {
-      const key = kind.key(r);
-      if (seen.has(key)) { res.duplicates++; return false; }
-      seen.add(key);
-      return true;
-    });
-    kind.review?.(res);
+    res.plan = kind.plan?.(res, sections[`${k}_summary`]) ?? null;
+    const replace = mode === 'replace' && res.plan;
+    if (!replace) {
+      const seen = new Set(kind.existing().map(kind.key));
+      res.records = res.records.filter((r) => {
+        const key = kind.key(r);
+        if (seen.has(key)) { res.duplicates++; return false; }
+        seen.add(key);
+        return true;
+      });
+    }
+    kind.review?.(res, replace ? res.plan : null);
+    if (res.plan && res.errors.length) {
+      // Replacing needs every row of the statement in
+      res.plan.problems.unshift(`有 ${res.errors.length} 筆無法匯入，取代會讓這段期間的紀錄不完整`);
+      res.plan.ok = false;
+    }
     res.errors.sort((a, b) => a.index - b.index);
     out[k] = res;
   }
@@ -362,17 +473,21 @@ route('POST', '/api/ai-import/prompt', (req) => ({ prompt: buildPrompt(body(req)
 
 route('POST', '/api/ai-import/parse', (req) => {
   const r = body(req);
-  return parseImport(r.text, r.kinds);
+  return parseImport(r.text, r.kinds, r.mode);
 });
 
-// Re-parses the same text so only validated, de-duplicated rows are written, in one transaction.
+// Re-parses the same text so only validated rows are written, in one transaction.
 route('POST', '/api/ai-import/commit', async (req) => {
   const r = body(req);
-  const parsed = await parseImport(r.text, r.kinds);
+  const parsed = await parseImport(r.text, r.kinds, r.mode);
+  const replace = r.mode === 'replace';
+  for (const res of Object.values(parsed)) {
+    if (replace && res.plan && !res.plan.ok) throw badRequest('無法以對帳單取代：' + res.plan.problems.join('；'));
+  }
   const counts = {};
   await db.transaction(async () => {
     for (const [k, res] of Object.entries(parsed)) {
-      await KINDS[k].insertAll(res.records);
+      await KINDS[k].insertAll(res.records, replace ? res.plan : null);
       counts[k] = res.records.length;
     }
   });

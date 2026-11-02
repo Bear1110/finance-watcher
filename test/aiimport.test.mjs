@@ -153,3 +153,88 @@ test('transactions: warns when a 匯入持倉 transfer BUY already holds the sym
   const r = (await parseImport(STATEMENT)).transactions;
   assert.ok(r.warnings.some((w) => w.includes('0050.TW 已有「匯入持倉」')));
 });
+
+// ---------------------------------------------------------------- 以對帳單取代
+
+const tx = (o) => ({ market: 'TW', currency: 'TWD', fee: 0, tax: 0, realized_pl: 0, pl_manual: 0, lots_consumed: 1, is_transfer: 0, note: '', ...o });
+
+function seedReplace() {
+  db._reset({
+    settings: [{ id: 1, key: 'usd_twd_rate', value: '30' }],
+    stock_transactions: [
+      tx({ id: 1, symbol: '00881.TW', action: 'BUY', shares: 30000, price: 22, date: '2025-01-01', is_transfer: 1, note: '匯入持倉' }),
+      tx({ id: 2, symbol: '00881.TW', action: 'BUY', shares: 2000, price: 24.34, date: '2024-11-14', note: '手動記的' }),   // in the period
+      tx({ id: 3, symbol: '00881.TW', action: 'BUY', shares: 1000, price: 27, date: '2025-11-05' }),                      // after it: stays
+      tx({ id: 4, symbol: '2330.TW', action: 'BUY', shares: 100, price: 900, date: '2024-12-01' }),                       // other stock
+    ],
+    stock_holdings: [{ id: 1, symbol: '00881.TW', market: 'TW', shares: 33000, avg_cost: 22.2, currency: 'TWD', note: '' },
+                     { id: 2, symbol: '2330.TW', market: 'TW', shares: 100, avg_cost: 900, currency: 'TWD', note: '' }],
+  });
+}
+
+const replaceText = (summary) => JSON.stringify({
+  transactions: [
+    { date: '2024-10-18', symbol: '00881', market: 'TW', action: 'SELL', shares: 5000, price: 25.1, fee: 178, tax: 125, realized_pl: 42340, note: 'FB426' },
+    { date: '2024-11-14', symbol: '00881', market: 'TW', action: 'BUY', shares: 2000, price: 24.34, fee: 69, tax: 0, note: 'FF261' },
+    { date: '2025-09-02', symbol: '00881', market: 'TW', action: 'BUY', shares: 3000, price: 26.4, fee: 112, tax: 0, note: 'FD760' },
+  ],
+  transactions_summary: summary,
+});
+const GOOD = { period_start: '2024-10-01', period_end: '2025-10-31', total_shares: 10000, total_amount: 253380 };
+
+test('replace plan: period, totals, rows to remove, 匯入持倉 worked back from current holdings', async () => {
+  seedReplace();
+  const r = (await parseImport(replaceText(GOOD), ['transactions'], 'replace')).transactions;
+  const p = r.plan;
+  assert.equal(p.ok, true, p.problems.join());
+  assert.equal(p.start, '2024-10-01');
+  assert.ok(p.checks.some((c) => c.includes('股數合計 10000 與對帳單相符')));
+  assert.ok(p.checks.some((c) => c.includes('價金合計 253,380 與對帳單相符')));
+  const s = p.symbols[0];
+  assert.equal(s.symbol, '00881.TW');
+  assert.deepEqual(s.remove.map((t) => t.id), [2]);
+  assert.deepEqual(s.transfers.map((t) => t.id), [1]);
+  // 33000 now − 0 net in the statement − 1000 bought after the period
+  assert.deepEqual(s.transfer, { date: '2024-09-30', shares: 32000, price: 22 });
+  // In replace mode nothing is a duplicate, and the 10/18 sell is covered by the new 匯入持倉
+  assert.equal(r.duplicates, 0);
+  assert.equal(r.records.length, 3);
+  assert.equal(r.records.find((x) => x.note === 'FB426').history, undefined);
+});
+
+test('replace commit: holdings unchanged, old in-period rows gone, other stocks untouched', async () => {
+  seedReplace();
+  assert.deepEqual(await post('/api/ai-import/commit', { text: replaceText(GOOD), kinds: ['transactions'], mode: 'replace' }), { transactions: 3 });
+  const rows = db.where('stock_transactions', (t) => t.symbol === '00881.TW').sort((a, b) => a.date.localeCompare(b.date));
+  assert.deepEqual(rows.map((t) => [t.date, t.action, t.shares, t.is_transfer]), [
+    ['2024-09-30', 'BUY', 32000, 1],
+    ['2024-10-18', 'SELL', 5000, 0],
+    ['2024-11-14', 'BUY', 2000, 0],
+    ['2025-09-02', 'BUY', 3000, 0],
+    ['2025-11-05', 'BUY', 1000, 0],
+  ]);
+  assert.equal(db.findBy('stock_holdings', 'symbol', '00881.TW').shares, 33000);
+  // The sell now consumes the 匯入持倉 lots at its cost: (25.1 − 22) × 5000 − fee − tax
+  assert.equal(rows[1].realized_pl, 3.1 * 5000 - 178 - 125);
+  assert.equal(db.where('stock_transactions', (t) => t.symbol === '2330.TW').length, 1);
+});
+
+test('replace is blocked when the totals do not match or the holdings cannot be worked back', async () => {
+  seedReplace();
+  const bad = (await parseImport(replaceText({ ...GOOD, total_shares: 9000 }), ['transactions'], 'replace')).transactions.plan;
+  assert.equal(bad.ok, false);
+  assert.ok(bad.problems.some((x) => x.includes('股數合計 10000 與對帳單的 9000 不符')));
+  await assert.rejects(post('/api/ai-import/commit', { text: replaceText({ ...GOOD, total_shares: 9000 }), kinds: ['transactions'], mode: 'replace' }), /無法以對帳單取代/);
+  assert.equal(db.where('stock_transactions', (t) => t.symbol === '00881.TW').length, 3); // nothing changed
+
+  db.update('stock_holdings', 1, { shares: 500 }); // fewer than the trades that stay
+  const neg = (await parseImport(replaceText(GOOD), ['transactions'], 'replace')).transactions.plan;
+  assert.ok(neg.problems.some((x) => x.includes('負數')));
+
+  // No summary at all: allowed, with a note to check the row count yourself
+  db.update('stock_holdings', 1, { shares: 33000 });
+  const none = (await parseImport(replaceText(null), ['transactions'], 'replace')).transactions.plan;
+  assert.equal(none.ok, true);
+  assert.equal(none.start, '2024-10-18');
+  assert.ok(none.checks.some((c) => c.includes('沒有合計列')));
+});
