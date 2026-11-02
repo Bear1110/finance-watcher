@@ -3163,6 +3163,22 @@ function setAIImportMode(replace) {
   previewAIImport();
 }
 
+/** Settings: delete every self-account trade and holding (before re-importing full statements). */
+async function clearStockData() {
+  try {
+    const c = await api('/api/stocks/clear', { method: 'POST', body: JSON.stringify({ dry: true }) });
+    if (!c.transactions && !c.holdings) return showToast('沒有股票交易或持倉可以清除', 'info');
+    if (!confirm(`將刪除自己帳戶的 ${c.transactions} 筆股票交易（含匯入持倉、歷史損益）與 ${c.holdings} 檔持倉，並同步刪除試算表上的資料。
+股利、資產快照、收支、代管帳戶不受影響。
+
+建議先「下載備份」。確定要清除嗎？`)) return;
+    await api('/api/stocks/clear', { method: 'POST', body: JSON.stringify({}) });
+    showToast(`已清除 ${c.transactions} 筆交易、${c.holdings} 檔持倉`, 'success');
+  } catch (err) {
+    showToast('清除失敗: ' + err.message, 'error');
+  }
+}
+
 async function commitAIImport() {
   const text = document.getElementById('ai-import-text').value;
   try {

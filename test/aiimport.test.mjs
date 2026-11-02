@@ -30,6 +30,7 @@ globalThis.fetch = async (url) => {
 const db = await import('../js/server/db.js');
 const { handle } = await import('../js/server/router.js');
 const { extractJson, parseImport, buildPrompt } = await import('../js/server/aiimport.js');
+await import('../js/server/stocks.js'); // /api/stocks/clear
 
 const post = (url, body) => handle(url, { method: 'POST', body: JSON.stringify(body) });
 
@@ -317,4 +318,19 @@ test('replace: a stock the app has never had is simply added, not a negative 匯
   await post('/api/ai-import/commit', { text, kinds: ['transactions'], mode: 'replace' });
   assert.equal(db.findBy('stock_holdings', 'symbol', '0056.TW').shares, 5000);
   assert.equal(db.findBy('stock_holdings', 'symbol', '00881.TW').shares, 33000);
+});
+
+test('clear stock data: removes self-account trades and holdings only; dry run only counts', async () => {
+  seedReplace();
+  db.insert('stock_transactions', tx({ symbol: 'NVDA', market: 'US', currency: 'USD', action: 'BUY', shares: 1, price: 100, date: '2025-01-01', account_id: 7 }));
+  db.insert('dividends', { symbol: '00881.TW', amount: 1000, date: '2025-01-20' });
+  db.insert('expenses', { date: '2025-01-01', type: 'expense', amount: 50, category: '飲料' });
+  assert.deepEqual(await post('/api/stocks/clear', { dry: true }), { transactions: 4, holdings: 2 });
+  assert.equal(db.where('stock_transactions', (t) => t.account_id == null).length, 4);
+  assert.deepEqual(await post('/api/stocks/clear', {}), { transactions: 4, holdings: 2 });
+  assert.equal(db.where('stock_transactions', (t) => t.account_id == null).length, 0);
+  assert.equal(db.all('stock_holdings').length, 0);
+  assert.equal(db.where('stock_transactions', (t) => t.account_id === 7).length, 1); // managed account stays
+  assert.equal(db.all('dividends').length, 1);
+  assert.equal(db.all('expenses').length, 1);
 });
