@@ -3140,7 +3140,7 @@ function renderReplacePlan(plan) {
   const syms = plan.symbols.map(s => escapeHtml(s.symbol)).join('、');
   let html = `<div class="replace-box">
     <label class="llm-check"><input type="checkbox" ${on ? 'checked' : ''} onchange="setAIImportMode(this.checked)"> 以對帳單取代這幾檔股票的交易</label>
-    <p class="form-hint">把 ${plan.start} ~ ${plan.end} 期間內 ${syms} 的舊交易換成這份對帳單；期間開始前的持股用一筆「匯入持倉」補上（由目前持股倒推）。
+    <p class="form-hint">把${plan.perSymbol ? '' : ` ${plan.start} ~ ${plan.end} 期間內`} ${syms} 的舊交易換成這份對帳單；期間開始前的持股用一筆「匯入持倉」補上（由目前持股倒推）。
     同一檔股票如果在別的券商帳戶也有交易，請不要勾：那些交易會一起被刪掉。</p>`;
   if (on) {
     html += plan.problems.map(x => `<p class="replace-problem">✗ ${escapeHtml(x)}</p>`).join('') +
@@ -3150,7 +3150,7 @@ function renderReplacePlan(plan) {
         ? s.transfers.map(t => `${t.date} ${fmt(t.shares)} 股`).join('、') : '（沒有）';
       const after = s.transfer ? `${s.transfer.date} ${fmt(s.transfer.shares)} 股 @ ${fmtNum(s.transfer.price, 2)}` : '（刪除）';
       const rows = s.remove.map(t => `<li>${t.date} ${t.action === 'BUY' ? '買進' : '賣出'} ${fmt(t.shares)} 股 @ ${fmtNum(t.price, 2)}${t.history ? '（歷史損益）' : ''}${t.note ? ' · ' + escapeHtml(t.note) : ''}</li>`).join('');
-      return `<details class="replace-symbol"><summary><strong>${escapeHtml(s.symbol)}</strong>：刪除 ${s.remove.length} 筆舊交易；
+      return `<details class="replace-symbol"><summary><strong>${escapeHtml(s.symbol)}</strong>（${s.start} ~ ${s.end}）：刪除 ${s.remove.length} 筆舊交易；
         匯入持倉 ${before} → ${after}；匯入後持股 ${fmt(s.current)} 股（不變）</summary>
         ${rows ? `<ul>${rows}</ul>` : '<p class="form-hint">期間內沒有舊交易。</p>'}</details>`;
     }).join('');

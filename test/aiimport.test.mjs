@@ -279,3 +279,23 @@ test('trades the AI put inside "expenses" are imported as trades', async () => {
   assert.equal(r.expenses.errors.length, 0);
   assert.equal(r.transactions.records[0].symbol, '2886.TW');
 });
+
+test('replace without a 查詢期間: each symbol uses its own first..last trade dates', async () => {
+  db._reset({
+    settings: [{ id: 1, key: 'usd_twd_rate', value: '30' }],
+    stock_transactions: [tx({ id: 1, symbol: '00881.TW', action: 'BUY', shares: 115000, price: 15, date: '2021-01-14', is_transfer: 1 })],
+    stock_holdings: [{ id: 1, symbol: '00881.TW', market: 'TW', shares: 115000, avg_cost: 15, currency: 'TWD', note: '' }],
+  });
+  const text = JSON.stringify({ transactions: [
+    { date: '2020-09-17', symbol: '2886', market: 'TW', action: 'BUY', shares: 1000, price: 28.6, fee: 40, tax: 0 },
+    { date: '2022-02-14', symbol: '00881', market: 'TW', action: 'BUY', shares: 60000, price: 17.67, fee: 50, tax: 0 },
+    { date: '2025-09-02', symbol: '00881', market: 'TW', action: 'BUY', shares: 35000, price: 26.4, fee: 112, tax: 0 },
+  ] });
+  const p = (await parseImport(text, ['transactions'], 'replace')).transactions.plan;
+  assert.equal(p.ok, true, p.problems.join());
+  assert.equal(p.perSymbol, true);
+  const s = p.symbols.find((x) => x.symbol === '00881.TW');
+  assert.equal(s.start, '2022-02-14');
+  // 115000 now − 95000 in the statement, kept as a 匯入持倉 the day before its own first trade
+  assert.deepEqual(s.transfer, { date: '2022-02-13', shares: 20000, price: 15 });
+});

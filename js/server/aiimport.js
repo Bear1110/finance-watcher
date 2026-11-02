@@ -247,14 +247,19 @@ const transactions = {
    *   shares before = current holdings − net of the statement − net of the trades that stay
    * and kept as one 匯入持倉 (transfer BUY) at its old date, or the day before the period,
    * at the old transfer's cost (today's average cost if there was none).
+   * Without a printed 查詢期間 the statement's coverage is unknown, so each symbol only
+   * replaces its own first..last trade dates (a 2022 statement start must not drag a stock's
+   * 匯入持倉 back before it was even listed).
    * `problems` block the replace; `checks` are shown as information.
    */
   plan(res, summary) {
     const rows = res.records;
     if (!rows.length) return null;
     const dates = rows.map((r) => r.date).sort();
-    const start = normDate(summary?.period_start) || dates[0];
-    const end = normDate(summary?.period_end) || dates[dates.length - 1];
+    const pStart = normDate(summary?.period_start);
+    const pEnd = normDate(summary?.period_end);
+    const start = pStart || dates[0];
+    const end = pEnd || dates[dates.length - 1];
     const problems = [];
     const checks = [];
 
@@ -280,9 +285,12 @@ const transactions = {
     const slim = (t) => ({ id: t.id, date: t.date, action: t.action, shares: t.shares, price: t.price, note: t.note, history: !isCounted(t) });
     const symbols = [...new Set(rows.map((r) => r.symbol))].sort();
     const out = symbols.map((sym) => {
+      const own = rows.filter((r) => r.symbol === sym).map((r) => r.date).sort();
+      const sStart = pStart || own[0];
+      const sEnd = pEnd || own[own.length - 1];
       const mine = db.where('stock_transactions', (t) => t.symbol === sym && t.account_id == null);
       const transfers = mine.filter((t) => t.is_transfer === 1 && t.action === 'BUY');
-      const remove = mine.filter((t) => !transfers.includes(t) && t.date >= start && t.date <= end);
+      const remove = mine.filter((t) => !transfers.includes(t) && t.date >= sStart && t.date <= sEnd);
       const kept = mine.filter((t) => !transfers.includes(t) && !remove.includes(t) && isCounted(t));
       const holding = db.findBy('stock_holdings', 'symbol', sym);
       const current = holding?.shares || 0;
@@ -295,13 +303,14 @@ const transactions = {
         const tShares = transfers.reduce((n, t) => n + t.shares, 0);
         const price = tShares > 0 ? round4(transfers.reduce((n, t) => n + t.shares * t.price, 0) / tShares) : holding?.avg_cost || 0;
         const oldest = transfers.map((t) => t.date).sort()[0];
-        transfer = { date: oldest && oldest < start ? oldest : dayBefore(start), shares: before, price };
+        transfer = { date: oldest && oldest < sStart ? oldest : dayBefore(sStart), shares: before, price };
         if (!transfers.length) checks.push(`${sym}：期間開始前的 ${fmtShares(before)} 股原本沒有匯入持倉，會以目前均價建立一筆`);
         if (!(price > 0)) problems.push(`${sym}：期間開始前有 ${fmtShares(before)} 股，但沒有成本可以沿用`);
       }
-      return { symbol: sym, current, remove: remove.map(slim), transfers: transfers.map(slim), transfer };
+      return { symbol: sym, start: sStart, end: sEnd, current, remove: remove.map(slim), transfers: transfers.map(slim), transfer };
     });
-    return { start, end, problems, checks, symbols: out, ok: problems.length === 0 };
+    if (!pStart || !pEnd) checks.push('資料沒有查詢期間：每檔股票只取代它在資料裡第一筆到最後一筆之間的交易');
+    return { start, end, perSymbol: !pStart || !pEnd, problems, checks, symbols: out, ok: problems.length === 0 };
   },
 
   /**
