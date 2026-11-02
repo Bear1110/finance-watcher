@@ -215,8 +215,8 @@ function clearLocalData() {
 
 /** Re-render the active tab after data changed underneath it. */
 function fwRefresh() {
-  const tab = document.querySelector('.tab-btn.active')?.dataset.tab;
-  if (tab && typeof window.onTabActivated === 'function') window.onTabActivated(tab);
+  // body[data-tab] is the page on screen (some pages, e.g. 代管帳戶, have no nav button of their own)
+  if (typeof window.onTabActivated === 'function') window.onTabActivated(document.body.dataset.tab || 'dashboard');
   renderCloudStatus();
 }
 

@@ -187,19 +187,19 @@ function downloadFile(filename, content, type) {
 // SECTION: Tab Navigation
 // ============================================================
 
+// Pages without their own nav button, and the nav button that stays highlighted for them
+const TAB_PARENT = { managed: 'settings' };
+
+function showTab(tab) {
+  const nav = TAB_PARENT[tab] || tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === nav));
+  document.querySelectorAll('.tab-content').forEach(tc => tc.classList.toggle('active', tc.id === 'tab-' + tab));
+  window.scrollTo(0, 0);
+  onTabActivated(tab);
+}
+
 function initTabs() {
-  const tabs = document.querySelectorAll('.tab-btn');
-  tabs.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const target = btn.dataset.tab;
-      tabs.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
-      document.getElementById('tab-' + target).classList.add('active');
-      // Load data for the tab
-      onTabActivated(target);
-    });
-  });
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => showTab(btn.dataset.tab)));
 
   // Sub-tabs (stocks)
   document.querySelectorAll('.sub-tab-btn').forEach(btn => {
@@ -235,8 +235,7 @@ function togglePrivacy() {
   try { localStorage.setItem('privacyMode', privacyMode ? '1' : '0'); } catch (e) {}
   applyPrivacyUI();
   // Re-render the active tab so every formatted number picks up the new mode
-  const active = document.querySelector('.tab-btn.active');
-  if (active) onTabActivated(active.dataset.tab);
+  onTabActivated(document.body.dataset.tab || 'dashboard');
 }
 
 function onTabActivated(tab) {
@@ -2155,7 +2154,7 @@ async function loadDataCheckBadge() {
 
 /** Switch to a top-level tab (and optionally a stocks sub-tab) as if clicked */
 function goToTab(tab, subtab) {
-  document.querySelector(`.tab-btn[data-tab="${tab}"]`)?.click();
+  showTab(tab);
   if (subtab) document.querySelector(`.sub-tab-btn[data-subtab="${subtab}"]`)?.click();
 }
 

@@ -50,7 +50,6 @@
       <button class="tab-btn" data-tab="stocks"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg><span class="tab-label">股票<span class="tab-label-rest">管理</span></span></button>
       <button class="tab-btn" data-tab="portfolio"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg><span class="tab-label">組合<span class="tab-label-rest">分析</span></span></button>
       <button class="tab-btn" data-tab="expenses"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg><span class="tab-label">收支<span class="tab-label-rest">紀錄</span></span></button>
-      <button class="tab-btn" data-tab="managed"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="tab-label">代管<span class="tab-label-rest">帳戶</span></span></button>
       <button class="tab-btn" data-tab="llm"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.8L20 10.7l-6.1 1.9L12 18.5l-1.9-5.9L4 10.7l6.1-1.9z"/><path d="M19 17v4M17 19h4"/></svg><span class="tab-label">AI<span class="tab-label-rest"> 分析</span></span></button>
       <button class="tab-btn" data-tab="settings"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span class="tab-label">設定</span></button>
     </div>
@@ -842,6 +841,7 @@
 
     <!-- ==================== MANAGED ACCOUNTS TAB ==================== -->
     <section id="tab-managed" class="tab-content">
+      <button type="button" class="back-link" onclick="goToTab('settings')">‹ 設定</button>
       <div class="card" style="margin-bottom:16px">
         <div class="card-header">
           <h3>代管帳戶</h3>
@@ -1092,11 +1092,28 @@
     </section>
 
     <!-- ==================== SETTINGS TAB ==================== -->
-    <section id="tab-settings" class="tab-content">
-      <div class="card" style="max-width:600px">
-        <div class="card-header">
-          <h3>應用程式設定</h3>
+    <section id="tab-settings" class="tab-content settings-page">
+      <!-- Pages kept out of the main nav -->
+      <button type="button" class="card settings-link" onclick="goToTab('managed')">
+        <svg class="settings-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span class="settings-link-text"><strong>代管帳戶</strong><span>代他人保管的現金與持股，不計入總覽</span></span>
+        <span class="settings-link-chevron" aria-hidden="true">›</span>
+      </button>
+
+      <div class="card">
+        <div class="card-header"><h3>帳號與同步</h3></div>
+        <div id="cloud-account" class="text-muted">--</div>
+        <div class="settings-actions">
+          <button type="button" class="btn btn-primary btn-sm" id="cloud-signin-btn" onclick="cloudSignIn()">用 Google 登入</button>
+          <button type="button" class="btn btn-outline btn-sm" id="cloud-sync-btn" onclick="cloudSyncNow()">立即同步</button>
+          <a class="btn btn-outline btn-sm" id="cloud-sheet-link" target="_blank" rel="noopener" style="display:none">開啟試算表</a>
+          <button type="button" class="btn btn-outline btn-sm" id="cloud-signout-btn" onclick="cloudSignOut()">登出</button>
         </div>
+        <p class="form-hint">紀錄存在你自己雲端硬碟的「Finance Watcher 財務紀錄」試算表。網站只能存取它自己建立的那份檔案，作者看不到任何人的資料。沒登入時資料只存在這台裝置的瀏覽器。</p>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>一般</h3></div>
         <form id="settings-form" onsubmit="saveSettings(event)">
           <div class="form-group">
             <label>USD/TWD 匯率</label>
@@ -1121,11 +1138,47 @@
             <button type="button" class="btn btn-outline" onclick="testApiConnection()">測試 API 連線</button>
           </div>
         </form>
-        <div id="settings-test-result" style="margin-top:1rem"></div>
+        <div id="settings-test-result"></div>
       </div>
 
-      <!-- Data health check -->
-      <div class="card" style="max-width:900px;margin-top:20px">
+      <div class="card">
+        <div class="card-header"><h3>行情來源</h3></div>
+        <div class="form-group">
+          <label for="yahoo-proxy-url">Yahoo 代理網址</label>
+          <div class="settings-inline">
+            <input type="url" id="yahoo-proxy-url" placeholder="https://xxx.workers.dev（留空使用預設）">
+            <button type="button" class="btn btn-outline btn-sm" onclick="saveProxyURL()">儲存並測試</button>
+          </div>
+          <span class="form-hint" id="yahoo-proxy-hint">Yahoo Finance 不允許網頁直接查詢，需要經過轉送代理。沒有代理時，報價與匯率改用試算表的 GOOGLEFINANCE（需登入），績效分析與股利建議無法使用。</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>顯示</h3></div>
+        <div class="settings-row">
+          <div><strong>字體大小</strong></div>
+          <div class="font-size-ctrl-settings">
+            <button class="font-btn" onclick="setFontSize('s')">S 小</button>
+            <button class="font-btn" onclick="setFontSize('m')">M 中</button>
+            <button class="font-btn" onclick="setFontSize('l')">L 大</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>備份與還原</h3></div>
+        <div class="settings-row">
+          <div><strong>下載備份</strong><p class="form-hint">把所有資料存成一個 JSON 檔。清除或大量匯入前建議先下載。</p></div>
+          <button type="button" class="btn btn-primary btn-sm" onclick="downloadBackup()">下載備份</button>
+        </div>
+        <div class="settings-row">
+          <div><strong>匯入備份</strong><p class="form-hint">選擇本網站的備份檔（JSON），會<strong>取代</strong>目前所有資料。</p></div>
+          <label class="btn btn-outline btn-sm">選擇檔案<input type="file" id="import-file" accept=".json,application/json" hidden></label>
+        </div>
+        <div id="import-preview"></div>
+      </div>
+
+      <div class="card">
         <div class="card-header">
           <h3>資料健康檢查</h3>
           <button type="button" class="btn btn-outline btn-sm" onclick="loadDataCheck()">重新檢查</button>
@@ -1143,75 +1196,29 @@
         <div id="data-check-list"><p class="text-muted">檢查中…</p></div>
       </div>
 
-      <!-- Cloud sync & data -->
-      <div class="card" style="max-width:600px;margin-top:20px">
-        <div class="card-header">
-          <h3>雲端同步與資料</h3>
+      <div class="card">
+        <div class="card-header"><h3>關於</h3></div>
+        <div class="settings-row">
+          <div><strong>版本</strong> <span id="settings-version" class="text-muted">--</span><p class="form-hint">主畫面 App 沒有重新整理鈕時，用「重新載入」拿到最新版。</p></div>
+          <button type="button" class="btn btn-outline btn-sm" onclick="reloadApp()">重新載入</button>
         </div>
-        <div class="form-group">
-          <label>Google 帳號</label>
-          <div id="cloud-account" class="text-muted">--</div>
-          <div class="form-actions" style="margin-top:8px">
-            <button type="button" class="btn btn-primary btn-sm" id="cloud-signin-btn" onclick="cloudSignIn()">用 Google 登入</button>
-            <button type="button" class="btn btn-outline btn-sm" id="cloud-sync-btn" onclick="cloudSyncNow()">立即同步</button>
-            <a class="btn btn-outline btn-sm" id="cloud-sheet-link" target="_blank" rel="noopener" style="display:none">開啟試算表</a>
-            <button type="button" class="btn btn-outline btn-sm" id="cloud-signout-btn" onclick="cloudSignOut()">登出</button>
-          </div>
-          <span class="form-hint">紀錄存在你自己雲端硬碟的「Finance Watcher 財務紀錄」試算表。網站只能存取它自己建立的那份檔案，作者看不到任何人的資料。沒登入時資料只存在這台裝置的瀏覽器。</span>
+      </div>
+
+      <div class="card danger-zone">
+        <div class="card-header"><h3>危險區</h3></div>
+        <div class="settings-row">
+          <div><strong>清除這台裝置的資料</strong><p class="form-hint">有登入時之後會從試算表重新下載；沒登入時資料無法復原。</p></div>
+          <button type="button" class="btn btn-outline btn-sm" onclick="clearLocalData()">清除</button>
         </div>
-        <div class="form-group">
-          <label>行情來源（Yahoo 代理網址）</label>
-          <input type="url" id="yahoo-proxy-url" placeholder="https://xxx.workers.dev（留空使用預設）">
-          <span class="form-hint" id="yahoo-proxy-hint">Yahoo Finance 不允許網頁直接查詢，需要經過轉送代理。沒有代理時，報價與匯率改用試算表的 GOOGLEFINANCE（需登入），績效分析與股利建議無法使用。</span>
-          <div class="form-actions" style="margin-top:8px">
-            <button type="button" class="btn btn-outline btn-sm" onclick="saveProxyURL()">儲存並測試</button>
-          </div>
-        </div>
-        <div class="form-group">
-          <label>匯入資料</label>
-          <input type="file" id="import-file" accept=".json,application/json">
-          <span class="form-hint">選擇本網站的備份檔（JSON）。匯入會<strong>取代</strong>目前所有資料。</span>
-          <div id="import-preview" style="margin-top:8px"></div>
-        </div>
-        <div class="form-actions">
-          <button type="button" class="btn btn-primary" onclick="downloadBackup()">下載備份（JSON）</button>
-          <button type="button" class="btn btn-outline" onclick="clearLocalData()">清除這台裝置的資料</button>
-          <span class="clear-stock">
+        <div class="settings-row">
+          <div><strong>清除股票交易與持倉</strong><p class="form-hint">刪除所選市場的所有交易與持倉（含匯入持倉），會同步到試算表。股利、快照、收支、代管帳戶保留。</p></div>
+          <div class="settings-inline">
             <select id="clear-stock-market" class="input-sm" aria-label="要清除的市場">
               <option value="TW" selected>台股</option>
               <option value="US">美股</option>
               <option value="ALL">台股＋美股</option>
             </select>
-            <button type="button" class="btn btn-danger" onclick="clearStockData()" title="刪除自己帳戶在這個市場的所有股票交易與持倉（含匯入持倉），會同步到試算表。股利、快照、收支、代管帳戶保留">清除股票交易與持倉</button>
-          </span>
-        </div>
-      </div>
-
-      <!-- Display Settings -->
-      <div class="card" style="max-width:600px;margin-top:20px">
-        <div class="card-header">
-          <h3>顯示設定</h3>
-        </div>
-        <div class="form-group">
-          <label>字體大小</label>
-          <div class="font-size-ctrl-settings">
-            <button class="font-btn" onclick="setFontSize('s')">S 小</button>
-            <button class="font-btn" onclick="setFontSize('m')">M 中</button>
-            <button class="font-btn" onclick="setFontSize('l')">L 大</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Version -->
-      <div class="card" style="max-width:600px;margin-top:20px">
-        <div class="card-header">
-          <h3>關於</h3>
-        </div>
-        <div class="form-group">
-          <label>版本</label>
-          <div style="display:flex;align-items:center;gap:12px">
-            <span id="settings-version">--</span>
-            <button type="button" class="btn btn-outline btn-sm" onclick="reloadApp()" title="主畫面 App 沒有重新整理鈕時用這個載入最新版">重新載入</button>
+            <button type="button" class="btn btn-danger btn-sm" onclick="clearStockData()">清除</button>
           </div>
         </div>
       </div>

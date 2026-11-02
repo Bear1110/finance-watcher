@@ -1949,4 +1949,76 @@ body[data-tab="expenses"] .fab { display: flex; }
 .replace-symbol summary { cursor: pointer; line-height: 1.6; }
 .replace-symbol ul { margin: 6px 0 0; padding-left: 18px; color: var(--text-secondary); }
 
-.clear-stock { display: inline-flex; gap: 8px; align-items: center; }
+
+/* --- Settings page: one column of cards, label/hint on the left and the control on the right --- */
+.settings-page.active {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.settings-page > .card { margin: 0; }
+
+.settings-link {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-link:hover { border-color: var(--accent); }
+.settings-link-icon { width: 26px; height: 26px; color: var(--accent); flex-shrink: 0; }
+.settings-link-text { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.settings-link-text span { font-size: 0.82rem; color: var(--text-secondary); }
+.settings-link-chevron { font-size: 1.6rem; line-height: 1; color: var(--text-muted); }
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border-color);
+}
+
+.card-header + .settings-row { border-top: none; padding-top: 0; }
+.settings-row > div:first-child { flex: 1 1 240px; min-width: 0; }
+.settings-row .form-hint { margin: 4px 0 0; }
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 8px;
+}
+
+.settings-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-inline input { flex: 1 1 220px; min-width: 0; }
+.settings-page .form-actions { flex-wrap: wrap; }
+.settings-page .form-group + .form-group { margin-top: 14px; }
+#settings-test-result:empty { display: none; }
+
+.danger-zone { border-color: rgba(248, 113, 113, 0.45); }
+.danger-zone h3 { color: var(--red); }
+
+.back-link {
+  background: none;
+  border: none;
+  padding: 0 0 12px;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
