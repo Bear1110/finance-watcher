@@ -130,6 +130,7 @@ export function savePriceHistory(sym, closes, resetFrom, syncedAt) {
 const perfTxn = (t) => ({
   id: t.id, symbol: t.symbol, market: t.market, action: t.action, shares: t.shares, price: t.price,
   fee: t.fee, tax: t.tax, currency: t.currency, date: t.date, transfer: t.is_transfer === 1,
+  ...(t.action === 'SELL' ? { realized_pl: t.realized_pl } : {}),
 });
 
 /**

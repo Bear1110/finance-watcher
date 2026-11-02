@@ -6,6 +6,7 @@
 
 import * as db from './db.js';
 import { isCounted, normalizeSymbolMarket, settingFloat, round4, badRequest, cmp } from './util.js';
+import { lotFromBuy, takeLots, lotsTotal } from './lots.js';
 
 const actionOrder = (a) => (a === 'BUY' ? 0 : 1);
 
@@ -38,20 +39,12 @@ export function replaySymbol(symbol) {
       res.hasBuys = true;
       market = t.market;
       currency = t.currency;
-      if (t.shares > 0) lots.push({ shares: t.shares, cost: (t.price * t.shares + t.fee) / t.shares });
+      if (t.shares > 0) lots.push(lotFromBuy(t));
       continue;
     }
 
-    let remaining = t.shares;
-    let pl = 0;
-    for (const l of lots) {
-      if (remaining <= 0) break;
-      if (l.shares <= 0) continue;
-      const take = Math.min(l.shares, remaining);
-      pl += (t.price - l.cost) * take;
-      l.shares -= take;
-      remaining -= take;
-    }
+    const { cost, left: remaining } = takeLots(lots, t.shares);
+    const pl = (t.shares - remaining) * t.price - cost; // on the shares the lots covered
     if (t.pl_manual === 1) continue; // consumed what it could; realized_pl is fixed
     if (remaining > 1e-9) res.uncovered.set(t.id, remaining);
     if (remaining >= t.shares - 1e-9) continue; // nothing consumed: legacy import, keep stored realized_pl
@@ -63,12 +56,7 @@ export function replaySymbol(symbol) {
 
   if (!res.hasBuys) return res;
 
-  let totalShares = 0;
-  let totalCost = 0;
-  for (const l of lots) {
-    totalShares += l.shares;
-    totalCost += l.shares * l.cost;
-  }
+  let { shares: totalShares, cost: totalCost } = lotsTotal(lots);
   if (totalShares < 1e-9) totalShares = 0;
   res.shares = totalShares;
   if (totalShares > 0) res.avgCost = totalCost / totalShares;

@@ -185,3 +185,13 @@ test('cost and realized: FIFO lots with fees, USD cost at the day rate', () => {
   approx('ALL cost', last('ALL', 'cost'), 5 * 120 + 2 * 50 * 32);
   approx('US realized', last('US', 'realized'), 0);
 });
+
+test('realized uses the ledger realized_pl when the SELL carries one', () => {
+  const r = computePerformance({
+    txns: [buy('A.TW', '2026-01-05', 10, 100), { ...sell('A.TW', '2026-01-06', 10, 120), realized_pl: 150 }],
+    closes: { 'A.TW': closesOf('2026-01-05', 100, '2026-01-06', 120) },
+    today: '2026-01-06', liveRate: 30,
+  });
+  const realized = r.series.TW.realized;
+  approx('stored realized', realized[realized.length - 1], 150); // not the recomputed 200
+});

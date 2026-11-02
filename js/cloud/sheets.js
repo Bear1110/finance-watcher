@@ -27,6 +27,12 @@ export const SHEET_IDS = {
   // 12: llm_conversations, retired (never reuse the id)
 };
 export const QUOTES_SHEET_ID = 99;
+// Ids of retired tables: their tabs may still be in the user's sheet as an archive, so a new
+// table must never take one (ensureTabs would see the old tab and sync into it).
+const RETIRED_SHEET_IDS = new Set([8, 12]);
+for (const id of [...Object.values(SHEET_IDS), QUOTES_SHEET_ID]) {
+  if (RETIRED_SHEET_IDS.has(id)) throw new Error(`sheet id ${id} is retired, pick a new one`);
+}
 const QUOTES_TITLE = 'quotes';
 const QUOTE_COLUMNS = ['symbol', 'ticker', 'price', 'prev_close', 'name', 'currency'];
 

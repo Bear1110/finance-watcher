@@ -448,7 +448,7 @@ function reRenderTrendChart() {
  * day. Before the performance data arrives it draws nothing; loadPerformance
  * re-renders it.
  */
-/** The four net-worth parts, shared by the snapshot and daily trend charts (tw/us colors also used by 市值走勢) */
+/** The four net-worth parts, shared by the snapshot and daily trend charts (tw/us colors also used by 市值與損益走勢) */
 const ASSET_SERIES = [
   { key: 'cashTWD', label: '台幣現金', color: '#4e8cff' },
   { key: 'cashUSD', label: '美金現金(TWD)', color: '#fbbf24' },
@@ -1765,20 +1765,36 @@ function selectedBench() {
 }
 
 /** Dashboard performance card + monthly heatmap from /api/stocks/performance */
+let _perfPromise = null;
+
+/** /api/stocks/performance, fetched once and shared until data changes (invalidatePerf). */
+function getPerf() {
+  _perfPromise ||= api('/api/stocks/performance')
+    .then(d => (_perfData = d))
+    .catch(err => { _perfPromise = null; throw err; });
+  return _perfPromise;
+}
+
+/** Called by main.js on every data change, and by the dashboard to pick up fresh quotes. */
+function invalidatePerf() {
+  _perfPromise = null;
+  _perfData = null;
+}
+
 async function loadPerformance() {
   const head = document.getElementById('perf-head');
   const body = document.getElementById('perf-body');
   if (!head || !body) return;
   let data;
   try {
-    data = await api('/api/stocks/performance');
+    invalidatePerf(); // the dashboard always shows today's quotes
+    data = await getPerf();
   } catch (err) {
     // 503 = no Yahoo proxy configured; its message says where to set one
     const why = err.status === 503 ? escapeHtml(err.message) : '無法計算績效';
     body.innerHTML = `<tr><td class="text-muted">${why}</td></tr>`;
     return;
   }
-  _perfData = data;
   const periods = data.periods || [];
   if (!periods.length) {
     body.innerHTML = '<tr><td class="text-muted">尚無交易紀錄</td></tr>';
@@ -1906,7 +1922,7 @@ let _holdingsTrendChart = null;
 async function loadHoldingsTrend() {
   const hint = document.getElementById('holdings-trend-hint');
   try {
-    if (!_perfData) _perfData = await api('/api/stocks/performance');
+    await getPerf();
     renderHoldingsTrend();
   } catch (err) {
     // 503 = no Yahoo proxy configured; its message says where to set one
@@ -1915,19 +1931,25 @@ async function loadHoldingsTrend() {
 }
 
 const TREND_SEG_LABEL = { ALL: '合計', TW: '台股', US: '美股' };
+const assetColor = (key) => ASSET_SERIES.find(a => a.key === key).color;
 /** Series colors: 市值 per market (as on the dashboard), 未實現 / 已實現 as the CVD-checked blue / orange pair */
-const trendColor = (key) => ({ ALL: '#4e8cff', TW: ASSET_SERIES[2].color, US: ASSET_SERIES[3].color }[key] || seriesColor(key));
+const trendColor = (key) => ({ ALL: '#4e8cff', TW: assetColor('tw'), US: assetColor('us') }[key] || seriesColor(key));
 const trendPick = (name) => document.querySelector(`[data-trend="${name}"] .active`)?.dataset.v;
-const pctText = (pl, cost) => (cost > 0 ? ` (${fmtPct(pl / cost * 100)})` : '');
+const unrealPct = (pl, cost) => (cost > 0 ? fmtPct(pl / cost * 100) : '--');
+let _trendPeriod = '1Y';
 
 function renderHoldingsTrend() {
   const s = _perfData && _perfData.series;
   if (!s || !s.dates || !s.dates.length) return;
   const seg = trendPick('seg') || 'ALL';
   const mode = trendPick('mode') || 'value';
-  const days = Number(trendPick('days')) || 0;
-  const from = days ? addDaysISO(s.dates[s.dates.length - 1], -days) : '';
-  const b = Math.max(0, s.dates.findIndex(d => d >= from));
+  // Same calendar periods as the 投資績效 card (1 個月 … 全部), from the server
+  const periods = _perfData.periods || [];
+  if (!periods.some(p => p.key === _trendPeriod)) _trendPeriod = 'ALL';
+  document.getElementById('holdings-trend-periods').innerHTML = periods.map(p =>
+    `<button type="button" class="chart-type-btn${p.key === _trendPeriod ? ' active' : ''}" onclick="setTrendPeriod('${p.key}')">${p.label}</button>`).join('');
+  const start = periods.find(p => p.key === _trendPeriod)?.start || '';
+  const b = Math.max(0, s.dates.findIndex(d => d >= start));
   const idx = weekdayIndexes(s.dates, b);
   const value = s.value[seg], cost = s.cost[seg], realized = s.realized[seg];
   const unreal = (i) => value[i] - cost[i];
@@ -1935,11 +1957,13 @@ function renderHoldingsTrend() {
   // Latest numbers, plus how much each moved over the shown period
   const last = s.dates.length - 1;
   const moved = (now, then) => (idx.length > 1 ? `<span class="${plClass(now - then)}">期間 ${fmtPL(now - then)}</span>` : '');
-  document.getElementById('holdings-trend-summary').innerHTML = `
-    <div><span>市值</span><strong>${fmtTWD(value[last])}</strong></div>
-    <div><span>持有成本</span><strong>${fmtTWD(cost[last])}</strong></div>
-    <div><span>未實現損益</span><strong class="${plClass(unreal(last))}">${fmtPL(unreal(last))}${pctText(unreal(last), cost[last])}</strong>${moved(unreal(last), unreal(idx[0]))}</div>
-    <div><span>累計已實現</span><strong class="${plClass(realized[last])}">${fmtPL(realized[last])}</strong>${moved(realized[last], realized[idx[0]])}</div>`;
+  const pl = unreal(last);
+  document.getElementById('holdings-trend-summary').innerHTML = [
+    ['市值', fmtTWD(value[last]), ''],
+    ['持有成本', fmtTWD(cost[last]), ''],
+    ['未實現損益', `${fmtPL(pl)}${cost[last] > 0 ? ` (${unrealPct(pl, cost[last])})` : ''}`, plClass(pl), moved(pl, unreal(idx[0]))],
+    ['累計已實現', fmtPL(realized[last]), plClass(realized[last]), moved(realized[last], realized[idx[0]])],
+  ].map(([label, val, cls, sub = '']) => `<div><span>${label}</span><strong class="${cls}">${val}</strong>${sub}</div>`).join('');
 
   const line = (label, data, color, extra = {}) => ({
     label, data, borderColor: color, backgroundColor: color,
@@ -1967,8 +1991,8 @@ function renderHoldingsTrend() {
             footer: items => {
               const i = idx[items[0].dataIndex];
               return mode === 'value'
-                ? `未實現 ${fmtPL(unreal(i))}${pctText(unreal(i), cost[i])}\n累計已實現 ${fmtPL(realized[i])}`
-                : `未實現報酬率 ${cost[i] > 0 ? fmtPct(unreal(i) / cost[i] * 100) : '--'}`;
+                ? `未實現 ${fmtPL(unreal(i))} (${unrealPct(unreal(i), cost[i])})\n累計已實現 ${fmtPL(realized[i])}`
+                : `未實現報酬率 ${unrealPct(unreal(i), cost[i])}`;
             },
           },
         },
@@ -1981,9 +2005,9 @@ function renderHoldingsTrend() {
   });
 }
 
-/** "2026-11-02", -31 → "2026-10-02" */
-function addDaysISO(date, n) {
-  return new Date(Date.parse(date + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
+function setTrendPeriod(key) {
+  _trendPeriod = key;
+  renderHoldingsTrend();
 }
 
 document.addEventListener('click', (e) => {
@@ -2046,7 +2070,7 @@ async function loadDataCheckBadge() {
   badge.innerHTML = warns ? ` · <a href="#" onclick="goToTab('settings');return false">⚠ 資料檢查 ${warns} 項提醒</a>` : '';
 }
 
-/** Switch to a top-level tab (and optionally a stocks sub-tab) as if clicked */
+/** Show a page (and optionally a stocks sub-tab); also for pages without a nav button */
 function goToTab(tab, subtab) {
   showTab(tab);
   if (subtab) document.querySelector(`.sub-tab-btn[data-subtab="${subtab}"]`)?.click();

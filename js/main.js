@@ -231,6 +231,7 @@ window.localApiReady = Promise.resolve();
 
 document.getElementById('import-file')?.addEventListener('change', onImportFile);
 sync.onStatus(renderCloudStatus);
+db.onChange(() => window.invalidatePerf?.()); // trades, dividends, settings: performance data is stale
 
 db.onChange(() => renderCloudStatus());
 sync.initSync();

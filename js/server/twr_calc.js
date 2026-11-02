@@ -7,10 +7,11 @@
 
 import { USDTWD_SYMBOL } from './market.js';
 import { goRound, round2, round4, toTWD } from './util.js';
+import { lotFromBuy, takeLots, lotsTotal } from './lots.js';
 
 export { goRound, round2 };
 
-// perfTxn: { symbol, market, action, currency, date, shares, price, fee, tax, transfer }
+// perfTxn: { symbol, market, action, currency, date, shares, price, fee, tax, transfer, realized_pl? }
 // transfer: a 匯入持倉 BUY whose price is the average cost and whose date may be
 // a placeholder; it enters at that day's market value instead, so there is no
 // fake gain or loss on the import day.
@@ -68,10 +69,11 @@ class PriceCursor {
  * when money went in, so realized, unrealized, dividends, fees and FX all land
  * in one number. P&L = V_end − V_start − buys + sells + dividends.
  *
- * Alongside, FIFO lots (the ledger's rule: buy fee in the lot cost, sell fee and
- * tax out of the proceeds) give per day the cost of what is held and the
- * cumulative realized P&L, so unrealized = value − cost. USD cost is converted
- * at that day's rate (like the holdings page), so unrealized excludes FX moves;
+ * Alongside, the ledger's FIFO lots (lots.js) give per day the cost of what is
+ * held, so unrealized = value − cost, and the cumulative realized P&L: each
+ * SELL's stored realized_pl when given (the ledger's number, so the 已實現損益
+ * page and this agree), else proceeds − lot cost. USD cost is converted at that
+ * day's rate (like the holdings page), so unrealized excludes FX moves;
  * realized is converted at the sale day's rate.
  */
 export function computePerformance(input) {
@@ -110,7 +112,7 @@ export function computePerformance(input) {
   const fxCur = new PriceCursor(closes[USDTWD_SYMBOL]);
 
   const shares = {};
-  const lots = {}; // symbol -> FIFO [{ q, c }]: shares and cost per share (native, buy fee included)
+  const lots = {}; // symbol -> FIFO lots (lots.js), native currency
   const realized = { ALL: 0, TW: 0, US: 0 }; // cumulative, TWD
   const px = {}; // last known price per symbol, native currency
   for (let d = first; d <= today; d = addDays(d, 1)) {
@@ -170,21 +172,14 @@ export function computePerformance(input) {
         shares[t.symbol] = (shares[t.symbol] || 0) + t.shares;
         addFlow(inflow, t.market, toTWD(t.shares * tradePx[i] + t.fee, t.currency, fx));
         // A 匯入持倉's price is its average cost (the TWR uses the market price instead)
-        if (t.shares > 0) fifo.push({ q: t.shares, c: (t.shares * t.price + t.fee) / t.shares });
+        if (t.shares > 0) fifo.push(lotFromBuy(t));
       } else {
         shares[t.symbol] = (shares[t.symbol] || 0) - t.shares;
         const proceeds = t.shares * t.price - t.fee - t.tax;
         addFlow(outflow, t.market, toTWD(proceeds, t.currency, fx));
-        let left = t.shares;
-        let cost = 0;
-        while (left > 1e-9 && fifo.length) {
-          const take = Math.min(fifo[0].q, left);
-          cost += take * fifo[0].c;
-          fifo[0].q -= take;
-          left -= take;
-          if (fifo[0].q <= 1e-9) fifo.shift();
-        }
-        addFlow(realized, t.market, toTWD(proceeds - cost, t.currency, fx));
+        const { cost } = takeLots(fifo, t.shares);
+        const pl = typeof t.realized_pl === 'number' ? t.realized_pl : proceeds - cost;
+        addFlow(realized, t.market, toTWD(pl, t.currency, fx));
       }
     });
     for (const dv of divByDate[d] || []) {
@@ -193,7 +188,7 @@ export function computePerformance(input) {
     const value = valueAt((sym) => px[sym] || 0);
     const held = { ALL: 0, TW: 0, US: 0 };
     for (const [sym, fifo] of Object.entries(lots)) {
-      addFlow(held, symMarket[sym], toTWD(fifo.reduce((n, l) => n + l.q * l.c, 0), symCur[sym], fx));
+      addFlow(held, symMarket[sym], toTWD(lotsTotal(fifo).cost, symCur[sym], fx));
     }
 
     res.days.push(d);

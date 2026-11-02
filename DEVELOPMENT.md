@@ -10,8 +10,8 @@
 | `db.js` | 記憶體資料表 + localStorage、待同步紀錄 |
 | `router.js` + 各模組的 `route()` | `/api` 路由 |
 | `util.js` | 共用的請求解析、回應、日期與數字格式 |
-| `ledger.js` | 自有帳戶交易的 FIFO 重播（持倉、已實現損益） |
-| `stocks.js` | 持倉、交易、股票快照 |
+| `ledger.js` / `lots.js` | 自有帳戶交易的 FIFO 重播（持倉、已實現損益）；`lots.js` 是批次規則，績效的逐日持有成本也用它 |
+| `stocks.js` | 持倉、交易、已實現損益 |
 | `assets.js` / `expenses.js` / `dividends.js` / `managed.js` / `settings.js` / `reports.js` / `llm.js` / `export.js` | 各功能頁 |
 | `twr.js` / `twr_calc.js` / `performance.js` / `datacheck.js` | 投資績效（TWR / XIRR）與資料檢查 |
 | `market.js` | 報價、匯率、歷史股價、股利歷史 |
@@ -45,7 +45,7 @@
   這次出現的股票的自有帳戶舊交易全部刪掉、換成對帳單；期間開始前的持股 = 目前持股 − 對帳單淨買進 − 留下來的交易淨買進，
   存成一筆匯入持倉（沿用舊匯入持倉的成本，沒有就用目前均價）。合計列對不上、有無法匯入的列、倒推出負數時不允許取代
 
-舊的「AI 對話紀錄」已停用；`llm_conversations` 表只為了把刪除同步到試算表而保留。
+停用的表（`stock_snapshots`、`llm_conversations`）已不在 `SCHEMA`，不再同步；試算表裡的舊分頁可以自行刪除。它們的 sheetId（8、12）列在 `sheets.js` 的 `RETIRED_SHEET_IDS`，新表不能再用。
 
 ## 行情
 
