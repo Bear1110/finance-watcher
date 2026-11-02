@@ -54,6 +54,8 @@ node --test                  # 單元測試（FIFO、TWR、代管帳戶、股利
 
 改了 `js/` 底下的檔案清單時，記得同步 `sw.js` 的 `SHELL` 並把 `VERSION` 加一。
 
+更新提示：`js/update.js` 比對 `version.js` 的 `Last-Modified`（GitHub Pages 每次部署都會變）。開著舊版的分頁回到前景時會跳「有新版本可用」，不用手動改版本號。
+
 ## 安全：CSP 與 SRI
 
 `index.html` 開頭的 Content-Security-Policy 限制網頁只能連到列出的網域，就算有惡意程式碼混進來也很難把資料送出去。

@@ -5,6 +5,7 @@ import * as db from './server/db.js';
 import { route, handle } from './server/router.js';
 import { badRequest, body } from './server/util.js';
 import { VERSION } from './version.js';
+import { watchForUpdate } from './update.js';
 import * as sync from './cloud/sync.js';
 import { invalidateCache, invalidateForexCache, fetchQuote } from './server/market.js';
 import { BACKUP_FORMAT } from './server/settings.js';
@@ -233,3 +234,14 @@ sync.initSync();
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js').catch((e) => console.warn('sw register failed', e));
 }
+
+// 網站有新部署時，顯示一則不會自動消失的提示，點了重新整理
+watchForUpdate(() => {
+  if (document.getElementById('update-toast')) return;
+  const el = document.createElement('div');
+  el.id = 'update-toast';
+  el.className = 'toast toast-info toast-sticky';
+  el.innerHTML = '<span>有新版本可用</span><button type="button" class="toast-action">重新整理</button>';
+  el.querySelector('button').addEventListener('click', () => location.reload());
+  document.getElementById('toast-container').append(el);
+});
