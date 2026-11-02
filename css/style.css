@@ -641,9 +641,9 @@ select option {
   padding: 0.75rem 1.8rem;
 }
 
-.btn-icon {
-  font-size: 1.1rem;
-}
+/* Icon-only row actions (rowBtn): square, same height as text buttons */
+.btn-icon { padding: 0.35rem; line-height: 0; }
+.btn-icon svg { width: 16px; height: 16px; }
 
 .btn:disabled {
   opacity: 0.5;

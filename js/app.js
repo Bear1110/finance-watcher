@@ -207,16 +207,41 @@ const ICONS = {
   alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4M12 17h.01"/>',
   refresh: '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  minus: '<path d="M5 12h14"/>',
+  eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+  'eye-off': '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>',
+  pencil: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>',
+  trash: '<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6M14 11v6"/>',
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/>',
   sparkles: '<path d="M12 3l1.9 5.8L20 10.7l-6.1 1.9L12 18.5l-1.9-5.9L4 10.7l6.1-1.9z"/><path d="M19 17v4M17 19h4"/>',
 };
 
+/** An icon by reference: the paths live once, in the sprite applyIcons adds (#i-name). */
+const svgIcon = (name) => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
+
 function applyIcons(root = document) {
+  if (!document.getElementById('icon-sprite')) {
+    const symbols = Object.entries(ICONS).map(([name, paths]) =>
+      `<symbol id="i-${name}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</symbol>`).join('');
+    document.body.insertAdjacentHTML('afterbegin', `<svg id="icon-sprite" width="0" height="0" style="position:absolute" aria-hidden="true">${symbols}</svg>`);
+  }
   root.querySelectorAll('[data-icon]').forEach(el => {
-    const paths = ICONS[el.dataset.icon];
-    if (paths) el.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+    if (ICONS[el.dataset.icon]) el.innerHTML = svgIcon(el.dataset.icon);
   });
 }
+
+/** Icon-only row actions: [icon, button style, label]; the label is the tooltip and screen-reader name. */
+const ROW_ACTIONS = {
+  edit: ['pencil', 'btn-outline', '編輯'],
+  delete: ['trash', 'btn-danger', '刪除'],
+  view: ['list', 'btn-outline', '明細'],
+  buy: ['plus', 'btn-buy', '買入'],
+  sell: ['minus', 'btn-sell', '賣出'],
+};
+const rowBtn = (kind, onclick, label = ROW_ACTIONS[kind][2]) => {
+  const [icon, cls] = ROW_ACTIONS[kind];
+  return `<button type="button" class="btn ${cls} btn-sm btn-icon" title="${label}" aria-label="${label}" onclick="${onclick}">${svgIcon(icon)}</button>`;
+};
 
 // ============================================================
 // SECTION: Tap tooltips — a `title` is only a hover tooltip, and touch screens can't hover.
@@ -710,8 +735,8 @@ function renderSnapshotTable(assets) {
       <td><strong>${fmtTWD(a.total_asset)}</strong></td>
       <td>${a.note || ''}</td>
       <td>
-        <button class="btn btn-outline btn-sm" onclick="editSnapshot(${a.id})">編輯</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteSnapshot(${a.id})">刪除</button>
+        ${rowBtn('edit', `editSnapshot(${a.id})`)}
+        ${rowBtn('delete', `deleteSnapshot(${a.id})`)}
       </td>
     </tr>
   `).join('');
@@ -945,9 +970,9 @@ function renderHoldingRow(s) {
       <td>${fmtCur(s.market_value, cur)}</td>
       ${plCell(s.unrealized_pl, s.pl_percent, cur)}${divCells(dm, cur)}
       <td class="action-buttons">
-        <button class="btn btn-buy btn-sm" title="買入" onclick="openTradeModal('BUY', '${s.symbol}', '${s.market}', '${s.currency}', ${s.shares}, ${s.current_price || 0})">買</button>
-        <button class="btn btn-sell btn-sm" title="賣出" onclick="openTradeModal('SELL', '${s.symbol}', '${s.market}', '${s.currency}', ${s.shares}, ${s.current_price || 0})">賣</button>
-        <button class="btn btn-danger btn-sm" title="刪除持倉" onclick="deleteHolding(${s.id})">刪</button>
+        ${rowBtn('buy', `openTradeModal('BUY', '${s.symbol}', '${s.market}', '${s.currency}', ${s.shares}, ${s.current_price || 0})`)}
+        ${rowBtn('sell', `openTradeModal('SELL', '${s.symbol}', '${s.market}', '${s.currency}', ${s.shares}, ${s.current_price || 0})`)}
+        ${rowBtn('delete', `deleteHolding(${s.id})`, '刪除持倉')}
       </td>
     </tr>
   `;
@@ -1379,8 +1404,8 @@ async function loadTransactions() {
           <td class="${plClass(t.realized_pl)}">${t.realized_pl ? fmtPL(t.realized_pl) : '--'}</td>
           <td>${t.note || ''}</td>
           <td>
-            <button class="btn btn-outline btn-sm" onclick="editTransaction(${t.id}, '${escaped(t.symbol)}', '${t.market}', '${t.action}', ${t.shares}, ${t.price}, ${t.fee || 0}, '${t.date}', '${escaped(t.note)}', ${t.realized_pl || 0}, ${t.tax || 0})">編輯</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteTransaction(${t.id})">刪除</button>
+            ${rowBtn('edit', `editTransaction(${t.id}, '${escaped(t.symbol)}', '${t.market}', '${t.action}', ${t.shares}, ${t.price}, ${t.fee || 0}, '${t.date}', '${escaped(t.note)}', ${t.realized_pl || 0}, ${t.tax || 0})`)}
+            ${rowBtn('delete', `deleteTransaction(${t.id})`)}
           </td>
         </tr>
       `;
@@ -2275,8 +2300,8 @@ function renderDividends() {
         <td>${d.withheld ? fc(d.withheld) : '--'}</td>
         <td>${escapeHtml(d.note || '')}</td>
         <td>
-          <button class="btn btn-outline btn-sm" onclick="editDividend(${d.id})">編輯</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteDividend(${d.id})">刪除</button>
+          ${rowBtn('edit', `editDividend(${d.id})`)}
+          ${rowBtn('delete', `deleteDividend(${d.id})`)}
         </td>
       </tr>`;
   }).join('');
@@ -2947,8 +2972,8 @@ function renderExpenseTable(month) {
         <td>${fmtTWD(e.amount)}</td>
         <td>${escapeHtml(e.note || '')}</td>
         <td>
-          <button class="btn btn-outline btn-sm" onclick="editExpense(${e.id})">編輯</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteExpense(${e.id})">刪除</button>
+          ${rowBtn('edit', `editExpense(${e.id})`)}
+          ${rowBtn('delete', `deleteExpense(${e.id})`)}
         </td>
       </tr>
     `;
@@ -3511,7 +3536,7 @@ async function loadManagedAccountSummary(id) {
           <td>${curSym}${fmt(t.fee, 2)}</td>
           <td><span class="${plClass(t.realized_pl)}">${curSym}${fmt(t.realized_pl, 2)}</span></td>
           <td>${escapeHtml(t.note || '')}</td>
-          <td><button class="btn btn-outline btn-sm" onclick="deleteManagedTransaction(${t.id})">刪除</button></td>
+          <td>${rowBtn('delete', `deleteManagedTransaction(${t.id})`)}</td>
         </tr>`;
       }).join('');
     }
@@ -3534,7 +3559,7 @@ async function loadManagedAccountSummary(id) {
           <td>${m.currency}</td>
           <td><span class="${cls}">${sign}${curSym}${fmt(m.amount, 2)}</span></td>
           <td>${escapeHtml(m.note || '')}</td>
-          <td><button class="btn btn-outline btn-sm" onclick="deleteManagedCashMovement(${m.id})">刪除</button></td>
+          <td>${rowBtn('delete', `deleteManagedCashMovement(${m.id})`)}</td>
         </tr>`;
       }).join('');
     }
@@ -3587,8 +3612,8 @@ async function loadManagedSnapshots(id) {
         <td><strong>${fmtTWD(s.total_value_twd)}</strong></td>
         <td>${fmtNum(s.usd_twd_rate, 2)}</td>
         <td>
-          <button class="btn btn-outline btn-sm" onclick="viewManagedSnapshotDetail(${idx})">明細</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteManagedSnapshot(${s.id})">刪除</button>
+          ${rowBtn('view', `viewManagedSnapshotDetail(${idx})`)}
+          ${rowBtn('delete', `deleteManagedSnapshot(${s.id})`)}
         </td>
       </tr>
     `).join('');
