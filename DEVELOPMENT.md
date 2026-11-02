@@ -33,9 +33,14 @@
 使用者在 AI 那邊貼上自己的資料或截圖 → 把回覆貼回來 → `/api/ai-import/parse` 預覽 → `/api/ai-import/commit` 寫入。
 
 回覆格式是一個外框分區：`{ "format": "finance-watcher-import", "version": 1, "expenses": [...] }`。
-新增一種可匯入的資料（股票交易、股利、資產快照…）只要在 `aiimport.js` 的 `KINDS` 登記一項
-（`label`、`example`、`prompt()`、`normalize()`、`key()`、`existing()`、`insert()`），
-再在 `app.js` 的 `renderImportSection()` 補上預覽表格。
+目前有收支（`expenses`）與股票交易（`transactions`）。新增一種（股利、資產快照…）只要在 `aiimport.js` 的 `KINDS`
+登記一項（介面見檔案開頭說明），再在 `app.js` 的 `IMPORT_COLUMNS` 補上預覽欄位。
+
+股票交易的特別處理：
+- 分割：成交價約為當日（已還原分割的）收盤價整數倍時，視為分割前的交易，換算成分割後的股數與價格（需要行情代理）
+- 賣出時持股不足（例如對帳單只涵蓋後面幾個月）：有損益金額就當「歷史損益」匯入（`pl_manual`，不扣持股），沒有就列為錯誤
+- 已有「匯入持倉」建立的持股時提醒，避免實際買進再匯入一次造成重複
+- 沒給手續費與稅的台股交易依設定的折扣估算
 
 舊的「AI 對話紀錄」已停用；`llm_conversations` 表只為了把刪除同步到試算表而保留。
 

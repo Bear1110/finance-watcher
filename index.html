@@ -484,6 +484,7 @@
               <span class="filter-sep">~</span>
               <input type="date" id="tx-filter-end" class="input-sm">
               <button class="btn btn-outline btn-sm" onclick="loadTransactions()">篩選</button>
+              <button class="btn btn-outline btn-sm" onclick="openAIImport('transactions')">AI 匯入</button>
               <button class="btn btn-outline btn-sm" onclick="exportCSV('transactions')">匯出 CSV</button>
             </div>
           </div>
@@ -1081,6 +1082,7 @@
             <button class="btn btn-outline" onclick="copyText(_aiImportPrompt)">複製提示詞</button>
           </div>
           <p class="form-hint" style="margin:6px 0 0">手機上的 ChatGPT / Claude App 有時不會帶入提示詞，這時用「複製提示詞」再貼上。</p>
+          <p class="form-hint" id="import-ai-too-long" style="display:none;margin:6px 0 0">勾選的種類多時提示詞太長，無法用連結帶入：請按「複製提示詞」再貼到 AI，或一次只勾一種。</p>
           <p class="import-step">2. 把 AI 的回覆整段貼在這裡</p>
           <textarea id="ai-import-text" rows="6" placeholder="AI 回覆的 JSON（含 ```json 標記或前後說明文字都可以）"></textarea>
           <button class="btn btn-primary" style="margin-top:8px" onclick="previewAIImport()">預覽</button>

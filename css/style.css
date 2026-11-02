@@ -1917,3 +1917,17 @@ body[data-tab="expenses"] .fab { display: flex; }
 }
 
 .import-error { color: var(--red); }
+
+.import-warning {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--yellow-bg);
+  color: var(--yellow);
+  font-size: 0.85rem;
+}
+
+.import-flag {
+  font-size: 0.75rem;
+  color: var(--yellow);
+}

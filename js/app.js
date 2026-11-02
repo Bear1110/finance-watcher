@@ -3037,6 +3037,7 @@ function copyText(text) {
 
 let _aiImportPrompt = '';
 let _aiImportKindsLoaded = false;
+let _aiImportKindLabels = {}; // kind id -> label, from /api/ai-import/kinds
 
 /** Builds the kind checkboxes once, then refreshes the prompt and links. */
 async function initAIImport(preselect) {
@@ -3045,6 +3046,7 @@ async function initAIImport(preselect) {
       const kinds = await api('/api/ai-import/kinds');
       document.getElementById('ai-import-kinds').innerHTML = kinds.map(k => `
         <label class="llm-check"><input type="checkbox" value="${k.id}" checked onchange="refreshAIImportPrompt()"> ${escapeHtml(k.label)}</label>`).join('');
+      _aiImportKindLabels = Object.fromEntries(kinds.map(k => [k.id, k.label]));
       _aiImportKindsLoaded = true;
     }
     if (preselect) {
@@ -3092,24 +3094,40 @@ async function previewAIImport() {
   }
 }
 
-/** Preview of one kind: counts, the rows to add (first 100) and the rows that were skipped. */
+/** Preview columns per kind: [header, cell(row) -> html]. */
+const IMPORT_COLUMNS = {
+  expenses: [
+    ['日期', e => e.date],
+    ['類型', e => `<span class="tag-${e.type}">${e.type === 'income' ? '收入' : '支出'}</span>`],
+    ['分類', e => escapeHtml(catLabel(e.category))],
+    ['金額', e => fmtCur(e.amount, e.currency)],
+    ['備註', e => escapeHtml(e.note || '')],
+  ],
+  transactions: [
+    ['日期', t => t.date],
+    ['股票', t => escapeHtml(t.symbol)],
+    ['買賣', t => `<span class="tag-${t.action === 'BUY' ? 'income' : 'expense'}">${t.action === 'BUY' ? '買進' : '賣出'}</span>`],
+    ['股數', t => fmt(t.shares)],
+    ['成交價', t => fmtPrice(t.price, t.currency)],
+    ['手續費 / 稅', t => `${fmtCur(t.fee, t.currency)} / ${fmtCur(t.tax, t.currency)}`],
+    ['損益', t => (t.history ? `<span class="${plClass(t.realized_pl)}">${fmtPLCur(t.realized_pl, t.currency)}</span>` : '<span class="text-muted">自動計算</span>')],
+    ['備註', t => escapeHtml(t.note || '') + (t.flags || []).map(f => `<div class="import-flag">${escapeHtml(f)}</div>`).join('')],
+  ],
+};
+
+/** Preview of one kind: counts, warnings, the rows to add (first 100) and the rows that were skipped. */
 function renderImportSection(kind, r) {
-  const head = `<p class="import-summary"><strong>${kind === 'expenses' ? '收支' : escapeHtml(kind)}</strong>：新增 ${r.records.length} 筆` +
-    (r.duplicates ? `，略過 ${r.duplicates} 筆重複` : '') + (r.errors.length ? `，${r.errors.length} 筆無法解析` : '') + '</p>';
-  const rows = r.records.slice(0, 100).map(e => `
-    <tr>
-      <td>${e.date}</td>
-      <td><span class="tag-${e.type}">${e.type === 'income' ? '收入' : '支出'}</span></td>
-      <td>${escapeHtml(catLabel(e.category))}</td>
-      <td>${e.currency === 'USD' ? fmtUSD(e.amount) : fmtTWD(e.amount)}</td>
-      <td>${escapeHtml(e.note || '')}</td>
-    </tr>`).join('');
-  const table = r.records.length ? `<div class="table-wrap"><table>
-    <thead><tr><th>日期</th><th>類型</th><th>分類</th><th>金額</th><th>備註</th></tr></thead>
-    <tbody>${rows}</tbody></table></div>` +
-    (r.records.length > 100 ? `<p class="form-hint">只顯示前 100 筆。</p>` : '') : '';
+  const label = _aiImportKindLabels[kind] || kind;
+  const head = `<p class="import-summary"><strong>${escapeHtml(label)}</strong>：新增 ${r.records.length} 筆` +
+    (r.duplicates ? `，略過 ${r.duplicates} 筆重複` : '') + (r.errors.length ? `，${r.errors.length} 筆無法匯入` : '') + '</p>';
+  const warnings = (r.warnings || []).map(w => `<p class="import-warning">${escapeHtml(w)}</p>`).join('');
+  const cols = IMPORT_COLUMNS[kind] || [];
+  const table = r.records.length && cols.length ? `<div class="table-wrap"><table>
+    <thead><tr>${cols.map(([h]) => `<th>${h}</th>`).join('')}</tr></thead>
+    <tbody>${r.records.slice(0, 100).map(row => `<tr>${cols.map(([, cell]) => `<td>${cell(row)}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table></div>` + (r.records.length > 100 ? '<p class="form-hint">只顯示前 100 筆。</p>' : '') : '';
   const errors = r.errors.length ? `<ul class="import-errors">${r.errors.map(x => `<li>第 ${x.index + 1} 筆：${escapeHtml(x.error)}</li>`).join('')}</ul>` : '';
-  return head + table + errors;
+  return head + warnings + table + errors;
 }
 
 async function commitAIImport() {
