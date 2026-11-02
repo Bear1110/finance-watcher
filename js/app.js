@@ -3169,12 +3169,14 @@ async function clearStockData() {
   const name = { TW: '台股', US: '美股', ALL: '台股與美股' }[market];
   try {
     const c = await api('/api/stocks/clear', { method: 'POST', body: JSON.stringify({ market, dry: true }) });
+    // An older copy of the delete code (mixed versions right after a deploy) ignores `market`
+    if (c.market !== market) return showToast('網頁版本不一致，沒有刪除任何東西：請重新整理後再試', 'error');
     if (!c.transactions && !c.holdings) return showToast(`沒有${name}的交易或持倉可以清除`, 'info');
     if (!confirm(`將刪除自己帳戶${name}的 ${c.transactions} 筆交易（含匯入持倉、歷史損益）與 ${c.holdings} 檔持倉，並同步刪除試算表上的資料。
 ${market === 'ALL' ? '' : `${market === 'TW' ? '美股' : '台股'}、`}股利、資產快照、收支、代管帳戶不受影響。
 
 建議先「下載備份」。確定要清除嗎？`)) return;
-    await api('/api/stocks/clear', { method: 'POST', body: JSON.stringify({ market }) });
+    await api('/api/stocks/clear', { method: 'POST', body: JSON.stringify({ market, expect: { transactions: c.transactions, holdings: c.holdings } }) });
     showToast(`已清除 ${c.transactions} 筆交易、${c.holdings} 檔持倉`, 'success');
   } catch (err) {
     showToast('清除失敗: ' + err.message, 'error');

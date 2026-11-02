@@ -435,14 +435,19 @@ route('DELETE', '/api/transactions/{id}', deleteTransaction);
 route('GET', '/api/transactions/summary', realizedSummary);
 // Wipe the self account's trades and holdings of one market (e.g. before importing full broker
 // statements). Dividends, snapshots, expenses and managed accounts stay.
-// Body: { market: 'TW' | 'US' | 'ALL', dry }: dry only counts.
+// Body: { market: 'TW' | 'US' | 'ALL', dry } → { market, transactions, holdings }; dry only counts.
+// The real call must send `expect` (the dry run's counts): if anything differs, nothing is deleted.
+// The page checks the dry run echoes its market, so a page newer than this code can't wipe more.
 route('POST', '/api/stocks/clear', async (req) => {
   const r = body(req);
   if (!['TW', 'US', 'ALL'].includes(r.market)) throw badRequest('market must be TW, US or ALL');
   const inMarket = (x) => r.market === 'ALL' || x.market === r.market;
   const txn = (t) => t.account_id == null && inMarket(t);
-  const counts = { transactions: db.where('stock_transactions', txn).length, holdings: db.where('stock_holdings', inMarket).length };
+  const counts = { market: r.market, transactions: db.where('stock_transactions', txn).length, holdings: db.where('stock_holdings', inMarket).length };
   if (r.dry) return counts;
+  if (r.expect?.transactions !== counts.transactions || r.expect?.holdings !== counts.holdings) {
+    throw badRequest('資料和確認時不一樣，沒有刪除任何東西，請重新整理後再試');
+  }
   await db.transaction(() => {
     db.removeWhere('stock_transactions', txn);
     db.removeWhere('stock_holdings', inMarket);

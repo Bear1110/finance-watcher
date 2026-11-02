@@ -328,9 +328,13 @@ test('clear stock data: one market of the self account only; dry run only counts
   db.insert('dividends', { symbol: '00881.TW', amount: 1000, date: '2025-01-20' });
   db.insert('expenses', { date: '2025-01-01', type: 'expense', amount: 50, category: '飲料' });
 
-  assert.deepEqual(await post('/api/stocks/clear', { market: 'TW', dry: true }), { transactions: 4, holdings: 2 });
+  const dry = await post('/api/stocks/clear', { market: 'TW', dry: true });
+  assert.deepEqual(dry, { market: 'TW', transactions: 4, holdings: 2 });
+  // Without the dry run's counts, or with different ones, nothing is deleted
+  await assert.rejects(post('/api/stocks/clear', { market: 'TW' }), /沒有刪除任何東西/);
+  await assert.rejects(post('/api/stocks/clear', { market: 'TW', expect: { transactions: 5, holdings: 3 } }), /沒有刪除任何東西/);
   assert.equal(db.where('stock_transactions', (t) => t.account_id == null).length, 5); // dry: nothing gone
-  assert.deepEqual(await post('/api/stocks/clear', { market: 'TW' }), { transactions: 4, holdings: 2 });
+  assert.deepEqual(await post('/api/stocks/clear', { market: 'TW', expect: { transactions: 4, holdings: 2 } }), dry);
 
   assert.deepEqual(db.where('stock_transactions', (t) => t.account_id == null).map((t) => t.symbol), ['NVDA']);
   assert.deepEqual(db.all('stock_holdings').map((h) => h.symbol), ['NVDA']);
