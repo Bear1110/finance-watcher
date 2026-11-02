@@ -1469,6 +1469,8 @@
     <div class="modal">
       <div class="modal-header">
         <h3 id="expense-modal-title">新增紀錄</h3>
+        <!-- Phones: save sits in the header so it stays reachable above the on-screen keyboard -->
+        <button type="submit" form="expense-form" class="btn btn-primary btn-sm modal-header-save">儲存</button>
         <button class="modal-close" onclick="closeModal('modal-expense')">&times;</button>
       </div>
       <form id="expense-form" onsubmit="submitExpense(event)">
@@ -1502,7 +1504,7 @@
           <input type="text" name="note" placeholder="選填">
         </div>
         <div class="form-actions">
-          <button type="submit" class="btn btn-primary">儲存</button>
+          <button type="submit" class="btn btn-primary modal-footer-save">儲存</button>
           <button type="submit" class="btn btn-outline" id="expense-continue-btn" data-continue="1" title="儲存後保留日期與類型，繼續記下一筆">儲存並再記一筆</button>
           <button type="button" class="btn btn-danger" id="expense-delete-btn" onclick="deleteExpenseFromModal()">刪除</button>
         </div>
