@@ -215,6 +215,42 @@ function applyIcons(root = document) {
 }
 
 // ============================================================
+// SECTION: Tap tooltips — a `title` is only a hover tooltip, and touch screens can't hover.
+// Tapping an element that has one (and isn't itself a control) shows its text in a bubble.
+// ============================================================
+
+const TIP_CONTROLS = 'button, a, input, select, textarea, label, [onclick]';
+
+function initTapTips() {
+  const bubble = document.createElement('div');
+  bubble.id = 'tip-bubble';
+  bubble.setAttribute('role', 'tooltip');
+  bubble.hidden = true;
+  document.body.appendChild(bubble);
+  let anchor = null;
+  const hide = () => { bubble.hidden = true; anchor = null; };
+
+  document.addEventListener('click', (e) => {
+    const el = e.target.closest('[title]');
+    if (!el || el.closest(TIP_CONTROLS) || !el.title.trim()) {
+      if (!bubble.contains(e.target)) hide();
+      return;
+    }
+    if (anchor === el) return hide(); // tap again to close
+    anchor = el;
+    bubble.textContent = el.title;
+    bubble.hidden = false;
+    // Below the element (above it near the bottom of the screen), kept inside the viewport
+    const r = el.getBoundingClientRect();
+    const b = bubble.getBoundingClientRect();
+    bubble.style.left = `${Math.min(Math.max(8, r.left + r.width / 2 - b.width / 2), innerWidth - b.width - 8)}px`;
+    bubble.style.top = `${r.bottom + 8 + b.height < innerHeight ? r.bottom + 8 : Math.max(8, r.top - b.height - 8)}px`;
+  });
+  addEventListener('scroll', hide, { passive: true, capture: true });
+  addEventListener('resize', hide);
+}
+
+// ============================================================
 // SECTION: Tab Navigation
 // ============================================================
 
@@ -3286,6 +3322,7 @@ function initFontSize() {
 document.addEventListener('DOMContentLoaded', () => {
   initFontSize();
   applyIcons();
+  initTapTips();
   applyPrivacyUI();
   initTabs();
   initExpenseDefaults();

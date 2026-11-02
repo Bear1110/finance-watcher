@@ -138,7 +138,10 @@ function renderCloudStatus() {
   const configured = sync.auth.isConfigured();
   acct.textContent = !configured
     ? '這個網站還沒設定 Google 用戶端 ID（js/config.js），資料只存在這台裝置。'
-    : email ? `${email}（${STATUS_TEXT[st.status]}${st.lastSync ? `，上次同步 ${st.lastSync.toLocaleTimeString()}` : ''}）` : '尚未登入';
+    : email ? `${email}（${STATUS_TEXT[st.status]}${st.lastSync ? `，上次同步 ${st.lastSync.toLocaleTimeString()}` : ''}）` +
+      (st.error ? `
+同步失敗：${st.error}` : '') // the pill's title has it too, but phones can't hover
+    : '尚未登入';
   document.getElementById('cloud-signin-btn').style.display = configured && st.status !== 'synced' && st.status !== 'syncing' ? '' : 'none';
   document.getElementById('cloud-signin-btn').textContent = email ? '重新連線' : '用 Google 登入';
   document.getElementById('cloud-sync-btn').style.display = sync.auth.hasValidToken() ? '' : 'none';
