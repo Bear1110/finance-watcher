@@ -67,8 +67,8 @@ route('POST', '/api/import', async (req) => {
 
 const TABLE_LABELS = {
   asset_snapshots: '資產快照', stock_transactions: '股票交易', stock_holdings: '持倉', dividends: '股利',
-  expenses: '收支', budgets: '預算', stock_snapshots: '股票快照', managed_accounts: '代管帳戶',
-  managed_snapshots: '代管快照', managed_cash_movements: '代管現金異動', settings: '設定', llm_conversations: 'AI 對話',
+  expenses: '收支', budgets: '預算', managed_accounts: '代管帳戶',
+  managed_snapshots: '代管快照', managed_cash_movements: '代管現金異動', settings: '設定',
 };
 
 let pendingImport = null;
@@ -232,12 +232,6 @@ window.localApiReady = Promise.resolve();
 document.getElementById('import-file')?.addEventListener('change', onImportFile);
 sync.onStatus(renderCloudStatus);
 
-// AI 對話紀錄已停用：清掉舊資料（含其他裝置同步下來的），刪除會跟著同步到試算表
-function dropLegacyConversations() {
-  if (db.all('llm_conversations').length) db.removeWhere('llm_conversations', () => true);
-}
-dropLegacyConversations();
-db.onChange(dropLegacyConversations);
 db.onChange(() => renderCloudStatus());
 sync.initSync();
 

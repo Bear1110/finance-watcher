@@ -20,11 +20,11 @@ export const SHEET_IDS = {
   dividends: 5,
   expenses: 6,
   budgets: 7,
-  stock_snapshots: 8,
+  // 8: stock_snapshots, retired (the tab is the user's archive; never reuse the id)
   managed_accounts: 9,
   managed_snapshots: 10,
   managed_cash_movements: 11,
-  llm_conversations: 12,
+  // 12: llm_conversations, retired (never reuse the id)
 };
 export const QUOTES_SHEET_ID = 99;
 const QUOTES_TITLE = 'quotes';

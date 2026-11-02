@@ -6,7 +6,7 @@ import * as db from './db.js';
 import { route } from './router.js';
 import { fetchQuotes, invalidateCache, lastFetchTime } from './market.js';
 import {
-  HttpError, badRequest, body, storedUSDTWDRate, toTWD, refreshAndPersistRate, fmtLocal, round2, cmp, sellCostBasis, sellReturnPct,
+  HttpError, badRequest, body, storedUSDTWDRate, toTWD, fmtLocal, round2, cmp, sellCostBasis, sellReturnPct,
 } from './util.js';
 import { replaySymbol, normalizeTxn, applyAutoFee, uncoveredWarnings, fmtShares } from './ledger.js';
 
@@ -373,57 +373,6 @@ function realizedSummary(req) {
   };
 }
 
-async function takeSnapshot(req) {
-  // Refresh the rate and persist it so the snapshot freezes the live rate
-  const holdings = activeHoldings();
-  const [rate, quotes] = await Promise.all([refreshAndPersistRate(), fetchQuotes(holdings.map((h) => h.symbol))]);
-
-  const details = [];
-  let twValue = 0;
-  let usValue = 0;
-  let totalValue = 0;
-  let totalPL = 0;
-
-  for (const h of holdings) {
-    const price = quotes[h.symbol]?.price ?? 0;
-    const mv = h.shares * price;
-    const cost = h.shares * h.avg_cost;
-    const fx = h.currency === 'USD' ? rate : 1;
-    const valueTWD = mv * fx;
-    const costTWD = cost * fx;
-    const plTWD = valueTWD - costTWD;
-    details.push({
-      symbol: h.symbol, market: h.market, shares: h.shares, avg_cost: h.avg_cost,
-      current_price: price, currency: h.currency, market_value: mv,
-      value_twd: valueTWD, cost_twd: costTWD, pl_twd: plTWD,
-    });
-    if (h.market === 'TW') twValue += valueTWD; else usValue += valueTWD;
-    totalValue += valueTWD;
-    totalPL += plTWD;
-  }
-
-  const date = req.query.get('date') || db.today();
-  const row = db.insert('stock_snapshots', {
-    date, tw_value_twd: twValue, us_value_twd: usValue, total_value_twd: totalValue,
-    total_pl_twd: totalPL, usd_twd_rate: rate, detail_json: JSON.stringify(details),
-  });
-  return {
-    id: row.id,
-    date,
-    tw_value_twd: twValue,
-    us_value_twd: usValue,
-    total_value_twd: totalValue,
-    total_pl_twd: totalPL,
-    usd_twd_rate: rate,
-    details,
-  };
-}
-
-function listSnapshots() {
-  return db.all('stock_snapshots')
-    .sort((a, b) => cmp(b.date, a.date) || cmp(b.created_at, a.created_at));
-}
-
 route('GET', '/api/stocks', listHoldings);
 route('POST', '/api/stocks', addHolding);
 route('DELETE', '/api/stocks/{id}', deleteHolding);
@@ -454,6 +403,3 @@ route('POST', '/api/stocks/clear', async (req) => {
   return counts;
 });
 route('POST', '/api/stocks/refresh', () => { invalidateCache(); return { status: 'cache_cleared' }; });
-route('POST', '/api/stocks/snapshot', takeSnapshot);
-route('GET', '/api/stocks/snapshots', listSnapshots);
-route('DELETE', '/api/stocks/snapshots/{id}', (req) => { db.remove('stock_snapshots', req.params.id); return { status: 'deleted' }; });

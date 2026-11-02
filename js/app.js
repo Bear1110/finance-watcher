@@ -242,7 +242,7 @@ function onTabActivated(tab) {
   document.body.dataset.tab = tab; // CSS shows tab-specific controls (e.g. the 收支 + button)
   switch (tab) {
     case 'dashboard': loadDashboard(); break;
-    case 'stocks': loadHoldings(); loadTransactions(); loadRealizedSummary(); loadStockSnapshots(); loadDividends(); loadXirr(); break;
+    case 'stocks': loadHoldings(); loadTransactions(); loadRealizedSummary(); loadDividends(); loadXirr(); loadHoldingsTrend(); break;
     case 'portfolio': loadPortfolioAnalysis(); break;
     case 'expenses': loadExpenses(); break;
     case 'managed': loadManagedAccounts(); break;
@@ -448,7 +448,7 @@ function reRenderTrendChart() {
  * day. Before the performance data arrives it draws nothing; loadPerformance
  * re-renders it.
  */
-/** The four net-worth parts, shared by the snapshot and daily trend charts */
+/** The four net-worth parts, shared by the snapshot and daily trend charts (tw/us colors also used by 市值走勢) */
 const ASSET_SERIES = [
   { key: 'cashTWD', label: '台幣現金', color: '#4e8cff' },
   { key: 'cashUSD', label: '美金現金(TWD)', color: '#fbbf24' },
@@ -1298,208 +1298,6 @@ async function loadTransactions() {
 }
 
 // ============================================================
-// SECTION: Stock Snapshots
-// ============================================================
-
-async function takeStockSnapshot() {
-  try {
-    const result = await api('/api/stocks/snapshot', { method: 'POST' });
-    showToast(`快照已記錄！總市值 ${fmtTWD(result.total_value_twd)}`, 'success');
-    loadStockSnapshots();
-  } catch (err) {
-    showToast('快照記錄失敗: ' + err.message, 'error');
-  }
-}
-
-let _stockSnapshotChart = null;
-
-async function loadStockSnapshots() {
-  try {
-    const snapshots = await api('/api/stocks/snapshots');
-    const list = Array.isArray(snapshots) ? snapshots : [];
-    const tbody = document.getElementById('stock-snapshot-body');
-
-    // Render chart (chronological order = reversed since API returns DESC)
-    renderStockSnapshotChart([...list].reverse());
-
-    if (list.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">尚無快照，點擊上方按鈕記錄</td></tr>';
-      return;
-    }
-
-    window._stockSnapshots = list;
-    tbody.innerHTML = list.map((s, idx) => `
-      <tr>
-        <td><a href="#" onclick="viewSnapshotDetail(${idx});return false">${s.date}</a></td>
-        <td>${fmtTWD(s.tw_value_twd)}</td>
-        <td>${fmtTWD(s.us_value_twd)}</td>
-        <td><strong>${fmtTWD(s.total_value_twd)}</strong></td>
-        <td class="${plClass(s.total_pl_twd)}">${fmtTWD(s.total_pl_twd)}</td>
-        <td>${fmtNum(s.usd_twd_rate, 2)}</td>
-        <td>
-          <button class="btn btn-outline btn-sm" onclick="viewSnapshotDetail(${idx})">明細</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteStockSnapshot(${s.id})">刪除</button>
-        </td>
-      </tr>
-    `).join('');
-  } catch (err) {
-    showToast('載入快照失敗: ' + err.message, 'error');
-  }
-}
-
-function renderStockSnapshotChart(list) {
-  const ctx = document.getElementById('chart-stock-snapshot');
-  if (_stockSnapshotChart) _stockSnapshotChart.destroy();
-
-  if (!list || list.length === 0) {
-    _stockSnapshotChart = null;
-    return;
-  }
-
-  const labels = list.map(s => s.date);
-
-  _stockSnapshotChart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [
-        {
-          label: '總市值',
-          data: list.map(s => s.total_value_twd),
-          borderColor: '#4e8cff',
-          backgroundColor: 'rgba(78, 140, 255, 0.08)',
-          fill: true,
-          tension: 0.35,
-          pointRadius: 4,
-          pointHoverRadius: 6,
-          borderWidth: 2,
-        },
-        {
-          label: '台股',
-          data: list.map(s => s.tw_value_twd),
-          borderColor: '#34d399',
-          backgroundColor: 'transparent',
-          tension: 0.35,
-          pointRadius: 3,
-          borderWidth: 1.5,
-          borderDash: [4, 2],
-        },
-        {
-          label: '美股',
-          data: list.map(s => s.us_value_twd),
-          borderColor: '#fbbf24',
-          backgroundColor: 'transparent',
-          tension: 0.35,
-          pointRadius: 3,
-          borderWidth: 1.5,
-          borderDash: [4, 2],
-        },
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          display: true,
-          position: 'top',
-          labels: { color: '#8a9ab5', usePointStyle: true, pointStyle: 'line', font: { size: 11 } }
-        },
-        tooltip: {
-          callbacks: {
-            label: ctx => `${ctx.dataset.label}: ${fmtTWD(ctx.parsed.y)}`,
-          }
-        }
-      },
-      scales: {
-        x: {
-          ticks: { color: '#5c6f8a', font: { size: 11 } },
-          grid: { color: 'rgba(42,58,78,0.4)' },
-        },
-        y: {
-          ticks: {
-            color: '#5c6f8a',
-            font: { size: 11 },
-            callback: v => fmt(v),
-          },
-          grid: { color: 'rgba(42,58,78,0.4)' },
-        }
-      }
-    }
-  });
-}
-
-function viewSnapshotDetail(idx) {
-  const s = window._stockSnapshots && window._stockSnapshots[idx];
-  if (!s) return;
-
-  let details = [];
-  try { details = JSON.parse(s.detail_json); } catch (_) {}
-
-  const card = document.getElementById('snapshot-detail-card');
-  document.getElementById('snapshot-detail-title').textContent = `快照明細 - ${s.date}`;
-
-  const tbody = document.getElementById('snapshot-detail-body');
-  if (!details || details.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">無明細資料</td></tr>';
-  } else {
-    // Group by market
-    const tw = details.filter(d => d.market === 'TW');
-    const us = details.filter(d => d.market === 'US');
-    let html = '';
-
-    if (tw.length > 0) {
-      html += '<tr class="market-group-header"><td colspan="7">\u{1F1F9}\u{1F1FC} 台股</td></tr>';
-      html += tw.map(d => renderSnapshotDetailRow(d)).join('');
-      const twTotal = tw.reduce((s, d) => s + d.value_twd, 0);
-      const twPL = tw.reduce((s, d) => s + d.pl_twd, 0);
-      html += `<tr class="market-subtotal"><td colspan="5">台股小計</td><td>${fmtTWD(twTotal)}</td><td class="${plClass(twPL)}">${fmtTWD(twPL)}</td></tr>`;
-    }
-    if (us.length > 0) {
-      html += '<tr class="market-group-header"><td colspan="7">\u{1F1FA}\u{1F1F8} 美股</td></tr>';
-      html += us.map(d => renderSnapshotDetailRow(d)).join('');
-      const usTotal = us.reduce((s, d) => s + d.value_twd, 0);
-      const usPL = us.reduce((s, d) => s + d.pl_twd, 0);
-      html += `<tr class="market-subtotal"><td colspan="5">美股小計</td><td>${fmtTWD(usTotal)}</td><td class="${plClass(usPL)}">${fmtTWD(usPL)}</td></tr>`;
-    }
-    tbody.innerHTML = html;
-  }
-
-  card.style.display = 'block';
-  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-}
-
-function renderSnapshotDetailRow(d) {
-  return `
-    <tr>
-      <td><strong>${d.symbol}</strong></td>
-      <td>${d.market === 'TW' ? '台股' : '美股'}</td>
-      <td>${fmt(d.shares)}</td>
-      <td>${fmtPrice(d.avg_cost, d.currency)}</td>
-      <td>${fmtPrice(d.current_price, d.currency)}</td>
-      <td>${fmtTWD(d.value_twd)}</td>
-      <td class="${plClass(d.pl_twd)}">${fmtTWD(d.pl_twd)}</td>
-    </tr>
-  `;
-}
-
-function closeSnapshotDetail() {
-  document.getElementById('snapshot-detail-card').style.display = 'none';
-}
-
-async function deleteStockSnapshot(id) {
-  if (!confirm('確定要刪除此快照嗎？')) return;
-  try {
-    await api(`/api/stocks/snapshots/${id}`, { method: 'DELETE' });
-    showToast('快照已刪除', 'success');
-    closeSnapshotDetail();
-    loadStockSnapshots();
-  } catch (err) {
-    showToast('刪除失敗: ' + err.message, 'error');
-  }
-}
-
-// ============================================================
 // SECTION: Portfolio Analysis
 // ============================================================
 
@@ -2098,6 +1896,74 @@ function weekdayIndexes(dates, b) {
   }
   return idx;
 }
+
+// ============================================================
+// SECTION: 持倉總覽 — market value trend (from the performance series, no manual snapshots)
+// ============================================================
+
+let _holdingsTrendChart = null;
+
+async function loadHoldingsTrend() {
+  const hint = document.getElementById('holdings-trend-hint');
+  try {
+    if (!_perfData) _perfData = await api('/api/stocks/performance');
+    renderHoldingsTrend();
+  } catch (err) {
+    // 503 = no Yahoo proxy configured; its message says where to set one
+    hint.textContent = err.status === 503 ? err.message : '無法計算市值走勢：' + err.message;
+  }
+}
+
+function renderHoldingsTrend() {
+  const s = _perfData && _perfData.series;
+  if (!s || !s.dates || !s.dates.length) return;
+  const days = Number(document.querySelector('#holdings-trend-range .active')?.dataset.days) || 0;
+  const from = days ? addDaysISO(s.dates[s.dates.length - 1], -days) : '';
+  const b = Math.max(0, s.dates.findIndex(d => d >= from));
+  const idx = weekdayIndexes(s.dates, b);
+  const color = (key) => ASSET_SERIES.find(a => a.key === key).color;
+  const line = (label, seg, c, extra = {}) => ({
+    label, data: idx.map(i => s.value[seg][i]), borderColor: c, backgroundColor: c,
+    borderWidth: 2, pointRadius: 0, pointHitRadius: 8, tension: 0, ...extra,
+  });
+  if (_holdingsTrendChart) _holdingsTrendChart.destroy();
+  _holdingsTrendChart = new Chart(document.getElementById('chart-holdings-trend'), {
+    type: 'line',
+    data: {
+      labels: idx.map(i => s.dates[i]),
+      datasets: [
+        line('合計', 'ALL', '#4e8cff', { borderWidth: 2.5 }),
+        line('台股', 'TW', color('tw')),
+        line('美股', 'US', color('us')),
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#8a9ab5', boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: c => `${c.dataset.label}: ${fmtTWD(c.parsed.y)}` } },
+      },
+      scales: {
+        x: { ticks: { ...CHART_AXIS.ticks, maxTicksLimit: 6, maxRotation: 0 }, grid: { display: false } },
+        y: { ticks: { ...CHART_AXIS.ticks, callback: v => fmt(v) }, grid: CHART_AXIS.grid },
+      },
+    },
+  });
+}
+
+/** "2026-11-02", -31 → "2026-10-02" */
+function addDaysISO(date, n) {
+  return new Date(Date.parse(date + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
+}
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('#holdings-trend-range .chart-type-btn');
+  if (!btn) return;
+  document.querySelectorAll('#holdings-trend-range .chart-type-btn').forEach(x => x.classList.toggle('active', x === btn));
+  renderHoldingsTrend();
+});
 
 /** Max drawdown and volatility of the selected period, per market */
 function renderPerfRisk(p) {

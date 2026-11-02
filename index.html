@@ -229,7 +229,6 @@
       <div class="sub-tabs">
         <button class="sub-tab-btn active" data-subtab="holdings">持倉總覽</button>
         <button class="sub-tab-btn" data-subtab="realized">已實現損益</button>
-        <button class="sub-tab-btn" data-subtab="snapshots">快照紀錄</button>
         <button class="sub-tab-btn" data-subtab="transactions">交易紀錄</button>
         <button class="sub-tab-btn" data-subtab="dividends">股利</button>
       </div>
@@ -290,6 +289,19 @@
             <span style="margin-left:16px">台股 <strong id="xirr-tw">--</strong></span>
             <span style="margin-left:16px">美股 <strong id="xirr-us">--</strong></span>
           </div>
+        </div>
+        <div class="card" id="holdings-trend-card" style="margin-top:20px">
+          <div class="card-header">
+            <h3>市值走勢</h3>
+            <div class="chart-type-toggle" id="holdings-trend-range">
+              <button type="button" class="chart-type-btn" data-days="31">1 個月</button>
+              <button type="button" class="chart-type-btn" data-days="92">3 個月</button>
+              <button type="button" class="chart-type-btn active" data-days="366">1 年</button>
+              <button type="button" class="chart-type-btn" data-days="0">全部</button>
+            </div>
+          </div>
+          <div class="chart-container-md"><canvas id="chart-holdings-trend" aria-label="台股、美股市值每日走勢"></canvas></div>
+          <p class="form-hint" id="holdings-trend-hint" style="margin:8px 0 0">每天的持股 × 當日收盤價（美股以當日匯率換算台幣），由交易紀錄自動計算。</p>
         </div>
       </div>
 
@@ -368,59 +380,6 @@
 
       <!-- Transactions Sub-tab -->
       <!-- Snapshots Sub-tab -->
-      <div id="subtab-snapshots" class="subtab-content">
-        <div class="card">
-          <div class="card-header">
-            <h3>股票快照</h3>
-            <button class="btn btn-primary btn-sm" onclick="takeStockSnapshot()">記錄當前快照</button>
-          </div>
-          <p class="form-hint" style="margin:0 0 12px">一鍵記錄目前所有持股的市值狀態，方便追蹤股票資產隨時間的變化。</p>
-          <!-- Trend Chart -->
-          <div class="chart-container-md" style="margin-bottom:20px"><canvas id="chart-stock-snapshot"></canvas></div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>日期</th>
-                  <th>台股市值</th>
-                  <th>美股市值</th>
-                  <th>總市值</th>
-                  <th>未實現損益</th>
-                  <th>匯率</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody id="stock-snapshot-body">
-                <tr><td colspan="7" class="empty-state">尚無快照</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <!-- Expanded detail -->
-        <div id="snapshot-detail-card" class="card" style="margin-top:16px;display:none">
-          <div class="card-header">
-            <h3 id="snapshot-detail-title">快照明細</h3>
-            <button class="btn btn-outline btn-sm" onclick="closeSnapshotDetail()">關閉</button>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>股票</th>
-                  <th>市場</th>
-                  <th>股數</th>
-                  <th>均價</th>
-                  <th>現價</th>
-                  <th>市值(TWD)</th>
-                  <th>損益(TWD)</th>
-                </tr>
-              </thead>
-              <tbody id="snapshot-detail-body"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
       <div id="subtab-transactions" class="subtab-content">
         <div class="card">
           <div class="card-header">

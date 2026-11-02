@@ -43,11 +43,6 @@ export const SCHEMA = {
     columns: { id: 'int', year: 'int', month: 'int', planned_income: 'real', planned_expense: 'real' },
     defaults: {},
   },
-  stock_snapshots: {
-    synced: true,
-    columns: { id: 'int', date: 'text', tw_value_twd: 'real', us_value_twd: 'real', total_value_twd: 'real', total_pl_twd: 'real', usd_twd_rate: 'real', detail_json: 'text', created_at: 'text' },
-    defaults: { usd_twd_rate: 32, detail_json: '[]' },
-  },
   managed_accounts: {
     synced: true,
     columns: { id: 'int', name: 'text', cash_twd: 'real', cash_usd: 'real', note: 'text', created_at: 'text' },
@@ -67,12 +62,6 @@ export const SCHEMA = {
     synced: true, key: 'key',
     columns: { id: 'int', key: 'text', value: 'text' },
     defaults: {},
-  },
-  // Legacy: no longer written. Kept so main.js can delete leftover rows and the deletes sync to the sheet.
-  llm_conversations: {
-    synced: true,
-    columns: { id: 'int', prompt: 'text', response: 'text', provider: 'text', created_at: 'text' },
-    defaults: { provider: 'manual' },
   },
   // Local caches of Yahoo daily closes (see services port in market.js / priceHistory.js)
   price_history: {
