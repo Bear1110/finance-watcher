@@ -14,6 +14,9 @@ const MASK = '****';
 let privacyMode = false;
 try { privacyMode = localStorage.getItem('privacyMode') === '1'; } catch (e) {}
 
+/** Axis tick/grid style shared by the charts */
+const CHART_AXIS = { ticks: { color: '#5c6f8a', font: { size: 11 } }, grid: { color: 'rgba(42,58,78,0.4)' } };
+
 /** Format an amount / share count with commas (masked in privacy mode) */
 function fmt(n, decimals = 0) {
   if (n == null || isNaN(n)) return '--';
@@ -475,7 +478,7 @@ function renderDailyTrendChart(assets) {
   };
   const parts = ASSET_SERIES.map(a => [a.label, a.color, daily[a.key]]);
   const labels = idx.map(i => s.dates[i]);
-  const axis = { ticks: { color: '#5c6f8a', font: { size: 11 }, maxTicksLimit: 8, maxRotation: 0 }, grid: { color: 'rgba(42,58,78,0.4)' } };
+  const axis = { ticks: { ...CHART_AXIS.ticks, maxTicksLimit: 8, maxRotation: 0 }, grid: CHART_AXIS.grid };
   const isLine = _trendChartType === 'line';
   const datasets = isLine
     ? [{
@@ -2526,9 +2529,25 @@ async function saveBudget(year, month, field, value) {
 }
 
 
+/** Category choices in the add/edit dialog; the first of each list is that type's default. */
+const EXPENSE_CATEGORIES = {
+  expense: ['飲食', '飲料', '交通', '住房', '娛樂', '醫療', '日用品', '購物', '送禮', '其他支出'],
+  income: ['薪資', '股利', '獎金', '其他收入'],
+};
+const CATEGORY_HINTS = { 住房: '住房 (房租/水電)' };
+/** Display name of a category; records without one show as 未分類. */
+const catLabel = (c) => c || '未分類';
+
+function buildCategoryOptions() {
+  const opts = (list) => list.map(c => `<option value="${c}">${CATEGORY_HINTS[c] || c}</option>`).join('');
+  document.getElementById('expense-category').innerHTML =
+    `<optgroup label="支出" id="cat-expense-group">${opts(EXPENSE_CATEGORIES.expense)}</optgroup>` +
+    `<optgroup label="收入" id="cat-income-group">${opts(EXPENSE_CATEGORIES.income)}</optgroup>` +
+    '<option value="__custom__">自訂...</option>';
+}
+
 function initExpenseDefaults() {
-  const dateInput = document.querySelector('#expense-form [name="date"]');
-  if (dateInput) dateInput.value = todayStr();
+  buildCategoryOptions();
   initYearSelector('exp-year-filter');
   initMonthSelector();
 }
@@ -2559,19 +2578,11 @@ function setExpenseType(type) {
   document.querySelectorAll('.type-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.type === type);
   });
-  // Show/hide relevant category groups
-  const expGroup = document.getElementById('cat-expense-group');
-  const incGroup = document.getElementById('cat-income-group');
-  const select = document.getElementById('expense-category');
-  if (type === 'income') {
-    if (expGroup) expGroup.disabled = true;
-    if (incGroup) incGroup.disabled = false;
-    if (select) select.value = '薪資';
-  } else {
-    if (expGroup) expGroup.disabled = false;
-    if (incGroup) incGroup.disabled = true;
-    if (select) select.value = '飲食';
-  }
+  // Only the chosen type's categories are selectable; pick its default
+  const income = type === 'income';
+  document.getElementById('cat-expense-group').disabled = income;
+  document.getElementById('cat-income-group').disabled = !income;
+  document.getElementById('expense-category').value = EXPENSE_CATEGORIES[income ? 'income' : 'expense'][0];
 }
 
 /** Clears the add/edit form back to a new expense dated today. */
@@ -2644,45 +2655,22 @@ async function submitExpense(e) {
   }
 }
 
-function editExpenseByIndex(idx) {
-  const e = window._expenseList && window._expenseList[idx];
+function editExpense(id) {
+  const e = _expAll.find(x => x.id === id);
   if (!e) return;
-  editExpense(e.id, e.amount, e.category, e.date, e.note, e.type);
-}
-
-function editExpense(id, amount, category, date, note, type) {
   const form = document.getElementById('expense-form');
-  form.querySelector('[name="id"]').value = id;
-  form.querySelector('[name="amount"]').value = amount;
-  form.querySelector('[name="date"]').value = date;
-  form.querySelector('[name="note"]').value = note || '';
+  form.querySelector('[name="id"]').value = e.id;
+  form.querySelector('[name="amount"]').value = e.amount;
+  form.querySelector('[name="date"]').value = e.date;
+  form.querySelector('[name="note"]').value = e.note || '';
+  setExpenseType(e.type || 'expense');
 
-  // Set type first (this enables the right optgroup)
-  setExpenseType(type || 'expense');
-
-  // Set category - need to enable all optgroups temporarily to set value
-  const expGroup = document.getElementById('cat-expense-group');
-  const incGroup = document.getElementById('cat-income-group');
-  expGroup.disabled = false;
-  incGroup.disabled = false;
-
+  // A category outside the preset list is edited as a custom one
   const select = form.querySelector('[name="category"]');
-  const options = Array.from(select.options).map(o => o.value);
-  if (options.includes(category)) {
-    select.value = category;
-    document.getElementById('custom-category-group').style.display = 'none';
-  } else {
-    select.value = '__custom__';
-    document.getElementById('custom-category-group').style.display = 'flex';
-    document.getElementById('custom-category-input').value = category;
-  }
-
-  // Re-disable the wrong optgroup
-  if ((type || 'expense') === 'income') {
-    expGroup.disabled = true;
-  } else {
-    incGroup.disabled = true;
-  }
+  const known = [...select.options].some(o => o.value === e.category);
+  select.value = known ? e.category : '__custom__';
+  document.getElementById('custom-category-group').style.display = known ? 'none' : 'flex';
+  if (!known) document.getElementById('custom-category-input').value = e.category;
 
   showExpenseModal(true);
 }
@@ -2709,7 +2697,7 @@ async function deleteExpenseFromModal() {
 
 let _expAutoMonth = true;      // first load picks the latest month that has data
 let _expCatType = 'expense';   // category ranking shows expense or income
-let _expCatFilter = null;      // category clicked in the ranking; filters the table
+let _expCatFilter = null;      // raw category clicked in the ranking ('' = 未分類); null = no filter
 let _expStats = null;          // /api/expenses/stats of the selected year
 let _expAll = [];              // /api/expenses
 let _expMonthlyChart = null;
@@ -2723,6 +2711,9 @@ function initMonthSelector() {
     Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}">${i + 1}月</option>`).join('');
   select.value = String(new Date().getMonth() + 1);
 }
+
+/** The month rows a period covers: one month, or the whole year when month is 0. */
+const periodMonths = (stats, month) => (month ? [stats.months[month - 1]] : stats.months);
 
 const expYear = () => Number(document.getElementById('exp-year-filter').value) || new Date().getFullYear();
 const expMonth = () => Number(document.getElementById('exp-month-filter').value) || 0; // 0 = whole year
@@ -2766,7 +2757,7 @@ const savingRate = (income, expense) => (income > 0 ? `${((income - expense) / i
 
 function renderExpenseSummary(stats, month) {
   const sumOf = (ms, k) => ms.reduce((s, m) => s + m[k], 0);
-  const months = month ? [stats.months[month - 1]] : stats.months;
+  const months = periodMonths(stats, month);
   const income = sumOf(months, 'income');
   const expense = sumOf(months, 'expense');
   // Budget progress only counts months that have a budget (a year with one budgeted month
@@ -2802,7 +2793,7 @@ function renderExpenseSummary(stats, month) {
     const used = sumOf(budgeted, 'expense') / planned * 100;
     const scope = !month && budgeted.length < 12 ? `${budgeted.length} 個月` : '';
     set('exp-sum-expense-sub', `${scope}預算 ${fmtTWD(planned)} · 已用 ${used.toFixed(0)}%` +
-      `<div class="budget-mini"><div class="budget-mini-fill${used > 100 ? ' over' : ''}" style="width:${Math.min(used, 100)}%"></div></div>`);
+      `<div class="source-bar budget-mini${used > 100 ? ' over' : ''}"><span style="width:${Math.min(used, 100)}%"></span></div>`);
   } else if (month) {
     set('exp-sum-expense-sub', changeText(expense, prev.expense, '較上月'));
   } else {
@@ -2812,7 +2803,7 @@ function renderExpenseSummary(stats, month) {
 
 function renderCategoryRank(stats, month) {
   const totals = {};
-  for (const m of month ? [stats.months[month - 1]] : stats.months) {
+  for (const m of periodMonths(stats, month)) {
     for (const [c, v] of Object.entries(m.by_category[_expCatType])) totals[c] = (totals[c] || 0) + v;
   }
   const rows = Object.entries(totals).sort((a, b) => b[1] - a[1]);
@@ -2826,26 +2817,33 @@ function renderCategoryRank(stats, month) {
   el.style.setProperty('--cat-color', seriesColor(_expCatType));
   el.innerHTML = rows.map(([c, v]) => `
     <button type="button" class="cat-row${c === _expCatFilter ? ' active' : ''}" data-cat="${escapeHtml(c).replace(/"/g, '&quot;')}" onclick="setCategoryFilter(this.dataset.cat)">
-      <span class="cat-name">${escapeHtml(c)}</span>
-      <span class="cat-track"><span class="cat-fill" style="width:${(v / max * 100).toFixed(1)}%"></span></span>
+      <span class="cat-name">${escapeHtml(catLabel(c))}</span>
+      <span class="source-bar cat-track"><span style="width:${(v / max * 100).toFixed(1)}%"></span></span>
       <span class="cat-amt">${fmtTWD(v)}</span>
       <span class="cat-pct">${(v / sum * 100).toFixed(1)}%</span>
     </button>`).join('');
 }
 
 function renderMonthlyChart(stats, month) {
-  if (_expMonthlyChart) _expMonthlyChart.destroy();
-  // The selected month stays solid; the others fade so the selection reads at a glance
-  const colors = (c) => stats.months.map(m => (!month || m.month === month ? c : c + '59'));
-  const bar = (label, key, name) => ({
-    label, data: stats.months.map(m => m[key]), backgroundColor: colors(seriesColor(name)),
-    borderRadius: 4, borderSkipped: 'bottom',
-  });
+  // The selected month stays solid; the others fade (+ hex alpha, so --series-* must be #rrggbb)
+  const colors = (name) => stats.months.map(m => (!month || m.month === month ? seriesColor(name) : seriesColor(name) + '59'));
+  const series = [['收入', 'income'], ['支出', 'expense']];
+  if (_expMonthlyChart) {
+    _expMonthlyChart.data.datasets.forEach((ds, i) => {
+      ds.data = stats.months.map(m => m[series[i][1]]);
+      ds.backgroundColor = colors(series[i][1]);
+    });
+    _expMonthlyChart.update();
+    return;
+  }
   _expMonthlyChart = new Chart(document.getElementById('chart-exp-monthly'), {
     type: 'bar',
     data: {
       labels: stats.months.map(m => `${m.month}月`),
-      datasets: [bar('收入', 'income', 'income'), bar('支出', 'expense', 'expense')],
+      datasets: series.map(([label, key]) => ({
+        label, data: stats.months.map(m => m[key]), backgroundColor: colors(key),
+        borderRadius: 4, borderSkipped: 'bottom',
+      })),
     },
     options: {
       responsive: true,
@@ -2868,8 +2866,8 @@ function renderMonthlyChart(stats, month) {
         },
       },
       scales: {
-        x: { ticks: { color: '#5c6f8a', font: { size: 11 }, maxRotation: 0, autoSkip: true }, grid: { display: false } },
-        y: { beginAtZero: true, ticks: { color: '#5c6f8a', font: { size: 11 }, precision: 0, callback: v => fmt(v) }, grid: { color: 'rgba(42,58,78,0.4)' } },
+        x: { ticks: { ...CHART_AXIS.ticks, maxRotation: 0, autoSkip: true }, grid: { display: false } },
+        y: { beginAtZero: true, ticks: { ...CHART_AXIS.ticks, precision: 0, callback: v => fmt(v) }, grid: CHART_AXIS.grid },
       },
     },
   });
@@ -2883,10 +2881,10 @@ function setCategoryType(type) {
 }
 
 function setCategoryFilter(cat) {
-  _expCatFilter = cat && cat !== _expCatFilter ? cat : null; // clicking the active row clears it
+  _expCatFilter = cat !== _expCatFilter ? cat : null; // clicking the active row clears it
   const chip = document.getElementById('exp-cat-chip');
-  chip.style.display = _expCatFilter ? '' : 'none';
-  chip.textContent = _expCatFilter ? `分類：${_expCatFilter} ✕` : '';
+  chip.style.display = _expCatFilter === null ? 'none' : '';
+  chip.textContent = _expCatFilter === null ? '' : `分類：${catLabel(_expCatFilter)} ✕`;
   if (!_expStats) return;
   renderCategoryRank(_expStats, expMonth());
   renderExpenseTable(expMonth());
@@ -2897,24 +2895,23 @@ function renderExpenseTable(month) {
   const typeFilter = document.getElementById('exp-type-filter').value;
   const filtered = _expAll.filter(e => e.date && e.date.startsWith(prefix) &&
     (typeFilter === 'all' || (e.type || 'expense') === typeFilter) &&
-    (!_expCatFilter || (e.category || '未分類') === _expCatFilter));
-  window._expenseList = filtered;
+    (_expCatFilter === null || (e.category || '') === _expCatFilter));
   const tbody = document.getElementById('expense-body');
   if (filtered.length === 0) {
     tbody.innerHTML = `<tr><td colspan="6" class="empty-state">${month ? '這個月' : '此年度'}尚無紀錄</td></tr>`;
     return;
   }
-  tbody.innerHTML = filtered.map((e, idx) => {
+  tbody.innerHTML = filtered.map(e => {
     const t = e.type || 'expense';
     return `
       <tr>
         <td>${e.date || '--'}</td>
         <td><span class="tag-${t}">${t === 'income' ? '收入' : '支出'}</span></td>
-        <td>${escapeHtml(e.category || '--')}</td>
+        <td>${escapeHtml(catLabel(e.category))}</td>
         <td>${fmtTWD(e.amount)}</td>
         <td>${escapeHtml(e.note || '')}</td>
         <td>
-          <button class="btn btn-outline btn-sm" onclick="editExpenseByIndex(${idx})">編輯</button>
+          <button class="btn btn-outline btn-sm" onclick="editExpense(${e.id})">編輯</button>
           <button class="btn btn-danger btn-sm" onclick="deleteExpense(${e.id})">刪除</button>
         </td>
       </tr>

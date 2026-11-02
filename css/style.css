@@ -25,7 +25,8 @@
   --green: #34d399;
   --green-bg: rgba(52, 211, 153, 0.1);
   --red: #f87171;
-  /* Chart series for income / expense: blue + orange, CVD-safe on --bg-card (not green/red) */
+  /* Chart series for income / expense: blue + orange, CVD-safe on --bg-card (not green/red).
+     Keep #rrggbb: the monthly chart appends a hex alpha to fade unselected months. */
   --series-income: #4e8cff;
   --series-expense: #d97330;
   --red-bg: rgba(248, 113, 113, 0.1);
@@ -1828,7 +1829,6 @@ body { overflow-x: clip; }
     flex-wrap: nowrap;
   }
   .modal .form-actions .btn { flex: 1; justify-content: center; }
-  .modal .form-group { margin-bottom: 0.75rem; }
 }
 
 /* Tablets: tabs stay in the top bar (scrollable), dialogs centered */
@@ -1844,24 +1844,10 @@ body { overflow-x: clip; }
   margin-bottom: 16px;
 }
 
-.exp-stats .stat-value.positive { color: var(--green); }
-.exp-stats .stat-value.negative { color: var(--red); }
-
-.budget-mini {
-  height: 4px;
-  margin-top: 6px;
-  border-radius: 2px;
-  background: var(--border-color);
-  overflow: hidden;
-}
-
-.budget-mini-fill {
-  height: 100%;
-  border-radius: 2px;
-  background: var(--series-expense);
-}
-
-.budget-mini-fill.over { background: var(--red); }
+/* Bars below reuse .source-bar (track) with its span as the fill */
+.budget-mini { height: 4px; margin-top: 6px; }
+.budget-mini span { background: var(--series-expense); }
+.budget-mini.over span { background: var(--red); }
 
 /* Category ranking: name, bar, amount, share */
 .cat-rank {
@@ -1896,19 +1882,8 @@ body { overflow-x: clip; }
   white-space: nowrap;
 }
 
-.cat-track {
-  height: 8px;
-  border-radius: 4px;
-  background: var(--bg-secondary);
-  overflow: hidden;
-}
-
-.cat-fill {
-  display: block;
-  height: 100%;
-  border-radius: 4px;
-  background: var(--cat-color, var(--accent));
-}
+.cat-track { height: 8px; margin-top: 0; border-radius: 4px; }
+.cat-track span { border-radius: 4px; background: var(--cat-color, var(--accent)); }
 
 .cat-amt { font-variant-numeric: tabular-nums; }
 
@@ -1918,12 +1893,7 @@ body { overflow-x: clip; }
   font-variant-numeric: tabular-nums;
 }
 
-.chart-legend {
-  display: flex;
-  gap: 12px;
-  font-size: 0.82rem;
-  color: var(--text-secondary);
-}
+.card-header .chart-legend { margin-top: 0; }
 
 .filter-chip {
   border: 1px solid var(--accent);

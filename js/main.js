@@ -221,7 +221,7 @@ function fwRefresh() {
 Object.assign(window, {
   LocalAPI: { handle },
   fwRefresh, renderCloudStatus, cloudSignIn, cloudSyncNow, cloudSignOut,
-  onSyncPillClick, saveProxyURL, downloadBackup, clearLocalData,
+  onSyncPillClick, saveProxyURL, downloadBackup, clearLocalData, reloadApp,
 });
 
 window.localApiReady = Promise.resolve();
@@ -235,8 +235,14 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js').catch((e) => console.warn('sw register failed', e));
 }
 
-// 網站有新部署時，顯示一則不會自動消失的提示，點了重新整理
-watchForUpdate(() => window.showToast?.('有新版本可用', 'info', {
-  id: 'update-toast',
-  action: { label: '重新整理', run: () => location.reload() },
-}));
+// 網站有新部署（App 從背景回到前景時檢查）：主畫面 App 沒有重新整理鈕，所以沒在填表單就直接
+// 載入新版；有對話框開著時改成提示，不打斷輸入。
+function reloadApp() {
+  db.saveNow(); // flush the 50 ms debounced save first
+  location.reload();
+}
+watchForUpdate(() => {
+  const editing = [...document.querySelectorAll('.modal-overlay')].some((m) => m.style.display !== 'none');
+  if (!editing) return reloadApp();
+  window.showToast?.('有新版本可用', 'info', { id: 'update-toast', action: { label: '重新整理', run: reloadApp } });
+});

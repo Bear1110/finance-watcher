@@ -61,11 +61,6 @@ function categories() {
   return [...set].sort(cmp);
 }
 
-/** Sum in TWD (USD entries converted at the stored rate) */
-function sumTWD(rows, rate) {
-  return rows.reduce((s, e) => s + (e.currency === 'USD' ? e.amount * rate : e.amount), 0);
-}
-
 function yearParam(req) {
   const ys = req.query.get('year');
   return ys && /^-?\d+$/.test(ys) ? Number(ys) : new Date().getFullYear();
@@ -74,9 +69,9 @@ function yearParam(req) {
 /**
  * Actual totals of one year in TWD (USD at the stored rate), index 0 = January:
  * { income, expense, byCategory: { income: {cat: amt}, expense: {cat: amt} } }.
- * Anything not 'income' counts as expense.
+ * Anything not 'income' counts as expense; an empty category stays '' (the UI labels it).
  */
-export function monthlyActuals(year) {
+function monthlyActuals(year) {
   const rate = storedUSDTWDRate();
   const months = Array.from({ length: 12 }, () => ({ income: 0, expense: 0, byCategory: { income: {}, expense: {} } }));
   for (const e of db.where('expenses', (e) => e.date.startsWith(`${year}-`))) {
@@ -85,7 +80,7 @@ export function monthlyActuals(year) {
     const type = e.type === 'income' ? 'income' : 'expense';
     const v = e.currency === 'USD' ? e.amount * rate : e.amount;
     const slot = months[m - 1];
-    const cat = e.category || '未分類';
+    const cat = e.category;
     slot[type] += v;
     slot.byCategory[type][cat] = (slot.byCategory[type][cat] || 0) + v;
   }
@@ -152,25 +147,11 @@ function saveBudget(req) {
   return { status: 'saved' };
 }
 
-function monthlySummary(req) {
-  let month = req.query.get('month');
-  if (!month) {
-    const d = new Date();
-    month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  }
-  const rate = storedUSDTWDRate();
-  const inMonth = db.where('expenses', (e) => e.date.startsWith(month));
-  const totalIncome = sumTWD(inMonth.filter((e) => e.type === 'income'), rate);
-  const totalExpense = sumTWD(inMonth.filter((e) => e.type === 'expense'), rate);
-  return { month, total_income: totalIncome, total_expense: totalExpense, net_savings: totalIncome - totalExpense };
-}
-
 route('GET', '/api/budgets', getBudgets);
 route('PUT', '/api/budgets', saveBudget);
 route('GET', '/api/expenses', list);
 route('POST', '/api/expenses', create);
 route('PUT', '/api/expenses/{id}', updateExpense);
 route('DELETE', '/api/expenses/{id}', remove);
-route('GET', '/api/expenses/summary', monthlySummary);
 route('GET', '/api/expenses/categories', categories);
 route('GET', '/api/expenses/stats', getStats);

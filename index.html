@@ -710,7 +710,7 @@
         <select id="exp-month-filter" onchange="renderExpensePage()" class="input-sm" aria-label="月份"></select>
       </div>
 
-      <div class="dash-stats exp-stats">
+      <div class="dash-stats">
         <div class="stat-card">
           <div class="stat-label">收入</div>
           <div class="stat-value" id="exp-sum-income">--</div>
@@ -1189,7 +1189,10 @@
         </div>
         <div class="form-group">
           <label>版本</label>
-          <span id="settings-version">--</span>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span id="settings-version">--</span>
+            <button type="button" class="btn btn-outline btn-sm" onclick="reloadApp()" title="主畫面 App 沒有重新整理鈕時用這個載入最新版">重新載入</button>
+          </div>
         </div>
       </div>
     </section>
@@ -1484,27 +1487,7 @@
         </div>
         <div class="form-group">
           <label>分類</label>
-          <select name="category" id="expense-category" onchange="toggleCustomCategory(this)">
-            <optgroup label="支出" id="cat-expense-group">
-              <option value="飲食">飲食</option>
-              <option value="飲料">飲料</option>
-              <option value="交通">交通</option>
-              <option value="住房">住房 (房租/水電)</option>
-              <option value="娛樂">娛樂</option>
-              <option value="醫療">醫療</option>
-              <option value="日用品">日用品</option>
-              <option value="購物">購物</option>
-              <option value="送禮">送禮</option>
-              <option value="其他支出">其他支出</option>
-            </optgroup>
-            <optgroup label="收入" id="cat-income-group">
-              <option value="薪資">薪資</option>
-              <option value="股利">股利</option>
-              <option value="獎金">獎金</option>
-              <option value="其他收入">其他收入</option>
-            </optgroup>
-            <option value="__custom__">自訂...</option>
-          </select>
+          <select name="category" id="expense-category" onchange="toggleCustomCategory(this)"></select><!-- options: buildCategoryOptions() -->
         </div>
         <div id="custom-category-group" style="display:none" class="form-group">
           <label>自訂分類</label>

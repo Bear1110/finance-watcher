@@ -47,7 +47,7 @@ test('stats: monthly totals, category sums (USD converted), planned expense', as
   assert.equal(mar.planned_expense, 20000);
   assert.deepEqual(mar.by_category.expense, { 飲食: 1300, 飲料: 500 });
   assert.deepEqual(mar.by_category.income, { 薪資: 80000 });
-  assert.deepEqual(s.months[3].by_category.expense, { 未分類: 200 });
+  assert.deepEqual(s.months[3].by_category.expense, { '': 200 });
   assert.equal(s.months[0].expense, 0);
   assert.deepEqual(s.prev_december, { income: 0, expense: 999 });
 });
