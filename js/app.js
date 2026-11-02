@@ -188,6 +188,10 @@ function downloadFile(filename, content, type) {
 // ============================================================
 
 const ICONS = {
+  grid: '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
+  wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
   briefcase: '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>',
   pie: '<path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>',
   dollar: '<circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8M12 18V6"/>',
@@ -219,6 +223,7 @@ function applyIcons(root = document) {
 // Tapping an element that has one (and isn't itself a control) shows its text in a bubble.
 // ============================================================
 
+// Keep in step with the [title] cursor rule in style.css
 const TIP_CONTROLS = 'button, a, input, select, textarea, label, [onclick]';
 
 function initTapTips() {
@@ -228,7 +233,11 @@ function initTapTips() {
   bubble.hidden = true;
   document.body.appendChild(bubble);
   let anchor = null;
-  const hide = () => { bubble.hidden = true; anchor = null; };
+  const hide = () => {
+    if (bubble.hidden) return;
+    bubble.hidden = true;
+    anchor = null;
+  };
 
   document.addEventListener('click', (e) => {
     const el = e.target.closest('[title]');
@@ -276,8 +285,8 @@ function initTabs() {
       parent.querySelectorAll('.subtab-content').forEach(c => c.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById('subtab-' + btn.dataset.subtab).classList.add('active');
-      // Charts need a visible canvas to size, so 組合分析 draws when opened
-      if (btn.dataset.subtab === 'portfolio') loadPortfolioAnalysis();
+      // Each 股票 sub-tab loads when shown (charts need a visible canvas to size)
+      STOCKS_SUBTAB_LOADERS[btn.dataset.subtab]?.forEach(load => load());
     });
   });
 
@@ -307,13 +316,24 @@ function togglePrivacy() {
   onTabActivated(document.body.dataset.tab || 'dashboard');
 }
 
+/** What each 股票 sub-tab loads when it is shown (only the visible one loads). */
+const STOCKS_SUBTAB_LOADERS = {
+  holdings: [loadHoldings, loadXirr, loadHoldingsTrend],
+  portfolio: [loadPortfolioAnalysis],
+  realized: [loadRealizedSummary],
+  transactions: [loadTransactions],
+  dividends: [loadDividends],
+};
+
 function onTabActivated(tab) {
   document.body.dataset.tab = tab; // CSS shows tab-specific controls (e.g. the 收支 + button)
   switch (tab) {
     case 'dashboard': loadDashboard(); break;
-    case 'stocks': loadHoldings(); loadTransactions(); loadRealizedSummary(); loadDividends(); loadXirr(); loadHoldingsTrend();
-      if (document.getElementById('subtab-portfolio').classList.contains('active')) loadPortfolioAnalysis();
+    case 'stocks': {
+      const sub = document.querySelector('#tab-stocks .sub-tab-btn.active')?.dataset.subtab || 'holdings';
+      STOCKS_SUBTAB_LOADERS[sub]?.forEach(load => load());
       break;
+    }
     case 'expenses': loadExpenses(); break;
     case 'managed': loadManagedAccounts(); break;
     case 'llm': initAIImport(); break;
@@ -2526,11 +2546,12 @@ const CATEGORY_EMOJI = {
 };
 /** Display name of a category; records without one show as 未分類. */
 const catLabel = (c) => c || '未分類';
+const catEmoji = (c) => CATEGORY_EMOJI[c || ''] || '🏷️';
 /** Emoji + name, for lists and tables */
-const catDisplay = (c) => `${CATEGORY_EMOJI[c || ''] || '🏷️'} ${catLabel(c)}`;
+const catDisplay = (c) => `${catEmoji(c)} ${catLabel(c)}`;
 
 function buildCategoryOptions() {
-  const opts = (list) => list.map(c => `<option value="${c}">${CATEGORY_EMOJI[c] || '🏷️'} ${CATEGORY_HINTS[c] || c}</option>`).join('');
+  const opts = (list) => list.map(c => `<option value="${c}">${catEmoji(c)} ${CATEGORY_HINTS[c] || c}</option>`).join('');
   document.getElementById('expense-category').innerHTML =
     `<optgroup label="支出" id="cat-expense-group">${opts(EXPENSE_CATEGORIES.expense)}</optgroup>` +
     `<optgroup label="收入" id="cat-income-group">${opts(EXPENSE_CATEGORIES.income)}</optgroup>` +
