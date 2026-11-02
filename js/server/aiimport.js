@@ -422,6 +422,22 @@ export function extractJson(text) {
   }
 }
 
+/** Rows an AI put in the wrong array (a trade among the expenses, or the reverse) go where they belong. */
+function rerouteRows(sections) {
+  const obj = (r) => r && typeof r === 'object';
+  const isTrade = (r) => obj(r) && 'symbol' in r && 'action' in r;
+  const isExpense = (r) => obj(r) && 'amount' in r && !('symbol' in r);
+  const out = { ...sections };
+  const move = (from, to, pred) => {
+    if (!Array.isArray(out[from]) || !out[from].some(pred)) return;
+    out[to] = [...(Array.isArray(out[to]) ? out[to] : []), ...out[from].filter(pred)];
+    out[from] = out[from].filter((r) => !pred(r));
+  };
+  move('expenses', 'transactions', isTrade);
+  move('transactions', 'expenses', isExpense);
+  return out;
+}
+
 /**
  * Per kind: { records, duplicates, errors: [{ index, error }], warnings, plan }.
  * add mode: rows equal to an existing record (or an earlier row in the same paste) are skipped.
@@ -431,7 +447,7 @@ export function extractJson(text) {
  */
 export async function parseImport(text, kinds = Object.keys(KINDS), mode = 'add') {
   const data = extractJson(text);
-  const sections = Array.isArray(data) ? { [kinds[0]]: data } : data;
+  const sections = rerouteRows(Array.isArray(data) ? { [kinds[0]]: data } : { ...data });
   const out = {};
   for (const k of Object.keys(KINDS)) {
     if (!Array.isArray(sections?.[k])) continue;
@@ -453,12 +469,16 @@ export async function parseImport(text, kinds = Object.keys(KINDS), mode = 'add'
     res.plan = kind.plan?.(res, sections[`${k}_summary`]) ?? null;
     const replace = mode === 'replace' && res.plan;
     if (!replace) {
-      const seen = new Set(kind.existing().map(kind.key));
+      // Counted, not a set: two identical coffees on the same day are two records. Each existing
+      // record cancels one equal row of the paste, so re-importing the same file adds nothing.
+      const left = new Map();
+      for (const e of kind.existing()) left.set(kind.key(e), (left.get(kind.key(e)) || 0) + 1);
       res.records = res.records.filter((r) => {
         const key = kind.key(r);
-        if (seen.has(key)) { res.duplicates++; return false; }
-        seen.add(key);
-        return true;
+        if (!left.get(key)) return true;
+        left.set(key, left.get(key) - 1);
+        res.duplicates++;
+        return false;
       });
     }
     kind.review?.(res, replace ? res.plan : null);

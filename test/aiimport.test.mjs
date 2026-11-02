@@ -58,7 +58,7 @@ test('prompt: format only, lists preset and used categories', () => {
   assert.throws(() => buildPrompt([]), /至少/);
 });
 
-test('expenses: lenient values, unknown category -> 其他 with note, duplicates skipped', async () => {
+test('expenses: lenient values, unknown category -> 其他 with note, existing duplicate skipped', async () => {
   const text = JSON.stringify({
     format: 'finance-watcher-import',
     expenses: [
@@ -66,18 +66,19 @@ test('expenses: lenient values, unknown category -> 其他 with note, duplicates
       { date: '2026/10/3', type: '支出', category: '飲料', amount: 'NT$ 1,350', note: '手搖' },
       { date: '2026-10', type: '收入', category: '薪資', amount: 118000, currency: '台幣' }, // month only -> 1st
       { date: '2026-10-04', category: '寵物', amount: -800 },                              // no type, negative
-      { date: '2026/10/4', category: '寵物', amount: -800 },                               // same row again
+      { date: '2026/10/4', category: '寵物', amount: -800 },                               // same row again: a second record
       { date: '十月', amount: 10 },
       { date: '2026-10-05', amount: 'abc' },
       { date: '2026-10-06', category: '交通', amount: 20, currency: 'USD' },
     ],
   });
   const r = (await parseImport(text)).expenses;
-  assert.equal(r.duplicates, 2);
+  assert.equal(r.duplicates, 1);
   assert.deepEqual(r.errors.map((e) => e.index), [5, 6]);
   assert.deepEqual(r.records.map((e) => [e.date, e.type, e.category, e.amount, e.currency, e.note]), [
     ['2026-10-03', 'expense', '飲料', 1350, 'TWD', '手搖'],
     ['2026-10-01', 'income', '薪資', 118000, 'TWD', ''],
+    ['2026-10-04', 'expense', '其他支出', 800, 'TWD', '原分類：寵物'],
     ['2026-10-04', 'expense', '其他支出', 800, 'TWD', '原分類：寵物'],
     ['2026-10-06', 'expense', '交通', 20, 'USD', ''],
   ]);
@@ -249,4 +250,32 @@ test('transactions: a code Yahoo only knows as .TWO (上櫃) is renamed', async 
   assert.deepEqual(r.records.map((x) => x.symbol), ['4128.TWO', '4128.TWO']);
   assert.ok(r.warnings.some((w) => w.includes('4128 是上櫃股票')));
   assert.equal(r.records[1].history, undefined); // the buy covers the sell
+});
+
+test('identical rows in one paste are separate records; only as many as already exist are duplicates', async () => {
+  // Two 30-元 drinks on the same day, and the existing 1200 飲食 on 10/01 (id 1)
+  const text = JSON.stringify({ expenses: [
+    { date: '2024-08-22', type: 'expense', category: '飲料', amount: 30 },
+    { date: '2024-08-22', type: 'expense', category: '飲料', amount: 30 },
+    { date: '2026-10-01', type: 'expense', category: '飲食', amount: 1200 },
+    { date: '2026-10-01', type: 'expense', category: '飲食', amount: 1200 },
+  ] });
+  const r = (await parseImport(text)).expenses;
+  assert.equal(r.records.length, 3);
+  assert.equal(r.duplicates, 1);
+  await post('/api/ai-import/commit', { text, kinds: ['expenses'] });
+  const again = (await parseImport(text)).expenses;
+  assert.equal(again.records.length, 0); // re-importing the same paste adds nothing
+  assert.equal(again.duplicates, 4);
+});
+
+test('trades the AI put inside "expenses" are imported as trades', async () => {
+  const text = JSON.stringify({ expenses: [
+    { date: '2025-10-01', type: 'expense', category: '飲料', amount: 30 },
+    { date: '2020-09-17', symbol: '2886', market: 'TW', action: 'BUY', shares: 1000, price: 28.6, fee: 40, tax: 0 },
+  ] });
+  const r = await parseImport(text, ['expenses']);
+  assert.equal(r.expenses.records.length, 1);
+  assert.equal(r.expenses.errors.length, 0);
+  assert.equal(r.transactions.records[0].symbol, '2886.TW');
 });
