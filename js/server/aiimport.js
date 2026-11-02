@@ -202,11 +202,20 @@ const transactions = {
     }
     for (const sym of symbols) {
       const rows = res.records.filter((r) => r.symbol === sym);
-      let closes;
-      try {
-        closes = await closesSince(sym, rows.reduce((m, r) => (r.date < m ? r.date : m), rows[0].date));
-      } catch {
-        res.warnings.push(`${sym} 抓不到歷史股價，無法檢查股票分割。`);
+      const since = rows.reduce((m, r) => (r.date < m ? r.date : m), rows[0].date);
+      let closes = await closesSince(sym, since).catch(() => null);
+      // A bare TW code was guessed as .TW (上市); if Yahoo only knows .TWO (上櫃), use that
+      if (!closes?.length && sym.endsWith('.TW')) {
+        const two = `${sym}O`;
+        const alt = await closesSince(two, since).catch(() => null);
+        if (alt?.length) {
+          for (const r of rows) r.symbol = two;
+          res.warnings.push(`${sym.slice(0, -3)} 是上櫃股票，代號改為 ${two}。`);
+          closes = alt;
+        }
+      }
+      if (!closes?.length) {
+        res.warnings.push(`${rows[0].symbol} 抓不到歷史股價，無法檢查股票分割。`);
         continue;
       }
       for (const r of rows) {

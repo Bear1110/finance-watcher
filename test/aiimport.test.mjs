@@ -17,6 +17,7 @@ globalThis.window = {
 const CLOSES = {
   '0050.TW': { '2024-10-24': 48.7, '2025-10-13': 60.0 },
   '00881.TW': { '2024-10-18': 25.0, '2024-11-14': 24.3 },
+  '4128.TWO': { '2023-08-22': 48.0, '2023-09-05': 49.0 }, // 上櫃: only .TWO exists
 };
 globalThis.fetch = async (url) => {
   const sym = decodeURIComponent((String(url).match(/\/chart\/([^?]+)/) || [])[1] || '');
@@ -237,4 +238,15 @@ test('replace is blocked when the totals do not match or the holdings cannot be 
   assert.equal(none.ok, true);
   assert.equal(none.start, '2024-10-18');
   assert.ok(none.checks.some((c) => c.includes('沒有合計列')));
+});
+
+test('transactions: a code Yahoo only knows as .TWO (上櫃) is renamed', async () => {
+  const text = JSON.stringify({ transactions: [
+    { date: '2023-08-22', symbol: '4128', market: 'TW', action: 'BUY', shares: 1000, price: 48.05, fee: 68, tax: 0 },
+    { date: '2023-09-05', symbol: '4128', market: 'TW', action: 'SELL', shares: 1000, price: 49.3, fee: 70, tax: 147, realized_pl: 965 },
+  ] });
+  const r = (await parseImport(text)).transactions;
+  assert.deepEqual(r.records.map((x) => x.symbol), ['4128.TWO', '4128.TWO']);
+  assert.ok(r.warnings.some((w) => w.includes('4128 是上櫃股票')));
+  assert.equal(r.records[1].history, undefined); // the buy covers the sell
 });
