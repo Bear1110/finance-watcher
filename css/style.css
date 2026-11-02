@@ -2022,3 +2022,21 @@ body[data-tab="expenses"] .fab { display: flex; }
   font: inherit;
   cursor: pointer;
 }
+
+/* 持倉總覽: market value / P&L trend */
+.trend-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.trend-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.trend-summary > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.trend-summary span { font-size: 0.78rem; color: var(--text-secondary); }
+.trend-summary strong { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 599px) {
+  .trend-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

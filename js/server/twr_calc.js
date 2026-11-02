@@ -67,6 +67,12 @@ class PriceCursor {
  * and the day's growth is (1+r1)(1+r2). Chaining days removes the effect of
  * when money went in, so realized, unrealized, dividends, fees and FX all land
  * in one number. P&L = V_end − V_start − buys + sells + dividends.
+ *
+ * Alongside, FIFO lots (the ledger's rule: buy fee in the lot cost, sell fee and
+ * tax out of the proceeds) give per day the cost of what is held and the
+ * cumulative realized P&L, so unrealized = value − cost. USD cost is converted
+ * at that day's rate (like the holdings page), so unrealized excludes FX moves;
+ * realized is converted at the sale day's rate.
  */
 export function computePerformance(input) {
   const txns = input.txns || [];
@@ -78,7 +84,7 @@ export function computePerformance(input) {
 
   const res = new PerfResult();
   for (const s of perfSegments) {
-    res.series[s] = { value: [0], growth: [1], pnl: [0], active: [0] };
+    res.series[s] = { value: [0], growth: [1], pnl: [0], active: [0], cost: [0], realized: [0] };
   }
   if (txns.length === 0) return res;
   const first = txns[0].date;
@@ -104,6 +110,8 @@ export function computePerformance(input) {
   const fxCur = new PriceCursor(closes[USDTWD_SYMBOL]);
 
   const shares = {};
+  const lots = {}; // symbol -> FIFO [{ q, c }]: shares and cost per share (native, buy fee included)
+  const realized = { ALL: 0, TW: 0, US: 0 }; // cumulative, TWD
   const px = {}; // last known price per symbol, native currency
   for (let d = first; d <= today; d = addDays(d, 1)) {
     let fx = liveRate;
@@ -157,18 +165,36 @@ export function computePerformance(input) {
       m[market] = (m[market] || 0) + v;
     };
     trades.forEach((t, i) => {
+      const fifo = (lots[t.symbol] ||= []);
       if (t.action === 'BUY') {
         shares[t.symbol] = (shares[t.symbol] || 0) + t.shares;
         addFlow(inflow, t.market, toTWD(t.shares * tradePx[i] + t.fee, t.currency, fx));
+        // A 匯入持倉's price is its average cost (the TWR uses the market price instead)
+        if (t.shares > 0) fifo.push({ q: t.shares, c: (t.shares * t.price + t.fee) / t.shares });
       } else {
         shares[t.symbol] = (shares[t.symbol] || 0) - t.shares;
-        addFlow(outflow, t.market, toTWD(t.shares * t.price - t.fee - t.tax, t.currency, fx));
+        const proceeds = t.shares * t.price - t.fee - t.tax;
+        addFlow(outflow, t.market, toTWD(proceeds, t.currency, fx));
+        let left = t.shares;
+        let cost = 0;
+        while (left > 1e-9 && fifo.length) {
+          const take = Math.min(fifo[0].q, left);
+          cost += take * fifo[0].c;
+          fifo[0].q -= take;
+          left -= take;
+          if (fifo[0].q <= 1e-9) fifo.shift();
+        }
+        addFlow(realized, t.market, toTWD(proceeds - cost, t.currency, fx));
       }
     });
     for (const dv of divByDate[d] || []) {
       addFlow(outflow, dv.market, toTWD(dv.amount, dv.currency, fx));
     }
     const value = valueAt((sym) => px[sym] || 0);
+    const held = { ALL: 0, TW: 0, US: 0 };
+    for (const [sym, fifo] of Object.entries(lots)) {
+      addFlow(held, symMarket[sym], toTWD(fifo.reduce((n, l) => n + l.q * l.c, 0), symCur[sym], fx));
+    }
 
     res.days.push(d);
     res.fx.push(fx);
@@ -194,6 +220,8 @@ export function computePerformance(input) {
       ps.growth.push(g);
       ps.pnl.push(ps.pnl[n] + (value[seg] || 0) + (outflow[seg] || 0) - prev - (inflow[seg] || 0));
       ps.active.push(act);
+      ps.cost.push(held[seg] || 0);
+      ps.realized.push(realized[seg] || 0);
     }
   }
   return res;
@@ -202,7 +230,7 @@ export function computePerformance(input) {
 export class PerfResult {
   constructor() {
     this.days = []; // days[0] is the base day before the first trade (value 0, growth 1)
-    this.series = {}; // seg -> { value, growth, pnl, active }
+    this.series = {}; // seg -> { value, growth, pnl, active, cost, realized }
     this.fx = []; // USD/TWD used each day
     this.missing = []; // traded symbols without any daily close
   }

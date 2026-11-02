@@ -252,6 +252,8 @@ async function performance() {
   const series = { dates: res.days.slice(o) };
   const growth = {};
   const value = {};
+  const cost = {};
+  const realized = {};
   const benchOut = {};
   for (const seg of perfSegments) {
     const ps = res.series[seg];
@@ -263,12 +265,17 @@ async function performance() {
     }
     growth[seg] = g;
     value[seg] = v;
+    // Cost of what is held and cumulative realized P&L (from the first trade, not the period start)
+    cost[seg] = ps.cost.slice(o, last + 1).map(goRound);
+    realized[seg] = ps.realized.slice(o, last + 1).map(goRound);
   }
   for (const [sym, vals] of Object.entries(bench)) {
     benchOut[sym] = vals.slice(o).map((x) => (x > 0 ? round4(x) : null));
   }
   series.growth = growth;
   series.value = value;
+  series.cost = cost;
+  series.realized = realized;
   series.bench = benchOut;
   series.fx = res.fx.slice(o).map(round4);
 

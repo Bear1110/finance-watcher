@@ -292,16 +292,28 @@
         </div>
         <div class="card" id="holdings-trend-card" style="margin-top:20px">
           <div class="card-header">
-            <h3>市值走勢</h3>
-            <div class="chart-type-toggle" id="holdings-trend-range">
-              <button type="button" class="chart-type-btn" data-days="31">1 個月</button>
-              <button type="button" class="chart-type-btn" data-days="92">3 個月</button>
-              <button type="button" class="chart-type-btn active" data-days="366">1 年</button>
-              <button type="button" class="chart-type-btn" data-days="0">全部</button>
+            <h3>市值與損益走勢</h3>
+            <div class="trend-controls">
+              <div class="chart-type-toggle" data-trend="seg">
+                <button type="button" class="chart-type-btn active" data-v="ALL">合計</button>
+                <button type="button" class="chart-type-btn" data-v="TW">台股</button>
+                <button type="button" class="chart-type-btn" data-v="US">美股</button>
+              </div>
+              <div class="chart-type-toggle" data-trend="mode">
+                <button type="button" class="chart-type-btn active" data-v="value">市值</button>
+                <button type="button" class="chart-type-btn" data-v="pnl">損益</button>
+              </div>
+              <div class="chart-type-toggle" data-trend="days">
+                <button type="button" class="chart-type-btn" data-v="31">1 個月</button>
+                <button type="button" class="chart-type-btn" data-v="92">3 個月</button>
+                <button type="button" class="chart-type-btn active" data-v="366">1 年</button>
+                <button type="button" class="chart-type-btn" data-v="0">全部</button>
+              </div>
             </div>
           </div>
-          <div class="chart-container-md"><canvas id="chart-holdings-trend" aria-label="台股、美股市值每日走勢"></canvas></div>
-          <p class="form-hint" id="holdings-trend-hint" style="margin:8px 0 0">每天的持股 × 當日收盤價（美股以當日匯率換算台幣），由交易紀錄自動計算。</p>
+          <div class="trend-summary" id="holdings-trend-summary"></div>
+          <div class="chart-container-md"><canvas id="chart-holdings-trend" aria-label="市值、持有成本與損益的每日走勢"></canvas></div>
+          <p class="form-hint" id="holdings-trend-hint" style="margin:8px 0 0">每天的持股 × 當日收盤價（美股以當日匯率換算台幣），由交易紀錄自動計算。持有成本與已實現損益依先進先出，與已實現損益頁一致；美股成本以當日匯率換算，未實現損益不含匯率漲跌。</p>
         </div>
       </div>
 

@@ -1914,36 +1914,64 @@ async function loadHoldingsTrend() {
   }
 }
 
+const TREND_SEG_LABEL = { ALL: '合計', TW: '台股', US: '美股' };
+/** Series colors: 市值 per market (as on the dashboard), 未實現 / 已實現 as the CVD-checked blue / orange pair */
+const trendColor = (key) => ({ ALL: '#4e8cff', TW: ASSET_SERIES[2].color, US: ASSET_SERIES[3].color }[key] || seriesColor(key));
+const trendPick = (name) => document.querySelector(`[data-trend="${name}"] .active`)?.dataset.v;
+const pctText = (pl, cost) => (cost > 0 ? ` (${fmtPct(pl / cost * 100)})` : '');
+
 function renderHoldingsTrend() {
   const s = _perfData && _perfData.series;
   if (!s || !s.dates || !s.dates.length) return;
-  const days = Number(document.querySelector('#holdings-trend-range .active')?.dataset.days) || 0;
+  const seg = trendPick('seg') || 'ALL';
+  const mode = trendPick('mode') || 'value';
+  const days = Number(trendPick('days')) || 0;
   const from = days ? addDaysISO(s.dates[s.dates.length - 1], -days) : '';
   const b = Math.max(0, s.dates.findIndex(d => d >= from));
   const idx = weekdayIndexes(s.dates, b);
-  const color = (key) => ASSET_SERIES.find(a => a.key === key).color;
-  const line = (label, seg, c, extra = {}) => ({
-    label, data: idx.map(i => s.value[seg][i]), borderColor: c, backgroundColor: c,
+  const value = s.value[seg], cost = s.cost[seg], realized = s.realized[seg];
+  const unreal = (i) => value[i] - cost[i];
+
+  // Latest numbers, plus how much each moved over the shown period
+  const last = s.dates.length - 1;
+  const moved = (now, then) => (idx.length > 1 ? `<span class="${plClass(now - then)}">期間 ${fmtPL(now - then)}</span>` : '');
+  document.getElementById('holdings-trend-summary').innerHTML = `
+    <div><span>市值</span><strong>${fmtTWD(value[last])}</strong></div>
+    <div><span>持有成本</span><strong>${fmtTWD(cost[last])}</strong></div>
+    <div><span>未實現損益</span><strong class="${plClass(unreal(last))}">${fmtPL(unreal(last))}${pctText(unreal(last), cost[last])}</strong>${moved(unreal(last), unreal(idx[0]))}</div>
+    <div><span>累計已實現</span><strong class="${plClass(realized[last])}">${fmtPL(realized[last])}</strong>${moved(realized[last], realized[idx[0]])}</div>`;
+
+  const line = (label, data, color, extra = {}) => ({
+    label, data, borderColor: color, backgroundColor: color,
     borderWidth: 2, pointRadius: 0, pointHitRadius: 8, tension: 0, ...extra,
   });
+  const datasets = mode === 'value'
+    ? [line(`${TREND_SEG_LABEL[seg]}市值`, idx.map(i => value[i]), trendColor(seg)),
+       line('持有成本', idx.map(i => cost[i]), '#8a9ab5', { borderDash: [6, 4], borderWidth: 1.5 })]
+    : [line('未實現損益', idx.map(unreal), trendColor('income')),
+       line('累計已實現', idx.map(i => realized[i]), trendColor('expense'))];
+
   if (_holdingsTrendChart) _holdingsTrendChart.destroy();
   _holdingsTrendChart = new Chart(document.getElementById('chart-holdings-trend'), {
     type: 'line',
-    data: {
-      labels: idx.map(i => s.dates[i]),
-      datasets: [
-        line('合計', 'ALL', '#4e8cff', { borderWidth: 2.5 }),
-        line('台股', 'TW', color('tw')),
-        line('美股', 'US', color('us')),
-      ],
-    },
+    data: { labels: idx.map(i => s.dates[i]), datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { labels: { color: '#8a9ab5', boxWidth: 12, font: { size: 11 } } },
-        tooltip: { callbacks: { label: c => `${c.dataset.label}: ${fmtTWD(c.parsed.y)}` } },
+        tooltip: {
+          callbacks: {
+            label: c => `${c.dataset.label}: ${mode === 'value' ? fmtTWD(c.parsed.y) : fmtPL(c.parsed.y)}`,
+            footer: items => {
+              const i = idx[items[0].dataIndex];
+              return mode === 'value'
+                ? `未實現 ${fmtPL(unreal(i))}${pctText(unreal(i), cost[i])}\n累計已實現 ${fmtPL(realized[i])}`
+                : `未實現報酬率 ${cost[i] > 0 ? fmtPct(unreal(i) / cost[i] * 100) : '--'}`;
+            },
+          },
+        },
       },
       scales: {
         x: { ticks: { ...CHART_AXIS.ticks, maxTicksLimit: 6, maxRotation: 0 }, grid: { display: false } },
@@ -1959,9 +1987,9 @@ function addDaysISO(date, n) {
 }
 
 document.addEventListener('click', (e) => {
-  const btn = e.target.closest('#holdings-trend-range .chart-type-btn');
+  const btn = e.target.closest('[data-trend] .chart-type-btn');
   if (!btn) return;
-  document.querySelectorAll('#holdings-trend-range .chart-type-btn').forEach(x => x.classList.toggle('active', x === btn));
+  btn.parentElement.querySelectorAll('.chart-type-btn').forEach(x => x.classList.toggle('active', x === btn));
   renderHoldingsTrend();
 });
 

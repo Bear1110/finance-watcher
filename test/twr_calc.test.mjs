@@ -161,3 +161,27 @@ test('fmtNum', () => {
   const cases = [[115000, '115,000'], [20.05, '20.05'], [1761.96, '1,761.96'], [-1234567.5, '-1,234,567.5'], [0, '0'], [999, '999']];
   for (const [v, want] of cases) assert.equal(fmtNum(v), want, `fmtNum(${v})`);
 });
+
+test('cost and realized: FIFO lots with fees, USD cost at the day rate', () => {
+  const r = computePerformance({
+    txns: [
+      { ...buy('A.TW', '2026-01-05', 10, 100), fee: 10 },          // lot cost 101
+      buy('A.TW', '2026-01-06', 10, 120),                          // lot cost 120
+      { ...sell('A.TW', '2026-01-07', 15, 130), fee: 5, tax: 5 }, // takes 10 @101 + 5 @120
+      { ...buy('U', '2026-01-06', 2, 50), market: 'US', currency: 'USD' },
+    ],
+    closes: {
+      'A.TW': closesOf('2026-01-05', 100, '2026-01-06', 120, '2026-01-07', 130),
+      U: closesOf('2026-01-06', 50, '2026-01-07', 60),
+      [USDTWD_SYMBOL]: closesOf('2026-01-06', 30, '2026-01-07', 32),
+    },
+    today: '2026-01-07', liveRate: 32,
+  });
+  const last = (seg, k) => r.series[seg][k][r.series[seg][k].length - 1];
+  approx('TW realized', last('TW', 'realized'), 15 * 130 - 10 - (10 * 101 + 5 * 120));
+  approx('TW cost', last('TW', 'cost'), 5 * 120);
+  approx('TW value', last('TW', 'value'), 5 * 130);
+  approx('US cost at day rate', last('US', 'cost'), 2 * 50 * 32);
+  approx('ALL cost', last('ALL', 'cost'), 5 * 120 + 2 * 50 * 32);
+  approx('US realized', last('US', 'realized'), 0);
+});
