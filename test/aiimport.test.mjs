@@ -288,6 +288,7 @@ test('replace without a 查詢期間: each symbol uses its own first..last trade
   });
   const text = JSON.stringify({ transactions: [
     { date: '2020-09-17', symbol: '2886', market: 'TW', action: 'BUY', shares: 1000, price: 28.6, fee: 40, tax: 0 },
+    { date: '2020-09-21', symbol: '2886', market: 'TW', action: 'SELL', shares: 1000, price: 28.25, fee: 40, tax: 85, realized_pl: -500 },
     { date: '2022-02-14', symbol: '00881', market: 'TW', action: 'BUY', shares: 60000, price: 17.67, fee: 50, tax: 0 },
     { date: '2025-09-02', symbol: '00881', market: 'TW', action: 'BUY', shares: 35000, price: 26.4, fee: 112, tax: 0 },
   ] });
@@ -296,6 +297,7 @@ test('replace without a 查詢期間: each symbol uses its own first..last trade
   assert.equal(p.perSymbol, true);
   const s = p.symbols.find((x) => x.symbol === '00881.TW');
   assert.equal(s.start, '2022-02-14');
-  // 115000 now − 95000 in the statement, kept as a 匯入持倉 the day before its own first trade
-  assert.deepEqual(s.transfer, { date: '2022-02-13', shares: 20000, price: 15 });
+  // 115000 now − 95000 in the statement; the old 匯入持倉 date (2021) is before 00881's own first
+  // trade, so it stays. With the global start (2020-08-13, from 2886) it was dragged to 2020-08-12.
+  assert.deepEqual(s.transfer, { date: '2021-01-14', shares: 20000, price: 15 });
 });
