@@ -1,4 +1,4 @@
-# Finance Watcher
+# <img src="icons/logo-64.png" width="40" height="40" alt="" align="top"> Finance Watcher
 
 個人財務記錄網站：資產快照、台股／美股持倉與交易（FIFO 已實現損益）、股利、收支與年度預算、代管帳戶、投資績效（TWR / XIRR）、AI 分析。
 

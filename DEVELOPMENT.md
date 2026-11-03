@@ -73,7 +73,9 @@ python -m http.server 8000   # ES modules 必須透過 HTTP 載入
 node --test                  # 單元測試（FIFO、TWR、代管帳戶、股利估算、收支統計、AI 匯入）
 ```
 
-改了 `js/` 底下的檔案清單時，記得同步 `sw.js` 的 `SHELL` 並把 `VERSION` 加一。
+`sw.js` 的 `SHELL`（預先快取的檔案清單）有增減時把 `VERSION` 加一，例如新增或刪除 `js/` 底下的檔案、換圖示檔名。
+
+網址（`https://bear1110.github.io/finance-watcher/`）寫死在：`index.html` 的 canonical 與 `og:*`、`worker/yahoo-proxy.js` 的 `ALLOWED_ORIGINS`、Google Cloud 的 OAuth 已授權來源。換網域或 repo 名稱時要一起改。
 
 更新提示（「有新版本可用」）見 `js/update.js` 開頭說明，不用手動改版本號。
 
@@ -97,6 +99,6 @@ node --test                  # 單元測試（FIFO、TWR、代管帳戶、股利
 - [x] 建 OAuth 用戶端 ID，填進 `js/config.js`（專案 finance-watcher-513403）
 - [x] 部署 Yahoo 代理（`cd worker && npx wrangler deploy`），填進 `js/config.js` 的 `DEFAULT_YAHOO_PROXY`
 - [x] 隱私權政策頁與服務條款（`privacy.html`、`terms.html`（英文版 `-en.html`），OAuth 正式版需要）
-- [x] PNG 圖示（`apple-touch-icon` 180、192／512、maskable 512，由 `icons/icon.svg` 轉出）
+- [x] Logo 與圖示（焦慮看盤小熊）：原圖在 `icons/src/`，用 `python tools/make-icons.py` 產生所有尺寸，分享預覽圖的模板是 `tools/og.html`（用法見腳本開頭）
 - [ ] 確認 `GOOGLEFINANCE` 查得到所有持股（部分台股 ETF 可能沒有）
 - [ ] 手機版：寬表格目前是橫向捲動，可再改成卡片式
