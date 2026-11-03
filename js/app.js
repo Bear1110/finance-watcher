@@ -946,20 +946,20 @@ function divCells(m, cur) {
     ? '--'
     : `${m.yieldPrice.toFixed(2)}%<span class="cell-sub">成本 ${m.yieldCost.toFixed(2)}%</span>`;
   return `
-      <td>${divTxt}<span class="cell-sub ${plClass(m.ret)}">${retTxt}</span></td>
-      <td>${yieldTxt}</td>`;
+      <td class="c-div">${divTxt}<span class="cell-sub ${plClass(m.ret)}">${retTxt}</span></td>
+      <td class="c-yld">${yieldTxt}</td>`;
 }
 
 // Unrealized P&L amount with its % underneath
 function plCell(pl, pct, cur) {
-  return `<td class="${plClass(pl)}">${fmtPLCur(pl, cur)}<span class="cell-sub">${fmtPct(pct)}</span></td>`;
+  return `<td class="c-pl ${plClass(pl)}">${fmtPLCur(pl, cur)}<span class="cell-sub">${fmtPct(pct)}</span></td>`;
 }
 
 // Today's change in the 現價 column of subtotal/total rows: amount with % vs previous close underneath
 function dayChangeCell(chg, mv, cur, strong) {
   const prev = mv - chg;
   const amt = `今日 ${fmtPLCur(chg, cur)}`;
-  return `<td class="${plClass(chg)}" title="較前一交易日收盤">${strong ? `<strong>${amt}</strong>` : amt}` +
+  return `<td class="c-day ${plClass(chg)}" title="較前一交易日收盤">${strong ? `<strong>${amt}</strong>` : amt}` +
     `<span class="cell-sub">${prev > 0 ? fmtPct(chg / prev * 100) : '--'}</span></td>`;
 }
 
@@ -969,13 +969,13 @@ function renderHoldingRow(s) {
   const dm = divMetrics(s.unrealized_pl || 0, costNative, s.market_value || 0, _divBySymbol[s.symbol]);
   return `
     <tr>
-      <td><strong>${s.symbol || '--'}</strong></td>
-      <td>${fmt(s.shares)}<span class="cell-sub">均價 ${fmtPrice(s.avg_cost, cur)}</span></td>
-      <td>${fmtCur(costNative, cur)}</td>
-      <td>${fmtPrice(s.current_price, cur)}${s.current_price ? `<span class="cell-sub ${plClass(s.day_change_pct)}" title="較前一交易日收盤">${fmtPct(s.day_change_pct)}</span>` : ''}</td>
-      <td>${fmtCur(s.market_value, cur)}</td>
+      <td class="c-sym"><strong>${s.symbol || '--'}</strong></td>
+      <td class="c-sh">${fmt(s.shares)}<span class="cell-sub">均價 ${fmtPrice(s.avg_cost, cur)}</span></td>
+      <td class="c-cost">${fmtCur(costNative, cur)}</td>
+      <td class="c-px">${fmtPrice(s.current_price, cur)}${s.current_price ? `<span class="cell-sub ${plClass(s.day_change_pct)}" title="較前一交易日收盤">${fmtPct(s.day_change_pct)}</span>` : ''}</td>
+      <td class="c-mv">${fmtCur(s.market_value, cur)}</td>
       ${plCell(s.unrealized_pl, s.pl_percent, cur)}${divCells(dm, cur)}
-      <td class="action-buttons">
+      <td class="c-act action-buttons">
         ${rowBtn('buy', `openTradeModal('BUY', '${s.symbol}', '${s.market}', '${s.currency}', ${s.shares}, ${s.current_price || 0})`)}
         ${rowBtn('sell', `openTradeModal('SELL', '${s.symbol}', '${s.market}', '${s.currency}', ${s.shares}, ${s.current_price || 0})`)}
         ${rowBtn('delete', `deleteHolding(${s.id})`, '刪除持倉')}
@@ -1031,7 +1031,7 @@ async function loadHoldings() {
       const t = subtotal(rows);
       return `<tr class="market-group-header"><td colspan="9">${g.label}</td></tr>` +
         rows.map(renderHoldingRow).join('') +
-        `<tr class="market-subtotal"><td colspan="2">${g.subtotalLabel}</td><td>${fmtCur(t.cost, g.cur)}</td>${dayChangeCell(t.day, t.mv, g.cur)}<td>${fmtCur(t.mv, g.cur)}</td>${plCell(t.pl, t.pct, g.cur)}${divCells(t.dm, g.cur)}<td></td></tr>`;
+        `<tr class="market-subtotal"><td colspan="2" class="c-sym">${g.subtotalLabel}</td><td class="c-cost">${fmtCur(t.cost, g.cur)}</td>${dayChangeCell(t.day, t.mv, g.cur)}<td class="c-mv">${fmtCur(t.mv, g.cur)}</td>${plCell(t.pl, t.pct, g.cur)}${divCells(t.dm, g.cur)}<td></td></tr>`;
     }).join('');
 
     // TWD footer: USD dividends converted at the stored rate

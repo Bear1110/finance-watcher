@@ -1688,15 +1688,16 @@ body { overflow-x: clip; }
   table { font-size: 0.82rem; }
   thead th { padding: 0.5rem; font-size: 0.72rem; }
   tbody td, tfoot td { padding: 0.5rem; }
-  .table-wrap th:first-child,
-  .table-wrap td:first-child:not([colspan]) {
+  /* holdings-table is shown as cards instead (see the end of this file) */
+  .table-wrap table:not(.holdings-table) th:first-child,
+  .table-wrap table:not(.holdings-table) td:first-child:not([colspan]) {
     position: sticky;
     left: 0;
     z-index: 1;
     background: var(--bg-card);
     box-shadow: 1px 0 0 var(--border-color);
   }
-  .table-wrap tbody tr:hover td:first-child:not([colspan]) { background: var(--bg-card-hover); }
+  .table-wrap table:not(.holdings-table) tbody tr:hover td:first-child:not([colspan]) { background: var(--bg-card-hover); }
 
   /* --- Dashboard --- */
   .hero-card { padding: 20px 16px; border-radius: 12px; }
@@ -2096,3 +2097,53 @@ body[data-tab="expenses"] .fab { display: flex; }
 .tour-skip { background: none; color: var(--text-muted); padding-left: 0; margin-right: auto; }
 .tour-skip:hover { color: var(--text-primary); }
 @media (prefers-reduced-motion: reduce) { .tour-spot, .tour-card { transition: none; } }
+
+/* --- 持倉總覽：手機上每檔一張卡片（桌機維持表格；格子的位置由 app.js 的 c-* class 決定） --- */
+@media (max-width: 599px) {
+  .holdings-table, .holdings-table tbody, .holdings-table tfoot { display: block; }
+  .holdings-table thead { display: none; }
+  .holdings-table tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas: "sym act" "mv pl" "sh cost" "px div" "yld .";
+    gap: 8px 12px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    background: var(--bg-secondary);
+  }
+  .holdings-table td { padding: 0; border: none; background: none; }
+  .holdings-table td:empty { display: none; }
+  .holdings-table td.empty-state { grid-column: 1 / -1; }
+  .holdings-table td::before { display: block; font-size: 0.72rem; font-weight: 400; color: var(--text-secondary); }
+  .holdings-table .c-sym { grid-area: sym; font-size: 1.05rem; }
+  .holdings-table .c-act { grid-area: act; justify-content: flex-end; }
+  .holdings-table .c-mv { grid-area: mv; }
+  .holdings-table .c-pl { grid-area: pl; }
+  .holdings-table :is(.c-mv, .c-pl) { font-size: 1.1rem; font-weight: 600; }
+  .holdings-table .c-sh { grid-area: sh; }
+  .holdings-table .c-cost { grid-area: cost; }
+  .holdings-table .c-px, .holdings-table .c-day { grid-area: px; }
+  .holdings-table .c-div { grid-area: div; }
+  .holdings-table .c-yld { grid-area: yld; }
+  .holdings-table :is(.c-pl, .c-cost, .c-div) { text-align: right; }
+  .holdings-table .c-mv::before { content: '市值'; }
+  .holdings-table .c-pl::before { content: '未實現損益'; }
+  .holdings-table .c-sh::before { content: '持股 / 均價'; }
+  .holdings-table .c-cost::before { content: '投入金額'; }
+  .holdings-table .c-px::before { content: '現價 / 今日'; }
+  .holdings-table .c-div::before { content: '股利 / 含股利報酬'; }
+  .holdings-table .c-yld::before { content: '殖利率 現價 / 成本'; }
+  .holdings-table .cell-sub { font-size: 0.78rem; font-weight: 400; }
+  /* 美股／台股 group headers become section titles between the cards */
+  .holdings-table tr.market-group-header { display: block; padding: 6px 2px; margin: 14px 0 6px; border: none; background: none; }
+  .holdings-table tr.market-group-header:first-child { margin-top: 0; }
+  /* 小計：只留市值、損益、今日；合計（tfoot）留全部 */
+  .holdings-table tr.market-subtotal { grid-template-areas: "sym px" "mv pl"; background: var(--accent-subtle); }
+  .holdings-table tr.market-subtotal :is(.c-cost, .c-div, .c-yld) { display: none; }
+  .holdings-table tr.market-subtotal .c-day { text-align: right; }
+  .holdings-table tfoot tr { grid-template-areas: "sym sym" "mv pl" "px cost" "yld div"; border-color: var(--accent); }
+  .holdings-table tfoot .c-sym { text-align: left; }
+  .holdings-table tr.market-subtotal td { font-style: normal; }
+}
