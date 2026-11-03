@@ -253,6 +253,10 @@
           <div class="card-header">
             <h3>股票持倉</h3>
             <div class="header-actions" data-tour="holdings-actions">
+              <div class="chart-type-toggle" id="holdings-view" role="group" aria-label="檢視方式">
+                <button type="button" class="chart-type-btn" data-view="table" onclick="setHoldingsView('table')">表格</button>
+                <button type="button" class="chart-type-btn" data-view="cards" onclick="setHoldingsView('cards')">卡片</button>
+              </div>
               <button class="btn btn-outline btn-sm" onclick="refreshStockPrices()">
                 <span class="i refresh-icon" data-icon="refresh"></span>更新報價
               </button>

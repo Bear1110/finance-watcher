@@ -926,6 +926,20 @@ async function deleteSnapshot(id) {
 // Dividends received per symbol (native currency), loaded alongside holdings
 let _divBySymbol = {};
 
+// Table or card view of the holdings ('table' | 'cards'), remembered on this device
+function setHoldingsView(view, save = true) {
+  if (save) try { localStorage.setItem('holdingsView', view); } catch (e) { /* ignore */ }
+  document.querySelector('.holdings-table').classList.toggle('as-cards', view === 'cards');
+  document.querySelectorAll('#holdings-view .chart-type-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+}
+
+function initHoldingsView() {
+  let saved = null;
+  try { saved = localStorage.getItem('holdingsView'); } catch (e) { /* ignore */ }
+  // Until chosen: cards on phones (same breakpoint as the CSS phone layout)
+  setHoldingsView(saved || (matchMedia('(max-width: 599px)').matches ? 'cards' : 'table'), false);
+}
+
 // Total return incl. dividends, and yield on price / on cost (trailing 12 months of recorded dividends)
 function divMetrics(pl, cost, mv, div) {
   const total = div ? div.total : 0;
@@ -3413,6 +3427,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Load dynamic categories
   loadCategories();
+  initHoldingsView();
 
   // Silently refresh USD/TWD rate in background (best-effort, won't block UI)
   refreshUSDTWDRate(true).then(() => {
