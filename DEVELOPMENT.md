@@ -56,7 +56,7 @@ Yahoo Finance 沒有 CORS，瀏覽器不能直接呼叫。`market.js` 的所有�
 3. 網址填進 `js/config.js` 的 `DEFAULT_YAHOO_PROXY`（使用者也可在設定頁覆寫）
 
 沒有代理時：即時報價與 USD/TWD 匯率改用試算表 `quotes` 分頁的 `GOOGLEFINANCE` 公式（需登入）；
-投資績效、股利建議、資料檢查的漏記股利項目無法使用，會顯示說明。
+投資績效、股利建議、資料檢查的漏記股利項目無法使用，會顯示說明。部分台股 ETF 在 `GOOGLEFINANCE` 可能查不到報價（已知限制，平常走代理不受影響）。
 
 ## Google Cloud 設定
 
@@ -100,5 +100,3 @@ node --test                  # 單元測試（FIFO、TWR、代管帳戶、股利
 - [x] 部署 Yahoo 代理（`cd worker && npx wrangler deploy`），填進 `js/config.js` 的 `DEFAULT_YAHOO_PROXY`
 - [x] 隱私權政策頁與服務條款（`privacy.html`、`terms.html`（英文版 `-en.html`），OAuth 正式版需要）
 - [x] Logo 與圖示（焦慮看盤小熊）：原圖在 `icons/src/`，用 `python tools/make-icons.py` 產生所有尺寸，分享預覽圖的模板是 `tools/og.html`（用法見腳本開頭）
-- [ ] 確認 `GOOGLEFINANCE` 查得到所有持股（部分台股 ETF 可能沒有）
-- [ ] 手機版：寬表格目前是橫向捲動，可再改成卡片式
