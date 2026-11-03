@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f1117">
+  <title>隱私權政策 - Finance Watcher</title>
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/legal.css">
+</head>
+<body class="legal-page">
+  <main>
+    <p><a href="./">‹ 回到 Finance Watcher</a></p>
+    <h1>隱私權政策</h1>
+    <p class="legal-date">生效日期：2026 年 11 月 3 日</p>
+
+    <p>Finance Watcher（以下稱「本網站」）是免費的個人財務記錄網站，由個人開發者維護。本網站是純靜態網頁，<strong>沒有自己的伺服器或資料庫</strong>，開發者無法看到任何使用者的財務紀錄。</p>
+
+    <h2>1. 資料存在哪裡</h2>
+    <ul>
+      <li><strong>你的瀏覽器</strong>：所有紀錄（資產快照、股票交易、股利、收支、預算、代管帳戶、設定）先存在你這台裝置瀏覽器的 localStorage。</li>
+      <li><strong>你自己的 Google 雲端硬碟</strong>：用 Google 登入後，紀錄會同步到你雲端硬碟裡由本網站建立的「Finance Watcher 財務紀錄」試算表。這份試算表屬於你，存取權限由你在 Google 雲端硬碟管理。</li>
+    </ul>
+    <p>本網站不會把你的紀錄傳到開發者或任何其他第三方。</p>
+
+    <h2>2. 向 Google 要求的權限與用途</h2>
+    <ul>
+      <li><code>drive.file</code>：建立、讀取與更新<strong>本網站自己建立的那份試算表</strong>。本網站無法看到你雲端硬碟裡的其他檔案。</li>
+      <li><code>openid</code>、<code>email</code>：取得你的 Google 帳號 email，只用來在設定頁顯示目前登入的帳號。</li>
+    </ul>
+    <p>登入後取得的存取權杖（token）只存在你的瀏覽器，用來直接呼叫 Google Sheets / Drive API，不會傳給開發者。</p>
+    <p>本網站對從 Google API 取得之資訊的使用與傳輸，遵守 <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Google API 服務使用者資料政策</a>，包括其中的「有限使用」（Limited Use）規定：Google 使用者資料只用於提供上述功能，不會出售、不用於廣告，也不會轉移給第三方。</p>
+
+    <h2>3. 會連線的外部服務</h2>
+    <ul>
+      <li><strong>Google</strong>（登入、Sheets、Drive API）：如上所述。</li>
+      <li><strong>行情代理</strong>（開發者部署的 Cloudflare Worker）：轉送 Yahoo Finance 的公開行情，只會送出股票代號與日期範圍，不含任何金額或紀錄。</li>
+      <li><strong>Google Gemini API</strong>（選用）：只有在你自行填入 Gemini API Key 並按下「AI 分析」時，才會從你的瀏覽器把分析用的提示詞（包含你選擇的財務摘要）直接送到 Google。API Key 只存在你的瀏覽器，不會同步到試算表。</li>
+      <li><strong>AI 匯入</strong>：開啟 ChatGPT / Claude 時帶入的提示詞只有格式說明，不含你的資料；你在那些服務貼上的內容受該服務的隱私權政策規範。</li>
+      <li><strong>網頁資源</strong>：載入 Google Fonts 字型與 jsDelivr 上的 Chart.js 圖表程式庫，這些服務可能會記錄你的 IP 位址等一般連線資訊。</li>
+    </ul>
+
+    <h2>4. 不做的事</h2>
+    <ul>
+      <li>沒有帳號系統、沒有分析追蹤（analytics）、沒有廣告、不使用 Cookie 追蹤。</li>
+      <li>不出售、出租或分享你的任何資料。</li>
+    </ul>
+
+    <h2>5. 如何刪除資料或撤銷授權</h2>
+    <ul>
+      <li>瀏覽器裡的資料：設定 › 危險區 › 「清除這台裝置的資料」，或清除瀏覽器的網站資料。</li>
+      <li>雲端的資料：直接在 Google 雲端硬碟刪除「Finance Watcher 財務紀錄」試算表。</li>
+      <li>撤銷授權：到 <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">Google 帳戶 › 第三方存取權</a> 移除 Finance Watcher。</li>
+    </ul>
+
+    <h2>6. 政策變更</h2>
+    <p>本政策如有修改，會更新本頁並調整上方的生效日期。</p>
+
+    <h2>7. 聯絡方式</h2>
+    <p>對本政策有任何問題，請寄信到 <a href="mailto:bearcc01205@gmail.com">bearcc01205@gmail.com</a>。</p>
+
+    <p class="legal-footer"><a href="terms.html">服務條款</a></p>
+  </main>
+</body>
+</html>

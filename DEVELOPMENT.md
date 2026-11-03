@@ -64,7 +64,7 @@ Yahoo Finance 沒有 CORS，瀏覽器不能直接呼叫。`market.js` 的所有�
 2. OAuth 同意畫面：外部；範圍 `drive.file`、`openid`、`userinfo.email`（都是非敏感範圍）
 3. 憑證 → OAuth 用戶端 ID → 網頁應用程式；已授權的 JavaScript 來源：`https://<帳號>.github.io`、`http://localhost:8000`
 4. 用戶端 ID 填進 `js/config.js` 的 `CLIENT_ID`
-5. 只給自己用可以停在「測試中」並把自己加為測試使用者；要公開需要隱私權政策頁再改成「正式版」
+5. 只給自己用可以停在「測試中」並把自己加為測試使用者；要公開時把 `privacy.html`、`terms.html` 的網址填進 OAuth 同意畫面，再改成「正式版」。改了權限範圍或外部服務記得同步更新這兩頁
 
 ## 本機開發
 
@@ -96,7 +96,7 @@ node --test                  # 單元測試（FIFO、TWR、代管帳戶、股利
 
 - [x] 建 OAuth 用戶端 ID，填進 `js/config.js`（專案 finance-watcher-513403）
 - [x] 部署 Yahoo 代理（`cd worker && npx wrangler deploy`），填進 `js/config.js` 的 `DEFAULT_YAHOO_PROXY`
-- [ ] 隱私權政策頁（OAuth 正式版需要）
+- [x] 隱私權政策頁與服務條款（`privacy.html`、`terms.html`，OAuth 正式版需要）
 - [x] PNG 圖示（`apple-touch-icon` 180、192／512、maskable 512，由 `icons/icon.svg` 轉出）
 - [ ] 確認 `GOOGLEFINANCE` 查得到所有持股（部分台股 ETF 可能沒有）
 - [ ] 手機版：寬表格目前是橫向捲動，可再改成卡片式
