@@ -77,6 +77,8 @@ node --test                  # 單元測試（FIFO、TWR、代管帳戶、股利
 
 更新提示（「有新版本可用」）見 `js/update.js` 開頭說明，不用手動改版本號。
 
+新手導覽：步驟在 `js/tour.js` 的 `TOUR_STEPS`，要框住的元素在 `index.html` 用 `data-tour` 標記。改版面時保留這些屬性，否則該步會改成畫面中央、沒有框。
+
 ## 安全：CSP 與 SRI
 
 `index.html` 開頭的 Content-Security-Policy 限制網頁只能連到列出的網域，就算有惡意程式碼混進來也很難把資料送出去。

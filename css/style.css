@@ -2064,3 +2064,34 @@ body[data-tab="expenses"] .fab { display: flex; }
 
 /* 總覽 hero: entry to the AI page (no nav tab of its own) */
 .hero-ai { position: absolute; top: 12px; right: 12px; }
+
+/* --- 新手導覽 (js/tour.js) --- */
+.tour-shade { position: fixed; inset: 0; z-index: 3500; }
+.tour-spot {
+  position: fixed;
+  z-index: 3501;
+  border-radius: var(--radius);
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 9999px rgba(0, 0, 0, 0.62);
+  pointer-events: none;
+  transition: left 0.25s ease, top 0.25s ease, width 0.25s ease, height 0.25s ease;
+}
+.tour-spot-none { box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.62); } /* no target: backdrop only, no ring */
+.tour-card {
+  position: fixed;
+  z-index: 3502;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
+  transition: left 0.25s ease, top 0.25s ease;
+}
+.tour-step { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px; }
+.tour-title { font-size: 1.05rem; color: var(--text-heading); margin-bottom: 8px; }
+.tour-body { font-size: 0.92rem; line-height: 1.6; color: var(--text-secondary); }
+.tour-body b { color: var(--text-primary); font-weight: 600; }
+.tour-actions { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+.tour-skip { background: none; color: var(--text-muted); padding-left: 0; margin-right: auto; }
+.tour-skip:hover { color: var(--text-primary); }
+@media (prefers-reduced-motion: reduce) { .tour-spot, .tour-card { transition: none; } }

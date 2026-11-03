@@ -51,7 +51,7 @@
       <button class="tab-btn" data-tab="settings"><span class="tab-icon" data-icon="gear"></span><span class="tab-label">設定</span></button>
     </div>
     <button type="button" class="privacy-toggle nav-privacy" onclick="togglePrivacy()" aria-label="顯示/隱藏金額" aria-pressed="false"><svg class="eye-open" aria-hidden="true"><use href="#i-eye"/></svg><svg class="eye-closed" aria-hidden="true"><use href="#i-eye-off"/></svg></button>
-    <button type="button" id="sync-pill" class="sync-pill" onclick="onSyncPillClick()" title="雲端同步狀態">
+    <button type="button" id="sync-pill" class="sync-pill" data-tour="sync" onclick="onSyncPillClick()" title="雲端同步狀態">
       <span class="sync-dot"></span><span id="sync-pill-text">本機</span>
     </button>
   </nav>
@@ -62,7 +62,7 @@
     <!-- ==================== DASHBOARD TAB ==================== -->
     <section id="tab-dashboard" class="tab-content active">
       <!-- Net worth hero -->
-      <div class="hero-card">
+      <div class="hero-card" data-tour="net-worth">
         <button type="button" class="btn btn-outline btn-sm hero-ai" onclick="goToTab('llm')"><span class="i" data-icon="sparkles"></span>AI 分析</button>
         <div class="hero-label">淨資產 <button type="button" class="privacy-toggle hero-privacy" onclick="togglePrivacy()" aria-label="顯示/隱藏金額" aria-pressed="false"><svg class="eye-open" aria-hidden="true"><use href="#i-eye"/></svg><svg class="eye-closed" aria-hidden="true"><use href="#i-eye-off"/></svg></button></div>
         <div class="hero-value" id="dash-net-worth">--</div>
@@ -71,7 +71,7 @@
       </div>
 
       <!-- Change stats row: hover a label for how each number is computed -->
-      <div class="dash-stats">
+      <div class="dash-stats" data-tour="dash-stats">
         <div class="stat-card">
           <div class="stat-label" title="持股數 × (現價 − 前一交易日收盤) × 現行匯率，全部加總。&#10;台美股各算最近一個交易日（台灣白天看到的美股是昨晚的漲跌），不含匯率變動。">今日損益 ⓘ</div>
           <div class="stat-value" id="dash-day-pl">--</div>
@@ -192,7 +192,7 @@
       </div>
 
       <!-- Snapshot management -->
-      <div class="card">
+      <div class="card" data-tour="snapshots">
         <div class="card-header">
           <h3>資產快照紀錄</h3>
           <button class="btn btn-primary btn-sm" onclick="openSnapshotModal()">+ 新增快照</button>
@@ -224,7 +224,7 @@
     <!-- ==================== STOCKS TAB ==================== -->
     <section id="tab-stocks" class="tab-content">
       <!-- Sub-tabs -->
-      <div class="sub-tabs">
+      <div class="sub-tabs" data-tour="stock-subtabs">
         <button class="sub-tab-btn active" data-subtab="holdings"><span class="i" data-icon="briefcase"></span>持倉總覽</button>
         <button class="sub-tab-btn" data-subtab="portfolio"><span class="i" data-icon="pie"></span>組合分析</button>
         <button class="sub-tab-btn" data-subtab="realized"><span class="i" data-icon="dollar"></span>已實現損益</button>
@@ -237,7 +237,7 @@
         <div class="card">
           <div class="card-header">
             <h3>股票持倉</h3>
-            <div class="header-actions">
+            <div class="header-actions" data-tour="holdings-actions">
               <button class="btn btn-outline btn-sm" onclick="refreshStockPrices()">
                 <span class="i refresh-icon" data-icon="refresh"></span>更新報價
               </button>
@@ -730,7 +730,7 @@
           <h3>收支明細</h3>
           <div class="header-actions">
             <button type="button" id="exp-cat-chip" class="filter-chip" style="display:none" onclick="setCategoryFilter(null)" title="清除分類篩選"></button>
-            <button class="btn btn-outline btn-sm" onclick="openAIImport('expenses')"><span class="i" data-icon="sparkles"></span>AI 匯入</button>
+            <button class="btn btn-outline btn-sm" onclick="openAIImport('expenses')" data-tour="ai-import"><span class="i" data-icon="sparkles"></span>AI 匯入</button>
             <button class="btn btn-outline btn-sm" onclick="exportCSV('expenses')"><span class="i" data-icon="download"></span>匯出 CSV</button>
             <select id="exp-type-filter" onchange="renderExpenseTable(expMonth())" class="input-sm">
               <option value="all">全部</option>
@@ -1072,7 +1072,7 @@
         <span class="settings-link-chevron" aria-hidden="true">›</span>
       </button>
 
-      <div class="card">
+      <div class="card" data-tour="cloud">
         <div class="card-header"><h3><span class="i" data-icon="cloud"></span>帳號與同步</h3></div>
         <div id="cloud-account" class="text-muted">--</div>
         <div class="settings-actions">
@@ -1137,7 +1137,7 @@
         </div>
       </div>
 
-      <div class="card">
+      <div class="card" data-tour="backup">
         <div class="card-header"><h3><span class="i" data-icon="database"></span>備份與還原</h3></div>
         <div class="settings-row">
           <div><strong>下載備份</strong><p class="form-hint">把所有資料存成一個 JSON 檔。清除或大量匯入前建議先下載。</p></div>
@@ -1173,6 +1173,10 @@
         <div class="settings-row">
           <div><strong>版本</strong> <span id="settings-version" class="text-muted">--</span><p class="form-hint">主畫面 App 沒有重新整理鈕時，用「重新載入」拿到最新版。</p></div>
           <button type="button" class="btn btn-outline btn-sm" onclick="reloadApp()">重新載入</button>
+        </div>
+        <div class="settings-row">
+          <div><strong>使用導覽</strong><p class="form-hint">重新看一次總覽、股票、收支的重點介紹。</p></div>
+          <button type="button" class="btn btn-outline btn-sm" onclick="startTour()">開始導覽</button>
         </div>
       </div>
 
@@ -1512,9 +1516,10 @@
   </div>
 
   <!-- Floating add button, shown only on the 收支 tab (body[data-tab]) -->
-  <button type="button" class="fab" onclick="openExpenseModal()" aria-label="新增收支紀錄" title="新增收支紀錄"><span data-icon="plus"></span></button>
+  <button type="button" class="fab" data-tour="add-expense" onclick="openExpenseModal()" aria-label="新增收支紀錄" title="新增收支紀錄"><span data-icon="plus"></span></button>
 
   <script src="js/app.js"></script>
+  <script src="js/tour.js"></script>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>

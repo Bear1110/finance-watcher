@@ -251,6 +251,16 @@ const rowBtn = (kind, onclick, label = ROW_ACTIONS[kind][2]) => {
 // Keep in step with the [title] cursor rule in style.css
 const TIP_CONTROLS = 'button, a, input, select, textarea, label, [onclick]';
 
+/**
+ * Put a position:fixed box centred below rect r (above it when there's no room below),
+ * `gap` px from r and at least `margin` px inside the viewport. Shared by tap tips and the tour.
+ */
+function placeNear(box, r, gap, margin) {
+  const b = box.getBoundingClientRect();
+  box.style.left = `${Math.min(Math.max(margin, r.left + r.width / 2 - b.width / 2), innerWidth - b.width - margin)}px`;
+  box.style.top = `${r.bottom + gap + b.height <= innerHeight - margin ? r.bottom + gap : Math.max(margin, r.top - b.height - gap)}px`;
+}
+
 function initTapTips() {
   const bubble = document.createElement('div');
   bubble.id = 'tip-bubble';
@@ -274,11 +284,7 @@ function initTapTips() {
     anchor = el;
     bubble.textContent = el.title;
     bubble.hidden = false;
-    // Below the element (above it near the bottom of the screen), kept inside the viewport
-    const r = el.getBoundingClientRect();
-    const b = bubble.getBoundingClientRect();
-    bubble.style.left = `${Math.min(Math.max(8, r.left + r.width / 2 - b.width / 2), innerWidth - b.width - 8)}px`;
-    bubble.style.top = `${r.bottom + 8 + b.height < innerHeight ? r.bottom + 8 : Math.max(8, r.top - b.height - 8)}px`;
+    placeNear(bubble, el.getBoundingClientRect(), 8, 8);
   });
   addEventListener('scroll', hide, { passive: true, capture: true });
   addEventListener('resize', hide);
