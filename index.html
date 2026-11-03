@@ -44,11 +44,11 @@
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
       <span>Finance Watcher</span>
     </div>
-    <div class="nav-tabs">
-      <button class="tab-btn active" data-tab="dashboard"><span class="tab-icon" data-icon="grid"></span><span class="tab-label">總覽</span></button>
-      <button class="tab-btn" data-tab="stocks"><span class="tab-icon" data-icon="trending"></span><span class="tab-label">股票</span></button>
-      <button class="tab-btn" data-tab="expenses"><span class="tab-icon" data-icon="wallet"></span><span class="tab-label">收支</span></button>
-      <button class="tab-btn" data-tab="settings"><span class="tab-icon" data-icon="gear"></span><span class="tab-label">設定</span></button>
+    <div class="nav-tabs" data-tour="nav">
+      <button class="tab-btn active" data-tab="dashboard" data-tour="nav-dashboard"><span class="tab-icon" data-icon="grid"></span><span class="tab-label">總覽</span></button>
+      <button class="tab-btn" data-tab="stocks" data-tour="nav-stocks"><span class="tab-icon" data-icon="trending"></span><span class="tab-label">股票</span></button>
+      <button class="tab-btn" data-tab="expenses" data-tour="nav-expenses"><span class="tab-icon" data-icon="wallet"></span><span class="tab-label">收支</span></button>
+      <button class="tab-btn" data-tab="settings" data-tour="nav-settings"><span class="tab-icon" data-icon="gear"></span><span class="tab-label">設定</span></button>
     </div>
     <button type="button" class="privacy-toggle nav-privacy" onclick="togglePrivacy()" aria-label="顯示/隱藏金額" aria-pressed="false"><svg class="eye-open" aria-hidden="true"><use href="#i-eye"/></svg><svg class="eye-closed" aria-hidden="true"><use href="#i-eye-off"/></svg></button>
     <button type="button" id="sync-pill" class="sync-pill" data-tour="sync" onclick="onSyncPillClick()" title="雲端同步狀態">

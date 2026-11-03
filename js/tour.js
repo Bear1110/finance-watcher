@@ -9,14 +9,25 @@ const TOUR_STEPS = [
     body: '這裡記錄你的資產、股票和收支。資料先存在這台裝置的瀏覽器，登入 Google 後會同步到你自己雲端硬碟的試算表。<br>花一分鐘看看幾個重點。',
   },
   {
+    target: 'nav',
+    title: '導覽列',
+    body: '用這裡切換四個頁面：<b>總覽</b>、<b>股票</b>、<b>收支</b>、<b>設定</b>（手機上在畫面最下方）。<br>接下來一頁一頁帶你看，每換一頁會先指出它在導覽列的哪裡。',
+  },
+  {
     target: 'sync',
     title: '同步狀態',
-    body: '還沒登入時顯示「未登入」，後面的數字是還沒同步的修改筆數。開啟網站會自動抓 USD/TWD 匯率存下來，所以全新的頁面也常看到「· 2」。<br>點它就能用 Google 登入，換手機或電腦都能看到同一份資料。',
+    body: '顯示有沒有登入、資料同步了沒，後面的數字是還沒同步的修改筆數。<br>點它就能用 Google 登入，換手機或電腦都能看到同一份資料。',
+  },
+  {
+    tab: 'dashboard',
+    target: 'nav-dashboard',
+    title: '總覽',
+    body: '一眼看到全部資產：淨資產、損益、投資績效走勢和資產快照。',
   },
   {
     tab: 'dashboard',
     target: 'net-worth',
-    title: '總覽：淨資產',
+    title: '淨資產',
     body: '淨資產 = 最新一筆快照的現金 + 即時的股票市值。<br>旁邊的眼睛可以把所有金額藏起來，在外面打開比較安心。',
   },
   {
@@ -33,8 +44,14 @@ const TOUR_STEPS = [
   },
   {
     tab: 'stocks', subtab: 'holdings',
+    target: 'nav-stocks',
+    title: '股票',
+    body: '持股、買賣紀錄、已實現損益和股利都在這一頁。',
+  },
+  {
+    tab: 'stocks', subtab: 'holdings',
     target: 'holdings-actions',
-    title: '股票：先匯入持倉',
+    title: '先匯入持倉',
     body: '用「匯入持倉」把現在手上的股票（代號、股數、均價）建好就能開始，不用補登過去的交易。<br>之後的買賣用每一列的 ＋／－ 記錄，「更新報價」抓最新股價。',
   },
   {
@@ -45,8 +62,14 @@ const TOUR_STEPS = [
   },
   {
     tab: 'expenses',
+    target: 'nav-expenses',
+    title: '收支',
+    body: '日常的收入與支出，每月統計、分類排行和預算。',
+  },
+  {
+    tab: 'expenses',
     target: 'add-expense',
-    title: '收支：記一筆',
+    title: '記一筆',
     body: '右下角的 ＋ 新增收入或支出。上方可以切換年份與月份，看分類排行和每月長條圖。',
   },
   {
@@ -57,8 +80,14 @@ const TOUR_STEPS = [
   },
   {
     tab: 'settings',
+    target: 'nav-settings',
+    title: '設定',
+    body: '登入同步、備份、匯率與顯示設定；代管帳戶和 AI 分析也從這裡進去。',
+  },
+  {
+    tab: 'settings',
     target: 'cloud',
-    title: '設定：帳號與同步',
+    title: '帳號與同步',
     body: '登入後會在你的雲端硬碟建立「Finance Watcher 財務紀錄」試算表。網站只能存取它自己建立的這份檔案。',
   },
   {
