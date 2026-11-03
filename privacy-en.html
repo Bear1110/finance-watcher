@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f1117">
+  <title>Privacy Policy - Finance Watcher</title>
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/legal.css">
+</head>
+<body class="legal-page">
+  <main>
+    <p class="legal-nav"><a href="./">‹ Back to Finance Watcher</a><a href="privacy.html" lang="zh-TW">中文</a></p>
+    <h1>Privacy Policy</h1>
+    <p class="legal-date">Effective date: November 3, 2026</p>
+
+    <p>Finance Watcher ("the app") is a free personal finance tracking website maintained by an individual developer. The app is a purely static website with <strong>no server or database of its own</strong>. The developer cannot see any user's financial records.</p>
+
+    <h2>1. Where your data is stored</h2>
+    <ul>
+      <li><strong>Your browser</strong>: all records (asset snapshots, stock transactions, dividends, income and expenses, budgets, managed accounts, settings) are first stored in your browser's localStorage on this device.</li>
+      <li><strong>Your own Google Drive</strong>: after you sign in with Google, your records are synced to a spreadsheet named "Finance Watcher 財務紀錄" that the app creates in your Google Drive. The spreadsheet belongs to you, and you control who can access it in Google Drive.</li>
+    </ul>
+    <p>The app never sends your records to the developer or to any other third party.</p>
+
+    <h2>2. Google permissions requested and why</h2>
+    <ul>
+      <li><code>drive.file</code>: to create, read, and update <strong>the one spreadsheet the app itself creates</strong>. The app cannot see any other files in your Google Drive.</li>
+      <li><code>openid</code>, <code>email</code>: to get your Google account email address, used only to show which account is signed in on the Settings page.</li>
+    </ul>
+    <p>The access token obtained at sign-in is kept only in your browser and is used to call the Google Sheets and Drive APIs directly. It is never sent to the developer.</p>
+    <p>Finance Watcher's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Google API Services User Data Policy</a>, including the Limited Use requirements. Google user data is used only to provide the features described above. It is not sold, not used for advertising, and not transferred to third parties.</p>
+
+    <h2>3. External services the app connects to</h2>
+    <ul>
+      <li><strong>Google</strong> (sign-in, Sheets, Drive APIs): as described above.</li>
+      <li><strong>Market data proxy</strong> (a Cloudflare Worker run by the developer): forwards public Yahoo Finance market data. Only ticker symbols and date ranges are sent, never amounts or records.</li>
+      <li><strong>Google Gemini API</strong> (optional): only if you enter your own Gemini API key and click "AI 分析" (AI analysis), your browser sends the analysis prompt, including the financial summary you chose, directly to Google. The API key is stored only in your browser and is never synced to the spreadsheet.</li>
+      <li><strong>AI import</strong>: the prompt pre-filled when opening ChatGPT or Claude contains only format instructions, not your data. Anything you paste into those services is governed by their own privacy policies.</li>
+      <li><strong>Web resources</strong>: fonts from Google Fonts and the Chart.js library from jsDelivr are loaded. These services may log general connection information such as your IP address.</li>
+    </ul>
+
+    <h2>4. What the app does not do</h2>
+    <ul>
+      <li>No user accounts of its own, no analytics, no advertising, no tracking cookies.</li>
+      <li>Your data is never sold, rented, or shared.</li>
+    </ul>
+
+    <h2>5. Deleting your data or revoking access</h2>
+    <ul>
+      <li>Data in your browser: Settings › 危險區 (Danger zone) › 清除這台裝置的資料 (Clear data on this device), or clear the site data in your browser.</li>
+      <li>Data in the cloud: delete the "Finance Watcher 財務紀錄" spreadsheet in Google Drive.</li>
+      <li>Revoke access: remove Finance Watcher at <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">Google Account › Third-party access</a>.</li>
+    </ul>
+
+    <h2>6. Changes to this policy</h2>
+    <p>If this policy changes, this page will be updated and the effective date above revised.</p>
+
+    <h2>7. Contact</h2>
+    <p>Questions about this policy: <a href="mailto:bearcc01205@gmail.com">bearcc01205@gmail.com</a>.</p>
+
+    <p class="legal-footer"><a href="terms-en.html">Terms of Service</a></p>
+  </main>
+</body>
+</html>

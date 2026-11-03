@@ -8,3 +8,4 @@
 .legal-page code { background: var(--bg-input); padding: 1px 6px; border-radius: var(--radius-sm); font-size: 0.9em; }
 .legal-date { color: var(--text-muted) !important; font-size: 0.9rem; }
 .legal-footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--border-color); }
+.legal-nav { display: flex; justify-content: space-between; gap: 16px; }
