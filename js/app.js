@@ -2613,7 +2613,6 @@ async function saveBudget(year, month, field, value) {
 
 
 // EXPENSE_CATEGORIES (the dialog's presets) comes from js/server/expenses.js via main.js.
-const CATEGORY_HINTS = { 住房: '住房 (房租/水電)' };
 /** An emoji per category, so lists read at a glance; categories added later get the tag. */
 const CATEGORY_EMOJI = {
   飲食: '🍜', 飲料: '🧋', 交通: '🚗', 住房: '🏠', 娛樂: '🎮', 醫療: '💊', 日用品: '🧻', 購物: '🛍️', 送禮: '🎁',
@@ -2633,12 +2632,58 @@ const catEmoji = (c) => CATEGORY_EMOJI[c || ''] || CATEGORY_KEYWORD_EMOJI.find((
 /** Emoji + name, for lists and tables */
 const catDisplay = (c) => `${catEmoji(c)} ${catLabel(c)}`;
 
-function buildCategoryOptions() {
-  const opts = (list) => list.map(c => `<option value="${c}">${catEmoji(c)} ${CATEGORY_HINTS[c] || c}</option>`).join('');
-  document.getElementById('expense-category').innerHTML =
-    `<optgroup label="支出" id="cat-expense-group">${opts(EXPENSE_CATEGORIES.expense)}</optgroup>` +
-    `<optgroup label="收入" id="cat-income-group">${opts(EXPENSE_CATEGORIES.income)}</optgroup>` +
-    '<option value="__custom__">自訂...</option>';
+/**
+ * Categories the dialog offers for `type`: the presets plus every one used before, the most used
+ * in the last 90 days first (ties: preset order, then custom ones by name).
+ */
+function categoryChoices(type) {
+  const since = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+  const used = new Set();
+  const recent = new Map();
+  for (const e of _expAll) {
+    if ((e.type || 'expense') !== type || !e.category) continue;
+    used.add(e.category);
+    if (e.date >= since) recent.set(e.category, (recent.get(e.category) || 0) + 1);
+  }
+  const presets = EXPENSE_CATEGORIES[type];
+  const rank = (c) => { const i = presets.indexOf(c); return i < 0 ? presets.length : i; };
+  return [...new Set([...presets, ...used])]
+    .sort((a, b) => (recent.get(b) || 0) - (recent.get(a) || 0) || rank(a) - rank(b) || a.localeCompare(b));
+}
+
+/**
+ * The category chips of `type` with `selected` chosen (default: the most used). The active chip is
+ * the dialog's category; 自訂 (__custom__) takes the name from the text field below it.
+ */
+function renderCategoryChips(type, selected) {
+  const choices = categoryChoices(type);
+  const chip = (value, label) =>
+    `<button type="button" class="cat-chip" role="radio" data-cat="${escapeAttr(value)}" onclick="selectCategory(this.dataset.cat, true)">${label}</button>`;
+  document.getElementById('expense-cat-chips').innerHTML =
+    choices.map(c => chip(c, escapeHtml(catDisplay(c)))).join('') + chip('__custom__', '＋ 自訂');
+  selectCategory(selected === undefined ? choices[0] : selected);
+}
+
+function selectCategory(cat, tapped = false) {
+  const chips = [...document.querySelectorAll('#expense-cat-chips .cat-chip')];
+  // A category not on a chip (none here: every used one is) would be edited as 自訂
+  const value = cat && !chips.some(b => b.dataset.cat === cat) ? '__custom__' : cat;
+  chips.forEach(b => {
+    const on = b.dataset.cat === value;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-checked', on);
+  });
+  const custom = value === '__custom__';
+  document.getElementById('custom-category-group').style.display = custom ? 'flex' : 'none';
+  const input = document.getElementById('custom-category-input');
+  if (custom && cat !== '__custom__') input.value = cat;
+  if (custom && tapped) input.focus();
+}
+
+/** The chosen category ('' when none). */
+function chosenCategory() {
+  const cat = document.querySelector('#expense-cat-chips .cat-chip.active')?.dataset.cat || '';
+  return cat === '__custom__' ? document.getElementById('custom-category-input').value.trim() : cat;
 }
 
 function buildCurrencyOptions() {
@@ -2647,7 +2692,6 @@ function buildCurrencyOptions() {
 }
 
 function initExpenseDefaults() {
-  buildCategoryOptions();
   buildCurrencyOptions();
   initYearSelector('exp-year-filter');
   initMonthSelector();
@@ -2679,22 +2723,15 @@ function setExpenseStartYear(firstYear) {
   initYearSelector('budget-year', start);
 }
 
-function toggleCustomCategory(select) {
-  const group = document.getElementById('custom-category-group');
-  group.style.display = select.value === '__custom__' ? 'flex' : 'none';
-}
-
-function setExpenseType(type) {
+/** `category`: the one to select (editing); default the type's most used. */
+function setExpenseType(type, category) {
   const typeInput = document.querySelector('#expense-form [name="type"]');
   if (typeInput) typeInput.value = type;
   document.querySelectorAll('.type-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.type === type);
   });
-  // Only the chosen type's categories are selectable; pick its default
-  const income = type === 'income';
-  document.getElementById('cat-expense-group').disabled = income;
-  document.getElementById('cat-income-group').disabled = !income;
-  document.getElementById('expense-category').value = EXPENSE_CATEGORIES[income ? 'income' : 'expense'][0];
+  // Only the chosen type's categories
+  renderCategoryChips(type, category);
 }
 
 /** Clears the add/edit form back to a new expense dated today. */
@@ -2704,7 +2741,6 @@ function resetExpenseForm() {
   form.querySelector('[name="id"]').value = '';
   form.querySelector('[name="date"]').value = todayStr();
   setExpenseType('expense');
-  document.getElementById('custom-category-group').style.display = 'none';
   let last = null;
   try { last = localStorage.getItem('expenseCurrency'); } catch (e) { /* ignore */ }
   setExpenseCurrency(EXPENSE_CURRENCIES.some(c => c.code === last) ? last : 'TWD');
@@ -2805,13 +2841,10 @@ async function submitExpense(e) {
   e.preventDefault();
   const form = e.target;
   const id = form.querySelector('[name="id"]').value;
-  let category = form.querySelector('[name="category"]').value;
-  if (category === '__custom__') {
-    category = document.getElementById('custom-category-input').value.trim();
-    if (!category) {
-      showToast('請輸入自訂分類', 'error');
-      return;
-    }
+  const category = chosenCategory();
+  if (!category) {
+    showToast('請選擇或輸入分類', 'error');
+    return;
   }
 
   const data = {
@@ -2860,7 +2893,7 @@ function editExpense(id) {
   form.querySelector('[name="amount"]').value = e.amount;
   form.querySelector('[name="date"]').value = e.date;
   form.querySelector('[name="note"]').value = e.note || '';
-  setExpenseType(e.type || 'expense');
+  setExpenseType(e.type || 'expense', e.category);
   // Keep the record's own rate (old USD rows have none: empty = looked up when saving)
   form.querySelector('[name="fx_rate"]').value = e.fx_rate > 0 && e.currency !== 'TWD' ? e.fx_rate : '';
   setExpenseCurrency(e.currency || 'TWD', true);
@@ -2872,12 +2905,6 @@ function editExpense(id) {
     setFxSource('離線估算，有網路時自動更新');
   }
 
-  // A category outside the preset list is edited as a custom one
-  const select = form.querySelector('[name="category"]');
-  const known = [...select.options].some(o => o.value === e.category);
-  select.value = known ? e.category : '__custom__';
-  document.getElementById('custom-category-group').style.display = known ? 'none' : 'flex';
-  if (!known) document.getElementById('custom-category-input').value = e.category;
 
   showExpenseModal(true);
 }
@@ -3121,7 +3148,7 @@ function renderCategoryRank(stats, month) {
   const max = rows[0][1];
   el.style.setProperty('--cat-color', seriesColor(_expCatType));
   el.innerHTML = rows.map(([c, v]) => `
-    <button type="button" class="cat-row${c === _expCatFilter ? ' active' : ''}" data-cat="${escapeHtml(c).replace(/"/g, '&quot;')}" onclick="setCategoryFilter(this.dataset.cat)">
+    <button type="button" class="cat-row${c === _expCatFilter ? ' active' : ''}" data-cat="${escapeAttr(c)}" onclick="setCategoryFilter(this.dataset.cat)">
       <span class="cat-name">${escapeHtml(catDisplay(c))}</span>
       <span class="source-bar cat-track"><span style="width:${(v / max * 100).toFixed(1)}%"></span></span>
       <span class="cat-amt">${fmtTWD(v)}</span>
@@ -3202,30 +3229,62 @@ function expAmountCell(e) {
   return `${fmtMoney(e.amount, e.currency)}<span class="cell-sub">≈ ${fmtTWD(e.amount_twd)}${est}</span>`;
 }
 
+/** The search box re-renders once typing pauses (the list can be every record). */
+let _expSearchTimer = null;
+function onExpenseSearch() {
+  clearTimeout(_expSearchTimer);
+  _expSearchTimer = setTimeout(() => renderExpenseTable(expMonth()), 150);
+}
+
+/** Search: every word must appear in the note, category or currency (code / name / aliases), or equal the amount. */
+function expenseMatches(e, words) {
+  const c = expCurrency(e.currency);
+  const text = [e.note, catLabel(e.category), c.code, c.symbol, c.name, ...c.aliases].join(' ').toLowerCase();
+  return words.every(w => text.includes(w) || Number(w.replace(/,/g, '')) === e.amount);
+}
+
+/** Income / expense totals in TWD: "收入 +NT$ 1,500 · 支出 NT$ 1,283" (parts with nothing are left out). */
+function expTotals(records) {
+  let inc = 0, out = 0;
+  for (const e of records) if (e.type === 'income') inc += e.amount_twd; else out += e.amount_twd;
+  return [inc ? `收入 +${fmtTWD(inc)}` : '', out ? `支出 ${fmtTWD(out)}` : ''].filter(Boolean).join(' · ');
+}
+
+/**
+ * The 收支明細 list: the selected month / year, or every record matching the search box. Grouped by
+ * day (header: date, weekday, the day's totals); each row: category with note, amount, actions.
+ */
 function renderExpenseTable(month) {
   const prefix = month ? `${expYear()}-${String(month).padStart(2, '0')}` : String(expYear());
+  const words = document.getElementById('exp-search').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const typeFilter = document.getElementById('exp-type-filter').value;
-  const filtered = _expAll.filter(e => e.date && e.date.startsWith(prefix) &&
+  const filtered = _expAll.filter(e => e.date && (words.length ? expenseMatches(e, words) : e.date.startsWith(prefix)) &&
     (typeFilter === 'all' || (e.type || 'expense') === typeFilter) &&
     (_expCatFilter === null || (e.category || '') === _expCatFilter));
+  const summary = document.getElementById('exp-search-summary');
+  summary.hidden = !words.length;
+  summary.textContent = `找到 ${filtered.length} 筆${filtered.length ? ` · ${expTotals(filtered)}` : ''}`;
   const list = document.getElementById('expense-list');
   if (filtered.length === 0) {
-    list.innerHTML = `<div class="empty-state">${month ? '這個月' : '此年度'}尚無紀錄</div>`;
+    list.innerHTML = `<div class="empty-state">${words.length ? '找不到符合的紀錄' : month ? '這個月尚無紀錄' : '此年度尚無紀錄'}</div>`;
     return;
   }
-  // One row per record: category with date · note underneath, amount (income green with +), actions
-  list.innerHTML = filtered.map(e => {
-    const meta = [dayLabel(e.date), e.note || ''].filter(Boolean).join(' · ');
-    return `
+  const days = new Map(); // date -> records, newest first (the API's order)
+  for (const e of filtered) {
+    if (!days.has(e.date)) days.set(e.date, []);
+    days.get(e.date).push(e);
+  }
+  list.innerHTML = [...days].map(([date, recs]) => `
+      <div class="exp-day"><span>${words.length ? `${date.slice(0, 4)}/` : ''}${dayLabel(date)}</span><span>${expTotals(recs)}</span></div>` +
+    recs.map(e => `
       <div class="exp-row exp-${e.type || 'expense'}">
-        <div class="e-cat">${escapeHtml(catDisplay(e.category))}<span class="e-meta">${escapeHtml(meta)}</span></div>
+        <div class="e-cat">${escapeHtml(catDisplay(e.category))}${e.note ? `<span class="e-meta">${escapeHtml(e.note)}</span>` : ''}</div>
         <div class="e-amt">${expAmountCell(e)}</div>
         <div class="e-act">
           ${rowBtn('edit', `editExpense(${e.id})`)}
           ${rowBtn('delete', `deleteExpense(${e.id})`)}
         </div>
-      </div>`;
-  }).join('');
+      </div>`).join('')).join('');
 }
 
 // ============================================================
@@ -3502,11 +3561,13 @@ async function commitAIImport() {
     document.getElementById('ai-import-text').value = '';
     document.getElementById('ai-import-preview').innerHTML = '';
     _aiImportMode = 'add';
-    loadCategories();
   } catch (err) {
     showToast('匯入失敗: ' + err.message, 'error');
   }
 }
+
+/** For a value inside a double-quoted attribute (escapeHtml leaves quotes alone). */
+const escapeAttr = (text) => escapeHtml(text).replace(/"/g, '&quot;');
 
 function escapeHtml(text) {
   const div = document.createElement('div');
@@ -3637,7 +3698,22 @@ function initFontSize() {
   setFontSize(saved);
 }
 
+/**
+ * js/main.js (the data layer) failed to load — almost always a page opened while a deploy was
+ * landing, with files from two versions. Say so with a reload button instead of loading forever.
+ */
+function showLoadFailure() {
+  document.body.dataset.loadFailed = ''; // tour.js doesn't start over it
+  const box = document.createElement('div');
+  box.className = 'load-failure';
+  box.setAttribute('role', 'alert');
+  box.innerHTML = '<p>⚠️ 網站剛更新，有部分檔案沒有載入完成</p><button type="button" class="btn btn-primary" onclick="location.reload()">重新整理</button>';
+  document.body.appendChild(box);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  // Module scripts run before DOMContentLoaded, so no LocalAPI here means main.js failed
+  if (!window.LocalAPI) return showLoadFailure();
   initFontSize();
   applyIcons();
   initTapTips();
@@ -3653,8 +3729,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // Load dashboard data
   loadDashboard();
 
-  // Load dynamic categories
-  loadCategories();
   initHoldingsView();
 
   // Silently refresh USD/TWD rate in background (best-effort, won't block UI)
@@ -3663,28 +3737,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (document.querySelector('#tab-dashboard.active')) loadDashboard();
   });
 });
-
-async function loadCategories() {
-  try {
-    const cats = await api('/api/expenses/categories');
-    if (Array.isArray(cats) && cats.length > 0) {
-      const select = document.getElementById('expense-category');
-      // Keep default options, add any new ones before __custom__
-      const existing = new Set(Array.from(select.options).map(o => o.value));
-      cats.forEach(c => {
-        if (!existing.has(c) && c !== '__custom__') {
-          const opt = document.createElement('option');
-          opt.value = c;
-          opt.textContent = catDisplay(c);
-          // Insert before the custom option
-          select.insertBefore(opt, select.querySelector('[value="__custom__"]'));
-        }
-      });
-    }
-  } catch (_) {
-    // Silently ignore
-  }
-}
 
 // ============================================================
 // SECTION: Managed Accounts

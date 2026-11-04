@@ -762,6 +762,10 @@
             </select>
           </div>
         </div>
+        <div class="exp-search">
+          <input type="search" id="exp-search" placeholder="搜尋備註、分類、幣別、金額（不限月份）" aria-label="搜尋收支紀錄" oninput="onExpenseSearch()">
+          <div class="exp-search-summary" id="exp-search-summary" hidden></div>
+        </div>
         <div class="expense-list" id="expense-list">
           <div class="empty-state">載入中...</div>
         </div>
@@ -1528,8 +1532,9 @@
           <div class="form-hint" id="expense-fx-hint" hidden><span id="expense-fx-twd"></span><span id="expense-fx-source"></span></div>
         </div>
         <div class="form-group">
-          <label>分類</label>
-          <select name="category" id="expense-category" onchange="toggleCustomCategory(this)"></select><!-- options: buildCategoryOptions() -->
+          <label id="expense-cat-label">分類</label>
+          <!-- one tap: the chosen type's categories, most used first (renderCategoryChips) -->
+          <div class="cat-chips" id="expense-cat-chips" role="radiogroup" aria-labelledby="expense-cat-label"></div>
         </div>
         <div id="custom-category-group" style="display:none" class="form-group">
           <label>自訂分類</label>

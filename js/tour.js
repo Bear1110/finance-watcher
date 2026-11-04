@@ -212,5 +212,5 @@ function placeTour() {
 document.addEventListener('DOMContentLoaded', () => {
   let seen = true;
   try { seen = localStorage.getItem('tourSeen') === '1'; } catch (e) { /* ignore */ }
-  if (!seen) startTour();
+  if (!seen && !('loadFailed' in document.body.dataset)) startTour(); // not over app.js's showLoadFailure screen
 });

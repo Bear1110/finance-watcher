@@ -1834,13 +1834,14 @@ body { overflow-x: clip; }
 .filter-chip {
   border: 1px solid var(--accent);
   border-radius: 999px;
-  background: var(--accent-subtle);
-  color: var(--accent);
   padding: 3px 10px;
   font: inherit;
   font-size: 0.8rem;
   cursor: pointer;
 }
+/* selected look, shared by the 收支 filter chip and the dialog's category chips */
+.filter-chip,
+.cat-chip.active { border-color: var(--accent); background: var(--accent-subtle); color: var(--accent); }
 
 @media (max-width: 599px) {
   .cat-row { grid-template-columns: 4.5em 1fr auto 3.2em; gap: 8px; }
@@ -2161,6 +2162,53 @@ body[data-tab="expenses"] .fab { display: flex; }
 .fx-row label { font-weight: 400; white-space: nowrap; }
 .fx-row input { width: 7.5rem; }
 #expense-fx-twd:not(:empty) + #expense-fx-source:not(:empty)::before { content: ' · '; }
+
+/* --- 收支 dialog: category chips (one tap; the chosen type's categories, most used first) --- */
+.cat-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.cat-chip {
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: none;
+  color: var(--text-primary);
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+.cat-chip:hover { border-color: var(--accent); }
+.cat-chip.active { font-weight: 600; } /* colors: shared with .filter-chip */
+
+/* --- 收支明細: search box, day headers --- */
+.exp-search { margin-bottom: 8px; max-width: 760px; }
+.exp-search input { width: 100%; }
+.exp-search-summary { margin-top: 6px; font-size: 0.85rem; color: var(--text-secondary); }
+.exp-day {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 4px 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+.exp-day:first-child { padding-top: 4px; }
+
+/* --- main.js failed to load (showLoadFailure) --- */
+.load-failure {
+  position: fixed;
+  inset: 0;
+  z-index: 4000; /* above toasts */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px;
+  text-align: center;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
 
 /* --- 收支明細：每筆一列，像記帳 App（手機與電腦同一個版面） ---
    🍜 飲食               NT$120

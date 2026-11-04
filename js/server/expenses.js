@@ -143,12 +143,6 @@ function remove(req) {
   return { status: 'deleted' };
 }
 
-function categories() {
-  const set = new Set();
-  for (const e of db.all('expenses')) if (e.category !== '') set.add(e.category);
-  return [...set].sort(cmp);
-}
-
 function yearParam(req) {
   const ys = req.query.get('year');
   return ys && /^-?\d+$/.test(ys) ? Number(ys) : new Date().getFullYear();
@@ -247,7 +241,6 @@ route('GET', '/api/expenses', list);
 route('POST', '/api/expenses', create);
 route('PUT', '/api/expenses/{id}', updateExpense);
 route('DELETE', '/api/expenses/{id}', remove);
-route('GET', '/api/expenses/categories', categories);
 route('GET', '/api/expenses/stats', getStats);
 // Market rate for the add/edit dialog: ?currency=JPY&date=YYYY-MM-DD -> { rate, date }
 route('GET', '/api/expenses/fx', (req) => {
