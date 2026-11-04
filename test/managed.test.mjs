@@ -120,16 +120,12 @@ test('snapshot freezes values and holding details', async () => {
   assert.equal(list.length, 1);
 });
 
-test('budgets: actuals per month with USD converted', async () => {
+test('expense stats: actuals per month with USD converted', async () => {
   await post('/api/expenses', { type: 'income', amount: 100, currency: 'USD', category: '薪資', date: '2026-03-05' });
   await post('/api/expenses', { type: 'expense', amount: 500, category: '飲食', date: '2026-03-06' });
-  await handle('/api/budgets', { method: 'PUT', body: JSON.stringify({ year: 2026, month: 3, planned_income: 2000, planned_expense: 1000 }) });
-  const b = await handle('/api/budgets?year=2026');
-  const m = b.months[2];
-  assert.equal(m.actual_income, 3000);
-  assert.equal(m.actual_expense, 500);
-  assert.equal(m.income_diff, 1000);
-  assert.equal(b.total_net_savings, 2500);
+  const m = (await handle('/api/expenses/stats?year=2026')).months[2];
+  assert.equal(m.income, 3000);
+  assert.equal(m.expense, 500);
   await assert.rejects(post('/api/expenses', { amount: 0, date: '2026-01-01' }), (e) => e.status === 400);
 });
 

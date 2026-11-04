@@ -2500,114 +2500,6 @@ async function deleteDividend(id) {
 // SECTION: Expenses
 // ============================================================
 
-let _budgetVisible = false;
-
-function toggleBudgetTable() {
-  _budgetVisible = !_budgetVisible;
-  document.getElementById('budget-section').style.display = _budgetVisible ? 'block' : 'none';
-  if (_budgetVisible) loadBudgets();
-}
-
-function initBudgetYearSelector() {
-  initYearSelector('budget-year');
-}
-
-async function loadBudgets() {
-  const year = document.getElementById('budget-year').value;
-  try {
-    const data = await api(`/api/budgets?year=${year}`);
-    const months = data.months || [];
-    const monthNames = ['1\u6708','2\u6708','3\u6708','4\u6708','5\u6708','6\u6708','7\u6708','8\u6708','9\u6708','10\u6708','11\u6708','12\u6708'];
-
-    const tbody = document.getElementById('budget-body');
-    tbody.innerHTML = months.map((m, i) => `
-      <tr>
-        <td><strong>${monthNames[i]}</strong></td>
-        <td><input type="number" value="${m.planned_income || ''}" placeholder="0"
-            onchange="saveBudget(${year}, ${m.month}, 'planned_income', this.value)"></td>
-        <td><input type="number" value="${m.planned_expense || ''}" placeholder="0"
-            onchange="saveBudget(${year}, ${m.month}, 'planned_expense', this.value)"></td>
-        <td>${m.actual_income ? fmtTWD(m.actual_income) : '<span class="text-muted">--</span>'}</td>
-        <td>${m.actual_expense ? fmtTWD(m.actual_expense) : '<span class="text-muted">--</span>'}</td>
-        <td class="${plClass(m.income_diff)}">${m.actual_income || m.planned_income ? fmtTWD(m.income_diff) : '--'}</td>
-        <td class="${plClass(-m.expense_diff)}">${m.actual_expense || m.planned_expense ? fmtTWD(m.expense_diff) : '--'}</td>
-        <td class="${plClass(m.net_savings)}"><strong>${m.actual_income ? fmtTWD(m.net_savings) : '--'}</strong></td>
-      </tr>
-    `).join('');
-
-    // Totals
-    document.getElementById('budget-total-pi').innerHTML = `<strong>${fmtTWD(data.total_planned_income)}</strong>`;
-    document.getElementById('budget-total-pe').innerHTML = `<strong>${fmtTWD(data.total_planned_expense)}</strong>`;
-    document.getElementById('budget-total-ai').innerHTML = `<strong>${fmtTWD(data.total_actual_income)}</strong>`;
-    document.getElementById('budget-total-ae').innerHTML = `<strong>${fmtTWD(data.total_actual_expense)}</strong>`;
-    const totalID = data.total_actual_income - data.total_planned_income;
-    const totalED = data.total_actual_expense - data.total_planned_expense;
-    document.getElementById('budget-total-id').innerHTML = `<strong class="${plClass(totalID)}">${fmtTWD(totalID)}</strong>`;
-    document.getElementById('budget-total-ed').innerHTML = `<strong class="${plClass(-totalED)}">${fmtTWD(totalED)}</strong>`;
-    document.getElementById('budget-total-ns').innerHTML = `<strong class="${plClass(data.total_net_savings)}">${fmtTWD(data.total_net_savings)}</strong>`;
-
-    // Progress bars
-    const progressEl = document.getElementById('budget-progress');
-    const incPct = data.total_planned_income > 0 ? Math.min((data.total_actual_income / data.total_planned_income) * 100, 150) : 0;
-    const expPct = data.total_planned_expense > 0 ? Math.min((data.total_actual_expense / data.total_planned_expense) * 100, 150) : 0;
-    const savTarget = data.total_planned_income - data.total_planned_expense;
-    const savPct = savTarget > 0 ? Math.min((data.total_net_savings / savTarget) * 100, 150) : 0;
-
-    progressEl.innerHTML = `
-      <div style="margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-          <span>\u5E74\u5EA6\u6536\u5165\u9054\u6210</span>
-          <span>${fmtTWD(data.total_actual_income)} / ${fmtTWD(data.total_planned_income)} (${incPct.toFixed(1)}%)</span>
-        </div>
-        <div class="progress-bar-container">
-          <div class="progress-bar-fill" style="width:${Math.min(incPct,100)}%;background:var(--green)">${incPct.toFixed(0)}%</div>
-        </div>
-      </div>
-      <div style="margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-          <span>\u5E74\u5EA6\u652F\u51FA\u63A7\u5236</span>
-          <span>${fmtTWD(data.total_actual_expense)} / ${fmtTWD(data.total_planned_expense)} (${expPct.toFixed(1)}%)</span>
-        </div>
-        <div class="progress-bar-container">
-          <div class="progress-bar-fill" style="width:${Math.min(expPct,100)}%;background:${expPct > 100 ? 'var(--red)' : 'var(--accent)'}">${expPct.toFixed(0)}%</div>
-        </div>
-      </div>
-      <div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-          <span>\u5E74\u5EA6\u5132\u84C4\u76EE\u6A19</span>
-          <span>${fmtTWD(data.total_net_savings)} / ${fmtTWD(savTarget)} (${savPct.toFixed(1)}%)</span>
-        </div>
-        <div class="progress-bar-container">
-          <div class="progress-bar-fill" style="width:${Math.min(Math.max(savPct,0),100)}%;background:${savPct >= 100 ? 'var(--green)' : 'var(--yellow)'}">${savPct.toFixed(0)}%</div>
-        </div>
-      </div>
-    `;
-
-  } catch (err) {
-    showToast('\u8F09\u5165\u5E74\u5EA6\u8A08\u756B\u5931\u6557: ' + err.message, 'error');
-  }
-}
-
-async function saveBudget(year, month, field, value) {
-  // Need to get current values for the other field
-  try {
-    const data = await api(`/api/budgets?year=${year}`);
-    const m = (data.months || []).find(x => x.month === month) || {};
-    const body = {
-      year,
-      month,
-      planned_income: field === 'planned_income' ? Number(value) || 0 : (m.planned_income || 0),
-      planned_expense: field === 'planned_expense' ? Number(value) || 0 : (m.planned_expense || 0),
-    };
-    await api('/api/budgets', { method: 'PUT', body: JSON.stringify(body) });
-    // Silently reload to update totals and progress
-    loadBudgets();
-  } catch (err) {
-    showToast('\u5132\u5B58\u9810\u7B97\u5931\u6557: ' + err.message, 'error');
-  }
-}
-
-
 // EXPENSE_CATEGORIES (the dialog's presets) comes from js/server/expenses.js via main.js.
 /** An emoji per category, so lists read at a glance; categories added later get the tag. */
 const CATEGORY_EMOJI = {
@@ -2709,14 +2601,13 @@ function initYearSelector(id, startYear = 2020) {
   }
 }
 
-/** 收支 and 預算 year pickers reach back to the oldest record (rebuilt only when that changes). */
+/** The 收支 year picker reaches back to the oldest record (rebuilt only when that changes). */
 let _expStartYear = 2020;
 function setExpenseStartYear(firstYear) {
   const start = Math.min(2020, firstYear || 2020);
   if (start === _expStartYear) return;
   _expStartYear = start;
   initYearSelector('exp-year-filter', start);
-  initYearSelector('budget-year', start);
 }
 
 /** `category`: the one to select (editing); default the type's most used. */
@@ -2873,8 +2764,6 @@ async function submitExpense(e) {
       closeModal('modal-expense');
     }
     loadExpenses();
-    // Also refresh budget if visible
-    if (_budgetVisible) loadBudgets();
   } catch (err) {
     showToast('儲存失敗: ' + err.message, 'error');
   }
@@ -2914,11 +2803,9 @@ async function deleteExpense(id) {
       await api('/api/expenses', { method: 'POST', body: JSON.stringify({ type, amount, currency, fx_rate, fx_pending, category, date, note }) });
       showToast('已復原', 'success');
       loadExpenses();
-      if (_budgetVisible) loadBudgets();
     });
     showToast('紀錄已刪除', 'success', undo ? { action: { label: '復原', run: undo }, timeout: 6000 } : {});
     loadExpenses();
-    if (_budgetVisible) loadBudgets();
     return true;
   } catch (err) {
     showToast('刪除失敗: ' + err.message, 'error');
@@ -2941,16 +2828,6 @@ function onExpYearChange() {
 
 /** [oldest, newest] year a year <select> offers (initYearSelector lists them newest first). */
 const yearBounds = (select) => [Number(select.options[select.options.length - 1].value), Number(select.options[0].value)];
-
-/** ‹ › next to a year <select>: one year back / forward, then fire its onchange. */
-function stepYearSelect(id, delta) {
-  const select = document.getElementById(id);
-  const [min, max] = yearBounds(select);
-  const y = Number(select.value) + delta;
-  if (y < min || y > max) return;
-  select.value = String(y);
-  select.dispatchEvent(new Event('change'));
-}
 
 /** The 收支 period one step away: next/previous month (crossing years), or year when 全年 (m = 0); null past the ends. */
 function nextExpPeriod(delta) {
@@ -3087,10 +2964,6 @@ function renderExpenseSummary(stats, month) {
   const months = periodMonths(stats, month);
   const income = sumOf(months, 'income');
   const expense = sumOf(months, 'expense');
-  // Budget progress only counts months that have a budget (a year with one budgeted month
-  // compares that month alone, not the whole year's spending)
-  const budgeted = months.filter(m => m.planned_expense > 0);
-  const planned = sumOf(budgeted, 'planned_expense');
   const net = income - expense;
   const prev = month ? (month > 1 ? stats.months[month - 2] : stats.prev_december) : null;
   const active = stats.months.filter(m => m.income || m.expense).length;
@@ -3116,12 +2989,7 @@ function renderExpenseSummary(stats, month) {
     set('exp-sum-net-sub', active ? `月平均 ${fmtPL(net / active)}` : '');
     set('exp-sum-rate-sub', active ? `${active} 個月有紀錄` : '');
   }
-  if (planned > 0) {
-    const used = sumOf(budgeted, 'expense') / planned * 100;
-    const scope = !month && budgeted.length < 12 ? `${budgeted.length} 個月` : '';
-    set('exp-sum-expense-sub', `${scope}預算 ${fmtTWD(planned)} · 已用 ${used.toFixed(0)}%` +
-      `<div class="source-bar budget-mini${used > 100 ? ' over' : ''}"><span style="width:${Math.min(used, 100)}%"></span></div>`);
-  } else if (month) {
+  if (month) {
     set('exp-sum-expense-sub', changeText(expense, prev.expense, '較上月'));
   } else {
     set('exp-sum-expense-sub', active ? `月平均 ${fmtTWD(expense / active)}` : '');
@@ -3332,7 +3200,6 @@ function getSelectedSections() {
   if (document.getElementById('llm-inc-portfolio')?.checked) sections.push('portfolio');
   if (document.getElementById('llm-inc-realized')?.checked) sections.push('realized');
   if (document.getElementById('llm-inc-expenses')?.checked) sections.push('expenses');
-  if (document.getElementById('llm-inc-budget')?.checked) sections.push('budget');
   return sections;
 }
 
@@ -3755,7 +3622,6 @@ document.addEventListener('DOMContentLoaded', () => {
   applyPrivacyUI();
   initTabs();
   initExpenseDefaults();
-  initBudgetYearSelector();
 
   // Set default date on transaction form
   const txDateInput = document.querySelector('#tx-form [name="date"]');

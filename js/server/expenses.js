@@ -1,4 +1,4 @@
-// Income/expense entries and the annual budget.
+// Income/expense entries, their TWD values and the 收支 page statistics.
 
 import * as db from './db.js';
 import { route } from './router.js';
@@ -175,68 +175,19 @@ function firstYear() {
   return first ? Number(first.slice(0, 4)) : null;
 }
 
-/** Per-month income/expense, category sums and planned expense for the 收支 page charts. */
+/** Per-month income/expense and category sums for the 收支 page charts. */
 function getStats(req) {
   const year = yearParam(req);
-  const planned = new Map(db.where('budgets', (b) => b.year === year).map((b) => [b.month, b.planned_expense]));
   const months = monthlyActuals(year).map((a, i) => ({
     month: i + 1,
     income: a.income,
     expense: a.expense,
-    planned_expense: planned.get(i + 1) || 0,
     by_category: a.byCategory,
   }));
   const dec = monthlyActuals(year - 1)[11];
   return { year, months, prev_december: { income: dec.income, expense: dec.expense }, first_year: firstYear() };
 }
 
-function getBudgets(req) {
-  const year = yearParam(req);
-
-  const budgetMap = new Map();
-  for (const b of db.where('budgets', (b) => b.year === year)) budgetMap.set(b.month, b);
-
-  const actual = monthlyActuals(year);
-
-  const resp = {
-    year, months: [],
-    total_planned_income: 0, total_planned_expense: 0,
-    total_actual_income: 0, total_actual_expense: 0, total_net_savings: 0,
-  };
-  for (let m = 1; m <= 12; m++) {
-    const b = budgetMap.get(m);
-    const a = actual[m - 1];
-    const d = {
-      month: m,
-      planned_income: b ? b.planned_income : 0,
-      planned_expense: b ? b.planned_expense : 0,
-      actual_income: a.income,
-      actual_expense: a.expense,
-    };
-    d.income_diff = d.actual_income - d.planned_income;
-    d.expense_diff = d.actual_expense - d.planned_expense;
-    d.net_savings = d.actual_income - d.actual_expense;
-    resp.total_planned_income += d.planned_income;
-    resp.total_planned_expense += d.planned_expense;
-    resp.total_actual_income += d.actual_income;
-    resp.total_actual_expense += d.actual_expense;
-    resp.months.push(d);
-  }
-  resp.total_net_savings = resp.total_actual_income - resp.total_actual_expense;
-  return resp;
-}
-
-function saveBudget(req) {
-  const b = body(req);
-  db.upsert('budgets', {
-    year: b.year, month: b.month,
-    planned_income: b.planned_income, planned_expense: b.planned_expense,
-  });
-  return { status: 'saved' };
-}
-
-route('GET', '/api/budgets', getBudgets);
-route('PUT', '/api/budgets', saveBudget);
 route('GET', '/api/expenses', list);
 route('POST', '/api/expenses', create);
 route('PUT', '/api/expenses/{id}', updateExpense);

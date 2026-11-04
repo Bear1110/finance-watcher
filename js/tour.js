@@ -64,7 +64,7 @@ const TOUR_STEPS = [
     tab: 'expenses',
     target: 'nav-expenses',
     title: '收支',
-    body: '日常的收入與支出，每月統計、分類排行和預算。',
+    body: '日常的收入與支出，每月統計、分類排行和每一筆明細。',
   },
   {
     tab: 'expenses',

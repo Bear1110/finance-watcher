@@ -22,7 +22,7 @@
 - `db.js` 的 `SCHEMA` 定義每張表的欄位型別；`synced: true` 的表同步到試算表，`price_history*` 只是本機快取
 - 每次寫入先存 localStorage 並記為待同步（`pending`），之後：讀整份試算表 → 以列為單位套上本機的修改（最後寫入者勝）→ 寫回有變動的分頁
 - 新增列的 id 以時間產生（`Date.now()*10+亂數`），兩台裝置離線新增不會撞號；匯入的舊 id 保留，外鍵（`account_id`）不用轉換
-- 列的身分：多數表用 `id`，`stock_holdings` 用 `symbol`，`settings` 用 `key`，`budgets` 用 `年-月`
+- 列的身分：多數表用 `id`，`stock_holdings` 用 `symbol`，`settings` 用 `key`
 - 分頁用固定 sheetId 辨識（`js/cloud/sheets.js` 的 `SHEET_IDS`，只能新增不能改號），使用者改分頁名稱不會壞；欄位依標題名稱對應
 - 寫入分頁時先覆寫、再清掉多出來的尾巴，寫到一半失敗也不會留下空分頁
 - 收支可以記外幣（`expenses.js` 的 `EXPENSE_CURRENCIES`）：每筆存當天的市場匯率 `fx_rate`（`{幣別}TWD=X` 當日或前一個交易日收盤，可手動改），統計一律換算台幣；沒有 `fx_rate` 的舊美金紀錄用設定的 USD/TWD 匯率。離線時查不到匯率就先用同幣別最近一筆的匯率估算（`fx_pending=1`），之後有網路時 `/api/expenses/refresh-fx`（收支頁載入、恢復連線時）換成市場匯率；從沒記過的幣別離線時要手動填匯率。新增時預設上次用的幣別（本機 localStorage `expenseCurrency`）
@@ -46,7 +46,7 @@
   這次出現的股票的自有帳戶舊交易全部刪掉、換成對帳單；期間開始前的持股 = 目前持股 − 對帳單淨買進 − 留下來的交易淨買進，
   存成一筆匯入持倉（沿用舊匯入持倉的成本，沒有就用目前均價）。合計列對不上、有無法匯入的列、倒推出負數時不允許取代
 
-停用的表（`stock_snapshots`、`llm_conversations`）已不在 `SCHEMA`，不再同步；試算表裡的舊分頁可以自行刪除。它們的 sheetId（8、12）列在 `sheets.js` 的 `RETIRED_SHEET_IDS`，新表不能再用。
+停用的表（`budgets`、`stock_snapshots`、`llm_conversations`）已不在 `SCHEMA`，不再同步；試算表裡的舊分頁可以自行刪除。它們的 sheetId（7、8、12）列在 `sheets.js` 的 `RETIRED_SHEET_IDS`，新表不能再用。本機殘留的待同步紀錄在載入時略過。
 
 ## 行情
 

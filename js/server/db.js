@@ -38,11 +38,6 @@ export const SCHEMA = {
     columns: { id: 'int', type: 'text', amount: 'real', currency: 'text', fx_rate: 'real', fx_pending: 'int', category: 'text', date: 'text', note: 'text', created_at: 'text' },
     defaults: { type: 'expense', currency: 'TWD' },
   },
-  budgets: {
-    synced: true, key: (r) => `${r.year}-${r.month}`,
-    columns: { id: 'int', year: 'int', month: 'int', planned_income: 'real', planned_expense: 'real' },
-    defaults: {},
-  },
   managed_accounts: {
     synced: true,
     columns: { id: 'int', name: 'text', cash_twd: 'real', cash_usd: 'real', note: 'text', created_at: 'text' },
@@ -163,6 +158,7 @@ export function load() {
     }
     const p = JSON.parse(ls.getItem(PENDING_KEY) || '{}');
     for (const [name, v] of Object.entries(p)) {
+      if (!SCHEMA[name]) continue; // a retired table (e.g. budgets): nothing syncs it any more
       pending[name] = { up: new Set(v.up || []), del: new Set(v.del || []) };
     }
   } catch (e) {

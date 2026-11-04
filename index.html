@@ -766,55 +766,6 @@
         </div>
       </div>
 
-      <!-- Annual Budget Plan -->
-      <div class="card" style="margin-top:20px">
-        <div class="card-header">
-          <h3>年度收支計畫</h3>
-          <div class="header-actions">
-            <button class="btn btn-outline btn-sm" onclick="toggleBudgetTable()">展開/收合</button>
-            <div class="period-stepper">
-              <button type="button" class="btn btn-outline btn-sm btn-icon" onclick="stepYearSelect('budget-year', -1)" aria-label="前一年" title="前一年"><span class="i" data-icon="chevron-left"></span></button>
-              <select id="budget-year" onchange="loadBudgets()" class="input-sm" aria-label="年度">
-              </select>
-              <button type="button" class="btn btn-outline btn-sm btn-icon" onclick="stepYearSelect('budget-year', 1)" aria-label="後一年" title="後一年"><span class="i" data-icon="chevron-right"></span></button>
-            </div>
-          </div>
-        </div>
-        <div id="budget-section" style="display:none">
-          <p class="form-hint" style="margin:0 0 12px">填入每月預期收入與支出，系統自動對比實際數據。點擊數字可直接編輯。</p>
-          <div class="table-wrap">
-            <table class="budget-table">
-              <thead>
-                <tr>
-                  <th>月份</th>
-                  <th>預期收入</th>
-                  <th>預期支出</th>
-                  <th>實際收入</th>
-                  <th>實際支出</th>
-                  <th>收入差異</th>
-                  <th>支出差異</th>
-                  <th>淨儲蓄</th>
-                </tr>
-              </thead>
-              <tbody id="budget-body"></tbody>
-              <tfoot id="budget-foot">
-                <tr>
-                  <td><strong>年度合計</strong></td>
-                  <td id="budget-total-pi"></td>
-                  <td id="budget-total-pe"></td>
-                  <td id="budget-total-ai"></td>
-                  <td id="budget-total-ae"></td>
-                  <td id="budget-total-id"></td>
-                  <td id="budget-total-ed"></td>
-                  <td id="budget-total-ns"></td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-          <!-- Annual progress bar -->
-          <div class="budget-progress" id="budget-progress"></div>
-        </div>
-      </div>
     </section>
 
     <!-- ==================== MANAGED ACCOUNTS TAB ==================== -->
@@ -1012,7 +963,6 @@
           <label class="llm-check"><input type="checkbox" id="llm-inc-portfolio" checked> 投資組合（持股明細、即時報價、未實現損益）</label>
           <label class="llm-check"><input type="checkbox" id="llm-inc-realized" checked> 交易績效（已實現損益、勝率）</label>
           <label class="llm-check"><input type="checkbox" id="llm-inc-expenses"> 收支狀況（收入/支出分類統計）</label>
-          <label class="llm-check"><input type="checkbox" id="llm-inc-budget"> 預算執行（年度計畫 vs 實際）</label>
         </div>
         <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-primary" onclick="generatePrompt()">產生 Prompt</button>

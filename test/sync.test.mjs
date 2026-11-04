@@ -61,10 +61,14 @@ test('unchanged tables are neither written nor reported as changed', () => {
   assert.equal(m.localChanged, false);
 });
 
-test('budgets are identified by year-month', () => {
-  db._reset({});
-  db.upsert('budgets', { year: 2026, month: 3, planned_income: 1, planned_expense: 2 });
-  db.upsert('budgets', { year: 2026, month: 3, planned_income: 5, planned_expense: 6 });
-  assert.equal(db.all('budgets').length, 1);
-  assert.equal(db.all('budgets')[0].planned_income, 5);
+test('pending edits of a retired table (budgets) left in localStorage are dropped on load', () => {
+  const mem = new Map([['fw.pending.v1', JSON.stringify({ budgets: { up: ['2026-3'] }, expenses: { up: ['1'] } })]]);
+  globalThis.window = { localStorage: { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, v), removeItem: (k) => mem.delete(k) } };
+  try {
+    db.load();
+    assert.equal(db.pendingCount(), 1); // only the expenses edit; nothing would ever sync the budgets one
+  } finally {
+    delete globalThis.window;
+    db._reset({});
+  }
 });

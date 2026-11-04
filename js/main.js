@@ -67,7 +67,7 @@ route('POST', '/api/import', async (req) => {
 
 const TABLE_LABELS = {
   asset_snapshots: '資產快照', stock_transactions: '股票交易', stock_holdings: '持倉', dividends: '股利',
-  expenses: '收支', budgets: '預算', managed_accounts: '代管帳戶',
+  expenses: '收支', managed_accounts: '代管帳戶',
   managed_snapshots: '代管快照', managed_cash_movements: '代管現金異動', settings: '設定',
 };
 

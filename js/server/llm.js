@@ -120,41 +120,12 @@ function buildRealizedSummary() {
   };
 }
 
-function buildBudgetSummary(year) {
-  const budgetMap = new Map();
-  for (const b of db.where('budgets', (x) => x.year === year)) budgetMap.set(b.month, b);
-  const actual = monthlyActuals(year);
-  const resp = {
-    year, months: [],
-    total_planned_income: 0, total_planned_expense: 0, total_actual_income: 0, total_actual_expense: 0, total_net_savings: 0,
-  };
-  for (let m = 1; m <= 12; m++) {
-    const b = budgetMap.get(m);
-    const a = actual[m - 1];
-    const d = {
-      month: m,
-      planned_income: b ? b.planned_income : 0,
-      planned_expense: b ? b.planned_expense : 0,
-      actual_income: a.income,
-      actual_expense: a.expense,
-      income_diff: 0, expense_diff: 0, net_savings: 0,
-    };
-    resp.total_planned_income += d.planned_income;
-    resp.total_planned_expense += d.planned_expense;
-    resp.total_actual_income += d.actual_income;
-    resp.total_actual_expense += d.actual_expense;
-    resp.months.push(d);
-  }
-  resp.total_net_savings = resp.total_actual_income - resp.total_actual_expense;
-  return resp;
-}
-
 export async function generateAutoPrompt(sections) {
   if (!Array.isArray(sections) || sections.length === 0) {
-    sections = ['assets', 'portfolio', 'realized', 'expenses', 'budget'];
+    sections = ['assets', 'portfolio', 'realized', 'expenses'];
   }
   const set = new Set(sections);
-  const data = { usdTwdRate: storedUSDTWDRate(), sections: set, snapshots: [], expenses: [], portfolio: null, realized: null, budgets: null };
+  const data = { usdTwdRate: storedUSDTWDRate(), sections: set, snapshots: [], expenses: [], portfolio: null, realized: null };
   const year = new Date().getFullYear();
 
   if (set.has('assets')) {
@@ -168,7 +139,6 @@ export async function generateAutoPrompt(sections) {
     data.expenses = db.where('expenses', (e) => e.date.startsWith(`${year}-`))
       .sort((a, b) => cmp(b.date, a.date) || a.id - b.id);
   }
-  if (set.has('budget')) data.budgets = buildBudgetSummary(year);
   return generateFinancialPrompt(data);
 }
 
@@ -308,20 +278,6 @@ export function generateFinancialPrompt(data) {
     }
   }
 
-  // ===== 5. 預算執行 =====
-  if (inc('budget')) {
-    const b = data.budgets;
-    if (b && b.total_planned_income > 0) {
-      sb += secTitle('年度預算執行狀況');
-      sb += `年度: ${b.year}\n`;
-      sb += `- 計畫收入: NT$ ${f(b.total_planned_income, 0)} / 實際收入: NT$ ${f(b.total_actual_income, 0)} (達成率 ${f(b.total_actual_income / b.total_planned_income * 100, 1)}%)\n`;
-      if (b.total_planned_expense > 0) {
-        sb += `- 計畫支出: NT$ ${f(b.total_planned_expense, 0)} / 實際支出: NT$ ${f(b.total_actual_expense, 0)} (執行率 ${f(b.total_actual_expense / b.total_planned_expense * 100, 1)}%)\n`;
-      }
-      sb += `- 目標儲蓄: NT$ ${f(b.total_planned_income - b.total_planned_expense, 0)} / 實際儲蓄: NT$ ${f(b.total_net_savings, 0)}\n\n`;
-    }
-  }
-
   // ===== 分析要求 =====
   sb += '# 請根據上述提供的資料，提供以下分析\n\n';
   let n = 1;
@@ -347,11 +303,6 @@ export function generateFinancialPrompt(data) {
     sb += `## ${n++}. 收支與儲蓄建議\n`;
     sb += '- 儲蓄率是否足夠？\n';
     sb += '- 支出結構有無優化空間？\n\n';
-  }
-  if (inc('budget')) {
-    sb += `## ${n++}. 預算執行評估\n`;
-    sb += '- 預算執行是否到位？\n';
-    sb += '- 有什麼需要調整的地方？\n\n';
   }
   sb += `## ${n}. 具體行動建議\n`;
   sb += '請根據上述分析，提供 3-5 個具體、可立即執行的理財建議，包括：\n';

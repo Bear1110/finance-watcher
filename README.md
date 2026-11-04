@@ -1,6 +1,6 @@
 # <img src="icons/logo-64.png" width="40" height="40" alt="" align="top"> Finance Watcher
 
-個人財務記錄網站：資產快照、台股／美股持倉與交易（FIFO 已實現損益）、股利、收支與年度預算、代管帳戶、投資績效（TWR / XIRR）、AI 分析。
+個人財務記錄網站：資產快照、台股／美股持倉與交易（FIFO 已實現損益）、股利、收支（可記外幣）、代管帳戶、投資績效（TWR / XIRR）、AI 分析。
 
 純靜態網頁（GitHub Pages）、沒有後端，紀錄存在**你自己 Google 雲端硬碟的試算表**，網站作者看不到任何人的資料。
 

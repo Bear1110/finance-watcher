@@ -1,5 +1,4 @@
 // /api/expenses/stats: per-month totals and category sums for the 收支 page,
-// and /api/budgets built on the same monthly totals.
 
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -33,7 +32,6 @@ beforeEach(() => {
   mem.clear();
   db._reset({
     settings: [{ id: 1, key: 'usd_twd_rate', value: '30' }],
-    budgets: [{ id: 1, year: 2026, month: 3, planned_income: 100000, planned_expense: 20000 }],
     expenses: [
       exp(1, '2025-12-31', 'expense', 999, '飲食'),
       exp(2, '2026-03-01', 'expense', 1000, '飲食'),
@@ -45,14 +43,13 @@ beforeEach(() => {
   });
 });
 
-test('stats: monthly totals, category sums (USD converted), planned expense', async () => {
+test('stats: monthly totals, category sums (USD converted)', async () => {
   const s = await handle('/api/expenses/stats?year=2026');
   assert.equal(s.months.length, 12);
   const mar = s.months[2];
   assert.equal(mar.month, 3);
   assert.equal(mar.expense, 1000 + 500 + 300);
   assert.equal(mar.income, 80000);
-  assert.equal(mar.planned_expense, 20000);
   assert.deepEqual(mar.by_category.expense, { 飲食: 1300, 飲料: 500 });
   assert.deepEqual(mar.by_category.income, { 薪資: 80000 });
   assert.deepEqual(s.months[3].by_category.expense, { '': 200 });
@@ -93,10 +90,3 @@ test('offline: a foreign record is saved at the last known rate (estimated), the
   fxOnline = false;
 });
 
-test('budgets: actual columns come from the same monthly totals', async () => {
-  const b = await handle('/api/budgets?year=2026');
-  assert.equal(b.months[2].actual_expense, 1800);
-  assert.equal(b.months[2].actual_income, 80000);
-  assert.equal(b.months[2].planned_expense, 20000);
-  assert.equal(b.months[3].actual_expense, 200);
-});
