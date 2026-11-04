@@ -37,7 +37,7 @@ export function expenseTWD(e) {
 }
 
 export const expenseJSON = (e) => ({
-  id: e.id, type: e.type, amount: e.amount, currency: e.currency, fx_rate: e.fx_rate,
+  id: e.id, type: e.type, amount: e.amount, currency: e.currency, fx_rate: e.fx_rate, fx_pending: e.fx_pending,
   amount_twd: expenseTWD(e), category: e.category, note: e.note, date: e.date, created_at: e.created_at,
 });
 
@@ -58,7 +58,8 @@ function list(req) {
 
 /**
  * Validates input and fills defaults (type=expense, currency=TWD). fx_rate is 1 for TWD and 0
- * (= not known yet, see withFxRate) for a foreign record that didn't bring one.
+ * (= not known yet, see withFxRate) for a foreign record that didn't bring one. fx_pending = 1:
+ * the rate is an offline estimate, replaced by the market rate once online (refreshPendingRates).
  */
 export function normalizeExpense(e) {
   const currency = e.currency || 'TWD';
@@ -67,6 +68,7 @@ export function normalizeExpense(e) {
     amount: Number(e.amount) || 0,
     currency,
     fx_rate: currency === 'TWD' ? 1 : Number(e.fx_rate) > 0 ? Number(e.fx_rate) : 0,
+    fx_pending: currency !== 'TWD' && Number(e.fx_rate) > 0 && e.fx_pending ? 1 : 0,
     category: e.category || '',
     note: e.note || '',
     date: e.date || '',
@@ -78,19 +80,50 @@ export function normalizeExpense(e) {
   return out;
 }
 
+/** The newest market rate already saved for `currency` (USD: the settings rate if none): { rate, date } or null. */
+function lastKnownRate(currency) {
+  let best = null;
+  for (const e of db.all('expenses')) {
+    if (e.currency === currency && e.fx_rate > 0 && !e.fx_pending && (!best || e.date > best.date)) best = { rate: e.fx_rate, date: e.date };
+  }
+  return best || (currency === 'USD' ? { rate: storedUSDTWDRate(), date: '' } : null);
+}
+
 /**
- * A foreign record without a rate gets its date's market rate. Without market data USD keeps
- * fx_rate 0 (= the current USD/TWD rate, as before fx_rate existed); other currencies fail, and
- * the user can type the rate.
+ * Market rate of `currency` on `date`: { rate, date, estimated? }. Offline (no market data) it is
+ * the last known rate, marked estimated; with no rate ever saved the user has to type one.
  */
+export async function rateFor(currency, date) {
+  try {
+    return await fetchFxRate(currency, date);
+  } catch (err) {
+    const known = lastKnownRate(currency);
+    if (!known) throw badRequest(`${err.message}（第一次記 ${currency} 需要連網，或手動填寫匯率）`);
+    return { ...known, estimated: true };
+  }
+}
+
+/** A foreign record without a rate gets its date's market rate, or an estimate to fix later when offline. */
 export async function withFxRate(e) {
   if (e.fx_rate > 0) return e;
-  try {
-    return { ...e, fx_rate: (await fetchFxRate(e.currency, e.date)).rate };
-  } catch (err) {
-    if (e.currency === 'USD') return e;
-    throw badRequest(err.message);
+  const r = await rateFor(e.currency, e.date);
+  return { ...e, fx_rate: r.rate, fx_pending: r.estimated ? 1 : 0 };
+}
+
+/** Estimated rates → market rates, once there is market data again (stops at the first failure: still offline). */
+async function refreshPendingRates() {
+  let updated = 0;
+  for (const e of db.where('expenses', (x) => x.fx_pending)) {
+    let r;
+    try {
+      r = await fetchFxRate(e.currency, e.date);
+    } catch {
+      break;
+    }
+    db.update('expenses', e.id, { fx_rate: r.rate, fx_pending: 0 });
+    updated++;
   }
+  return { updated };
 }
 
 async function create(req) {
@@ -222,5 +255,6 @@ route('GET', '/api/expenses/fx', (req) => {
   const date = req.query.get('date');
   if (!CURRENCY_CODES.has(currency) || currency === 'TWD') throw badRequest('不支援的幣別');
   if (!isDate(date)) throw badRequest('日期格式需為 YYYY-MM-DD');
-  return fetchFxRate(currency, date);
+  return rateFor(currency, date);
 });
+route('POST', '/api/expenses/refresh-fx', refreshPendingRates);

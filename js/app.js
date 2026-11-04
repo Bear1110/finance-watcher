@@ -83,6 +83,12 @@ function fmtMoney(n, code) {
 
 /** YYYY-MM-DD → MM/DD */
 const shortDate = (d) => (d || '').slice(5).replace('-', '/');
+/** YYYY-MM-DD → MM/DD（三） */
+function dayLabel(d) {
+  if (!d) return '';
+  const [y, m, day] = d.split('-').map(Number);
+  return `${shortDate(d)}（${'日一二三四五六'[new Date(y, m - 1, day).getDay()]}）`;
+}
 
 /** Format a per-share price in native currency (always 2 decimals, TW prices can be fractional) */
 function fmtPrice(n, currency) {
@@ -141,7 +147,8 @@ function renderMarkdown(text) {
  * action: { label, run } adds a button and makes the toast sticky (stays until clicked);
  * id: only one toast with this id is shown at a time.
  */
-function showToast(message, type = 'info', { action, id } = {}) {
+/** action: a button on the toast (stays until clicked, or `timeout` ms). */
+function showToast(message, type = 'info', { action, id, timeout } = {}) {
   if (id && document.getElementById(id)) return;
   const container = document.getElementById('toast-container');
   const toast = document.createElement('div');
@@ -158,7 +165,8 @@ function showToast(message, type = 'info', { action, id } = {}) {
     btn.textContent = action.label;
     btn.addEventListener('click', () => { toast.remove(); action.run(); });
     toast.appendChild(btn);
-    toast.classList.add('toast-sticky');
+    if (timeout) setTimeout(() => toast.remove(), timeout);
+    else toast.classList.add('toast-sticky');
     return;
   }
   setTimeout(() => toast.remove(), 3000);
@@ -2722,6 +2730,7 @@ function setExpenseCurrency(code, keepRate = false) {
   document.getElementById('expense-fx-hint').hidden = !foreign;
   document.getElementById('expense-fx-cur').textContent = code;
   const rate = expField('fx_rate');
+  delete rate.dataset.estimated;
   if (keepRate && rate.value) {
     rate.dataset.manual = '';
     setFxSource('自訂匯率');
@@ -2744,6 +2753,7 @@ function onExpenseDateChange() {
 
 function onExpenseFxInput() {
   expField('fx_rate').dataset.manual = '';
+  delete expField('fx_rate').dataset.estimated;
   setFxSource('自訂匯率');
   updateExpenseFxHint();
 }
@@ -2754,8 +2764,16 @@ async function lookupExpenseFx() {
   try {
     const r = await api(`/api/expenses/fx?currency=${expField('currency').value}&date=${expField('date').value || todayStr()}`);
     if (seq !== _fxSeq || fxManual()) return;
-    expField('fx_rate').value = Number(r.rate.toPrecision(5));
-    setFxSource(`${shortDate(r.date)} 市場匯率`);
+    const rate = expField('fx_rate');
+    rate.value = Number(r.rate.toPrecision(5));
+    if (r.estimated) {
+      // Offline: saved as an estimate (fx_pending) and replaced by the market rate once online
+      rate.dataset.estimated = '';
+      setFxSource(`離線，先用${r.date ? ` ${shortDate(r.date)} ` : '之前'}的匯率估算，有網路時自動更新`);
+    } else {
+      delete rate.dataset.estimated;
+      setFxSource(`${shortDate(r.date)} 市場匯率`);
+    }
     updateExpenseFxHint();
   } catch (err) {
     if (seq === _fxSeq && !fxManual()) setFxSource(`查不到匯率，請手動填寫（${err.message}）`);
@@ -2801,6 +2819,7 @@ async function submitExpense(e) {
     amount: Number(form.querySelector('[name="amount"]').value),
     currency: form.querySelector('[name="currency"]').value,
     fx_rate: Number(form.querySelector('[name="fx_rate"]').value) || 0,
+    fx_pending: 'estimated' in expField('fx_rate').dataset ? 1 : 0,
     category,
     date: form.querySelector('[name="date"]').value,
     note: form.querySelector('[name="note"]').value,
@@ -2845,6 +2864,13 @@ function editExpense(id) {
   // Keep the record's own rate (old USD rows have none: empty = looked up when saving)
   form.querySelector('[name="fx_rate"]').value = e.fx_rate > 0 && e.currency !== 'TWD' ? e.fx_rate : '';
   setExpenseCurrency(e.currency || 'TWD', true);
+  if (e.fx_pending) {
+    // Still an offline estimate: keep it replaceable (a date change looks the rate up again)
+    const rate = expField('fx_rate');
+    delete rate.dataset.manual;
+    rate.dataset.estimated = '';
+    setFxSource('離線估算，有網路時自動更新');
+  }
 
   // A category outside the preset list is edited as a custom one
   const select = form.querySelector('[name="category"]');
@@ -2856,12 +2882,21 @@ function editExpense(id) {
   showExpenseModal(true);
 }
 
+/** Deletes right away; the toast's 復原 adds the same record back (no confirm dialog). */
 async function deleteExpense(id) {
-  if (!confirm('確定要刪除這筆紀錄嗎？')) return false;
+  const e = _expAll.find(x => x.id === Number(id));
   try {
     await api(`/api/expenses/${id}`, { method: 'DELETE' });
-    showToast('紀錄已刪除', 'success');
+    const undo = e && (async () => {
+      const { type, amount, currency, fx_rate, fx_pending, category, date, note } = e;
+      await api('/api/expenses', { method: 'POST', body: JSON.stringify({ type, amount, currency, fx_rate, fx_pending, category, date, note }) });
+      showToast('已復原', 'success');
+      loadExpenses();
+      if (_budgetVisible) loadBudgets();
+    });
+    showToast('紀錄已刪除', 'success', undo ? { action: { label: '復原', run: undo }, timeout: 6000 } : {});
     loadExpenses();
+    if (_budgetVisible) loadBudgets();
     return true;
   } catch (err) {
     showToast('刪除失敗: ' + err.message, 'error');
@@ -2944,6 +2979,8 @@ const expMonth = () => Number(document.getElementById('exp-month-filter').value)
 /** Records (all years) + the selected year's stats; after a record changes. */
 async function loadExpenses() {
   try {
+    // Offline estimates → market rates when there's a connection (a no-op otherwise)
+    if (_expAll.some(e => e.fx_pending) || !_expAll.length) await api('/api/expenses/refresh-fx', { method: 'POST' }).catch(() => {});
     const expenses = await api('/api/expenses');
     _expAll = Array.isArray(expenses) ? expenses : [];
   } catch (err) {
@@ -2952,6 +2989,33 @@ async function loadExpenses() {
   }
   await loadExpenseStats();
 }
+
+// Back online with offline-estimated rates on screen: fetch the market rates
+window.addEventListener('online', () => {
+  if (document.body.dataset.tab === 'expenses' && _expAll.some(e => e.fx_pending)) loadExpenses();
+});
+
+// Swipe left / right on the 收支 page = next / previous month (same as › ‹). Ignored when the swipe
+// starts on a control or something that scrolls sideways itself, or at the screen edge (back gesture).
+(function initExpenseSwipe() {
+  const page = document.getElementById('tab-expenses');
+  let start = null;
+  page.addEventListener('touchstart', (e) => {
+    const t = e.touches[0];
+    const edge = t.clientX < 24 || t.clientX > window.innerWidth - 24;
+    start = e.touches.length === 1 && !edge && !e.target.closest('input, select, textarea, button, canvas, .chart-type-toggle, .table-wrap, .modal')
+      ? { x: t.clientX, y: t.clientY, at: Date.now() } : null;
+  }, { passive: true });
+  page.addEventListener('touchend', (e) => {
+    if (!start) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    const quick = Date.now() - start.at < 600;
+    start = null;
+    if (quick && Math.abs(dx) > 60 && Math.abs(dx) > 2 * Math.abs(dy)) stepExpPeriod(dx < 0 ? 1 : -1);
+  }, { passive: true });
+})();
 
 /** Only the selected year's stats (records don't depend on the year); the latest call wins when years change quickly. */
 let _expStatsSeq = 0;
@@ -3134,7 +3198,8 @@ function setCategoryFilter(cat) {
 /** TWD records as before; foreign ones in their currency with the TWD value underneath. */
 function expAmountCell(e) {
   if ((e.currency || 'TWD') === 'TWD') return fmtTWD(e.amount);
-  return `${fmtMoney(e.amount, e.currency)}<span class="cell-sub">≈ ${fmtTWD(e.amount_twd)}</span>`;
+  const est = e.fx_pending ? '<span title="離線時記的，用之前的匯率估算；有網路時自動更新"> · 估算</span>' : '';
+  return `${fmtMoney(e.amount, e.currency)}<span class="cell-sub">≈ ${fmtTWD(e.amount_twd)}${est}</span>`;
 }
 
 function renderExpenseTable(month) {
@@ -3150,7 +3215,7 @@ function renderExpenseTable(month) {
   }
   // One row per record: category with date · note underneath, amount (income green with +), actions
   list.innerHTML = filtered.map(e => {
-    const meta = [shortDate(e.date), e.note || ''].filter(Boolean).join(' · ');
+    const meta = [dayLabel(e.date), e.note || ''].filter(Boolean).join(' · ');
     return `
       <div class="exp-row exp-${e.type || 'expense'}">
         <div class="e-cat">${escapeHtml(catDisplay(e.category))}<span class="e-meta">${escapeHtml(meta)}</span></div>
