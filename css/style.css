@@ -491,31 +491,6 @@ textarea {
   font-size: 0.85rem;
 }
 
-.input-with-toggle {
-  display: flex;
-  gap: 0;
-  align-items: stretch;
-}
-
-.input-with-toggle input {
-  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
-  flex: 1;
-}
-
-.btn-icon-only {
-  background: var(--bg-input);
-  border: 1px solid var(--border-color);
-  border-left: none;
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 0 0.75rem;
-  font-size: 1rem;
-  transition: color var(--transition);
-}
-
-.btn-icon-only:hover { color: var(--text-primary); }
-
 .form-hint {
   font-size: 0.78rem;
   color: var(--text-muted);
@@ -716,48 +691,6 @@ select option {
   border: none;
   border-top: 1px solid var(--border-color);
   margin: 1.5rem 0;
-}
-
-.llm-result-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  padding: 1.25rem;
-  margin-top: 1rem;
-  line-height: 1.75;
-  font-size: 0.92rem;
-}
-
-.llm-result-card strong {
-  color: var(--accent);
-}
-
-.llm-result-card ul, .llm-result-card ol {
-  padding-left: 1.5rem;
-  margin: 0.5rem 0;
-}
-
-.llm-result-card li {
-  margin-bottom: 0.3rem;
-}
-
-/* --- Loading --- */
-.loading-box {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 1.25rem;
-  color: var(--text-secondary);
-  font-size: 0.95rem;
-}
-
-.spinner {
-  width: 24px;
-  height: 24px;
-  border: 3px solid var(--border-color);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
 }
 
 /* --- Modal --- */
@@ -1527,7 +1460,6 @@ select option {
 
 /* Never let one wide element scroll the whole page sideways. */
 body { overflow-x: clip; }
-.llm-result-card { overflow-x: auto; overflow-wrap: anywhere; }
 .chart-head { flex-wrap: wrap; gap: 8px; }
 
 /* Phones: bottom tab bar, full-screen forms, tables scroll with a sticky first column */

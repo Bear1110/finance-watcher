@@ -47,9 +47,8 @@ test('settings merge by key and holdings by symbol', () => {
   db._reset({ settings: [{ id: 1, key: 'usd_twd_rate', value: '32' }] });
   db.setSetting('usd_twd_rate', '31.5');
   const taken = db.takePending();
-  const remote = [{ id: 77, key: 'usd_twd_rate', value: '32' }, { id: 78, key: 'perf_start_date', value: '2025-01-01' }, { id: 79, key: 'gemini_api_key', value: 'typed-into-sheet' }];
+  const remote = [{ id: 77, key: 'usd_twd_rate', value: '32' }, { id: 78, key: 'perf_start_date', value: '2025-01-01' }];
   const { toWrite } = db.mergeTable('settings', remote, taken.settings);
-  // Device-local keys never come in from the sheet.
   assert.deepEqual(Object.fromEntries(toWrite.map((r) => [r.key, r.value])), { usd_twd_rate: '31.5', perf_start_date: '2025-01-01' });
 });
 

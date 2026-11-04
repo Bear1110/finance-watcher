@@ -114,30 +114,6 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
-/** Current month YYYY-MM */
-function currentMonth() {
-  return new Date().toISOString().slice(0, 7);
-}
-
-/** Simple markdown-like rendering (bold, lists) */
-function renderMarkdown(text) {
-  if (!text) return '';
-  let html = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-  // bold
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  // unordered lists
-  html = html.replace(/^[\-\*]\s+(.+)$/gm, '<li>$1</li>');
-  html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
-  // ordered lists
-  html = html.replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>');
-  // paragraphs
-  html = html.replace(/\n{2,}/g, '</p><p>');
-  html = html.replace(/\n/g, '<br>');
-  return '<p>' + html + '</p>';
-}
 
 // ============================================================
 // SECTION: Toast Notifications
@@ -3224,60 +3200,6 @@ async function generatePrompt() {
   }
 }
 
-async function generateAndSendToAPI() {
-  const sections = getSelectedSections();
-  if (sections.length === 0) {
-    showToast('請至少勾選一項資料', 'error');
-    return;
-  }
-  const loadingEl = document.getElementById('llm-loading');
-  const resultEl = document.getElementById('llm-result');
-  loadingEl.style.display = 'flex';
-  resultEl.style.display = 'none';
-
-  try {
-    const result = await api('/api/llm/analyze', {
-      method: 'POST',
-      body: JSON.stringify({ auto: true, sections }),
-    });
-    const response = result.response || '';
-    resultEl.innerHTML = renderMarkdown(response);
-    resultEl.style.display = 'block';
-    showToast('AI 分析完成', 'success');
-  } catch (err) {
-    showToast('AI 分析失敗: ' + err.message, 'error');
-  } finally {
-    loadingEl.style.display = 'none';
-  }
-}
-
-async function sendPromptToAPI() {
-  const prompt = document.getElementById('generated-prompt').value;
-  if (!prompt) {
-    showToast('請先產生 Prompt', 'error');
-    return;
-  }
-  const loadingEl = document.getElementById('llm-loading');
-  const resultEl = document.getElementById('llm-result');
-  loadingEl.style.display = 'flex';
-  resultEl.style.display = 'none';
-
-  try {
-    const result = await api('/api/llm/analyze', {
-      method: 'POST',
-      body: JSON.stringify({ prompt }),
-    });
-    const response = result.response || '';
-    resultEl.innerHTML = renderMarkdown(response);
-    resultEl.style.display = 'block';
-    showToast('AI 分析完成', 'success');
-  } catch (err) {
-    showToast('AI 分析失敗: ' + err.message, 'error');
-  } finally {
-    loadingEl.style.display = 'none';
-  }
-}
-
 function copyPrompt() {
   copyText(document.getElementById('generated-prompt').value);
 }
@@ -3483,22 +3405,6 @@ function escapeHtml(text) {
 
 async function loadSettings() {
   try {
-    const settings = await api('/api/settings');
-    const form = document.getElementById('settings-form');
-    if (settings.usd_twd_rate != null) {
-      form.querySelector('[name="usd_twd_rate"]').value = settings.usd_twd_rate;
-      document.getElementById('settings-rate-hint').textContent = `目前匯率: ${settings.usd_twd_rate}`;
-    }
-    const updatedEl = document.getElementById('settings-rate-updated');
-    if (updatedEl) {
-      const ts = settings.usd_twd_rate_updated_at;
-      updatedEl.textContent = ts ? `Yahoo Finance 更新於: ${ts}` : '尚未自動更新 (使用手動值或預設 32)';
-    }
-    if (settings.gemini_api_key) {
-      form.querySelector('[name="gemini_api_key"]').value = settings.gemini_api_key;
-    }
-    const proxyInput = document.getElementById('yahoo-proxy-url');
-    if (proxyInput) proxyInput.value = settings.yahoo_proxy_url || '';
     window.renderCloudStatus?.();
 
     // Version
@@ -3517,68 +3423,12 @@ async function loadSettings() {
   }
 }
 
-async function saveSettings(e) {
-  e.preventDefault();
-  const form = e.target;
-  const data = {
-    usd_twd_rate: Number(form.querySelector('[name="usd_twd_rate"]').value),
-    gemini_api_key: form.querySelector('[name="gemini_api_key"]').value,
-  };
-
+/** USD/TWD from the market, saved for every TWD conversion; refreshed in the background at startup (keeps the last rate when offline). */
+async function refreshUSDTWDRate() {
   try {
-    await api('/api/settings', { method: 'PUT', body: JSON.stringify(data) });
-    showToast('設定已儲存', 'success');
-    document.getElementById('settings-rate-hint').textContent = `目前匯率: ${data.usd_twd_rate}`;
+    return (await api('/api/settings/refresh-rate', { method: 'POST' })).usd_twd_rate;
   } catch (err) {
-    showToast('儲存設定失敗: ' + err.message, 'error');
-  }
-}
-
-function toggleApiKeyVisibility() {
-  const input = document.getElementById('gemini-api-key');
-  const icon = document.getElementById('eye-icon');
-  if (input.type === 'password') {
-    input.type = 'text';
-    icon.innerHTML = '&#x1F576;';
-  } else {
-    input.type = 'password';
-    icon.innerHTML = '&#x1F441;';
-  }
-}
-
-async function refreshUSDTWDRate(silent = false) {
-  try {
-    const result = await api('/api/settings/refresh-rate', { method: 'POST' });
-    const rate = result.usd_twd_rate;
-    const ts = result.usd_twd_rate_updated_at;
-    // Update visible UI if Settings tab is loaded
-    const form = document.getElementById('settings-form');
-    const rateInput = form && form.querySelector('[name="usd_twd_rate"]');
-    if (rateInput) rateInput.value = rate;
-    const hint = document.getElementById('settings-rate-hint');
-    if (hint) hint.textContent = `目前匯率: ${rate}`;
-    const updated = document.getElementById('settings-rate-updated');
-    if (updated) updated.textContent = `Yahoo Finance 更新於: ${ts}`;
-    if (!silent) showToast(`匯率已更新: ${Number(rate).toFixed(4)}`, 'success');
-    return rate;
-  } catch (err) {
-    if (!silent) showToast('更新匯率失敗: ' + err.message, 'error');
     return null;
-  }
-}
-
-async function testApiConnection() {
-  const resultEl = document.getElementById('settings-test-result');
-  resultEl.innerHTML = '<span style="color:var(--text-secondary)">測試連線中...</span>';
-
-  try {
-    const result = await api('/api/llm/analyze', {
-      method: 'POST',
-      body: JSON.stringify({ auto: true, test: true }),
-    });
-    resultEl.innerHTML = '<span style="color:var(--green)">API 連線成功！</span>';
-  } catch (err) {
-    resultEl.innerHTML = `<span style="color:var(--red)">連線失敗: ${escapeHtml(err.message)}</span>`;
   }
 }
 
@@ -3633,7 +3483,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initHoldingsView();
 
   // Silently refresh USD/TWD rate in background (best-effort, won't block UI)
-  refreshUSDTWDRate(true).then(() => {
+  refreshUSDTWDRate().then(() => {
     // Re-render dashboard if rate changed so live numbers reflect new rate
     if (document.querySelector('#tab-dashboard.active')) loadDashboard();
   });

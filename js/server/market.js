@@ -2,13 +2,13 @@
 //
 // Every request is a Yahoo Finance chart call. Browsers cannot call Yahoo
 // directly (no CORS), so requests go through a pass-through proxy
-// (worker/yahoo-proxy.js) whose URL comes from settings or config.js. Without a
+// (worker/yahoo-proxy.js) whose URL is in config.js. Without a
 // proxy, quotes and the USD/TWD rate fall back to a provider registered by the
 // cloud layer (GOOGLEFINANCE in the user's sheet); history and dividends are
 // then unavailable.
 
 import { DEFAULT_YAHOO_PROXY } from '../config.js';
-import { getSetting, today } from './db.js';
+import { today } from './db.js';
 import { addDays } from './twr_calc.js';
 
 const QUOTE_TTL_MS = 5 * 60 * 1000;
@@ -24,7 +24,7 @@ export class MarketUnavailableError extends Error {
 }
 
 export function proxyURL() {
-  const u = (getSetting('yahoo_proxy_url') || DEFAULT_YAHOO_PROXY || '').trim();
+  const u = (DEFAULT_YAHOO_PROXY || '').trim();
   return u.replace(/\/+$/, '');
 }
 

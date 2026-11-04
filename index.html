@@ -11,7 +11,7 @@
     style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style;
     font-src https://fonts.gstatic.com;
     img-src 'self' data:;
-    connect-src 'self' https://sheets.googleapis.com https://www.googleapis.com https://generativelanguage.googleapis.com https://accounts.google.com/gsi/ https://finance-watcher-yahoo.bearcc01205.workers.dev;
+    connect-src 'self' https://sheets.googleapis.com https://www.googleapis.com https://accounts.google.com/gsi/ https://finance-watcher-yahoo.bearcc01205.workers.dev;
     frame-src https://accounts.google.com/gsi/;
     object-src 'none';
     base-uri 'self';
@@ -966,7 +966,6 @@
         </div>
         <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-primary" onclick="generatePrompt()">產生 Prompt</button>
-          <button class="btn btn-outline" onclick="generateAndSendToAPI()">直接送 Gemini API 分析</button>
         </div>
       </div>
 
@@ -980,19 +979,11 @@
               <a id="analysis-claude" class="btn btn-outline btn-sm" target="_blank" rel="noopener noreferrer">開啟 Claude</a>
             </span>
             <button class="btn btn-outline btn-sm" onclick="copyPrompt()">複製</button>
-            <button class="btn btn-primary btn-sm" onclick="sendPromptToAPI()">送 Gemini API</button>
           </div>
         </div>
         <p class="form-hint" id="analysis-ai-too-long" style="display:none;margin:0 0 8px">提示詞太長，無法用連結帶入，請按「複製」再貼到 AI。</p>
         <textarea id="generated-prompt" rows="12"></textarea>
       </div>
-
-      <!-- Loading & Result -->
-      <div id="llm-loading" class="card loading-box" style="display:none;margin-bottom:20px">
-        <div class="spinner"></div>
-        <span>AI 分析中，請稍候...</span>
-      </div>
-      <div id="llm-result" class="card llm-result-card" style="display:none;margin-bottom:20px"></div>
 
       <!-- AI import: format-only prompt -> the user's AI -> paste the JSON back -->
       <div class="card" id="ai-import-card">
@@ -1044,47 +1035,6 @@
           <button type="button" class="btn btn-outline btn-sm" id="cloud-signout-btn" onclick="cloudSignOut()">登出</button>
         </div>
         <p class="form-hint">紀錄存在你自己雲端硬碟的「Finance Watcher 財務紀錄」試算表。網站只能存取它自己建立的那份檔案，作者看不到任何人的資料。沒登入時資料只存在這台裝置的瀏覽器。</p>
-      </div>
-
-      <div class="card">
-        <div class="card-header"><h3><span class="i" data-icon="sliders"></span>一般</h3></div>
-        <form id="settings-form" onsubmit="saveSettings(event)">
-          <div class="form-group">
-            <label>USD/TWD 匯率</label>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-              <input type="number" name="usd_twd_rate" step="0.0001" min="0" required placeholder="e.g. 32.5" style="flex:1;min-width:140px">
-              <button type="button" class="btn btn-outline btn-sm" onclick="refreshUSDTWDRate()">立即更新</button>
-            </div>
-            <span class="form-hint" id="settings-rate-hint"></span>
-            <span class="form-hint" id="settings-rate-updated"></span>
-          </div>
-          <div class="form-group">
-            <label>Gemini API Key</label>
-            <div class="input-with-toggle">
-              <input type="password" name="gemini_api_key" id="gemini-api-key" placeholder="輸入您的 API Key">
-              <button type="button" class="btn-icon-only" onclick="toggleApiKeyVisibility()" title="顯示/隱藏">
-                <span id="eye-icon">&#x1F441;</span>
-              </button>
-            </div>
-          </div>
-          <div class="form-actions">
-            <button type="submit" class="btn btn-primary">儲存設定</button>
-            <button type="button" class="btn btn-outline" onclick="testApiConnection()">測試 API 連線</button>
-          </div>
-        </form>
-        <div id="settings-test-result"></div>
-      </div>
-
-      <div class="card">
-        <div class="card-header"><h3><span class="i" data-icon="trending"></span>行情來源</h3></div>
-        <div class="form-group">
-          <label for="yahoo-proxy-url">Yahoo 代理網址</label>
-          <div class="settings-inline">
-            <input type="url" id="yahoo-proxy-url" placeholder="https://xxx.workers.dev（留空使用預設）">
-            <button type="button" class="btn btn-outline btn-sm" onclick="saveProxyURL()">儲存並測試</button>
-          </div>
-          <span class="form-hint" id="yahoo-proxy-hint">Yahoo Finance 不允許網頁直接查詢，需要經過轉送代理。沒有代理時，報價與匯率改用試算表的 GOOGLEFINANCE（需登入），績效分析與股利建議無法使用。</span>
-        </div>
       </div>
 
       <div class="card">

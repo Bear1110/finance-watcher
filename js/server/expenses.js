@@ -153,7 +153,7 @@ function yearParam(req) {
  * { income, expense, byCategory: { income: {cat: amt}, expense: {cat: amt} } }.
  * Anything not 'income' counts as expense; an empty category stays '' (the UI labels it).
  */
-export function monthlyActuals(year) {
+function monthlyActuals(year) {
   const months = Array.from({ length: 12 }, () => ({ income: 0, expense: 0, byCategory: { income: {}, expense: {} } }));
   for (const e of db.where('expenses', (e) => e.date.startsWith(`${year}-`))) {
     const m = Number(e.date.slice(5, 7));

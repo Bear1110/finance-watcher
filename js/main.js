@@ -7,7 +7,6 @@ import { badRequest, body } from './server/util.js';
 import { VERSION } from './version.js';
 import { watchForUpdate } from './update.js';
 import * as sync from './cloud/sync.js';
-import { invalidateCache, invalidateForexCache, fetchQuote } from './server/market.js';
 import { BACKUP_FORMAT } from './server/settings.js';
 
 // Route registration happens on import.
@@ -50,14 +49,13 @@ function parseImport(data) {
 }
 
 // Replaces every table present in the file. Rows keep their ids so references
-// (account_id) stay valid; device-local settings are never imported.
+// (account_id) stay valid.
 route('POST', '/api/import', async (req) => {
   const data = body(req);
   const counts = parseImport(data);
   await db.transaction(async () => {
     for (const t of Object.keys(counts)) {
-      let rows = data.tables[t];
-      if (t === 'settings') rows = rows.filter((r) => !db.LOCAL_SETTINGS.has(r.key));
+      const rows = data.tables[t];
       db.removeWhere(t, () => true);
       for (const r of rows) db.insert(t, r);
     }
@@ -181,24 +179,6 @@ function cloudSignOut() {
   window.fwRefresh?.();
 }
 
-async function saveProxyURL() {
-  const input = document.getElementById('yahoo-proxy-url');
-  const url = input.value.trim().replace(/\/+$/, '');
-  if (url && !/^https:\/\//.test(url)) {
-    window.showToast?.('代理網址需以 https:// 開頭', 'error');
-    return;
-  }
-  db.setSetting('yahoo_proxy_url', url);
-  invalidateCache();
-  invalidateForexCache();
-  try {
-    const q = await fetchQuote('SPY');
-    window.showToast?.(`行情來源可用（SPY ${q.price}）`, 'success');
-  } catch (e) {
-    window.showToast?.('行情來源無法使用：' + e.message, 'error');
-  }
-}
-
 function downloadBackup() {
   window.api('/api/settings/backup').catch((e) => window.showToast?.('備份失敗：' + e.message, 'error'));
 }
@@ -225,7 +205,7 @@ function fwRefresh() {
 Object.assign(window, {
   LocalAPI: { handle },
   fwRefresh, renderCloudStatus, cloudSignIn, cloudSyncNow, cloudSignOut,
-  onSyncPillClick, saveProxyURL, downloadBackup, clearLocalData, reloadApp,
+  onSyncPillClick, downloadBackup, clearLocalData, reloadApp,
   EXPENSE_CATEGORIES, EXPENSE_CURRENCIES,
 });
 

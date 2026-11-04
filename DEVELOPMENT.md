@@ -26,7 +26,6 @@
 - 分頁用固定 sheetId 辨識（`js/cloud/sheets.js` 的 `SHEET_IDS`，只能新增不能改號），使用者改分頁名稱不會壞；欄位依標題名稱對應
 - 寫入分頁時先覆寫、再清掉多出來的尾巴，寫到一半失敗也不會留下空分頁
 - 收支可以記外幣（`expenses.js` 的 `EXPENSE_CURRENCIES`）：每筆存當天的市場匯率 `fx_rate`（`{幣別}TWD=X` 當日或前一個交易日收盤，可手動改），統計一律換算台幣；沒有 `fx_rate` 的舊美金紀錄用設定的 USD/TWD 匯率。離線時查不到匯率就先用同幣別最近一筆的匯率估算（`fx_pending=1`），之後有網路時 `/api/expenses/refresh-fx`（收支頁載入、恢復連線時）換成市場匯率；從沒記過的幣別離線時要手動填匯率。新增時預設上次用的幣別（本機 localStorage `expenseCurrency`）
-- 只存在本機、不同步的設定：`gemini_api_key`、`yahoo_proxy_url`（`db.LOCAL_SETTINGS`）
 
 ## AI 匯入
 
@@ -54,7 +53,7 @@ Yahoo Finance 沒有 CORS，瀏覽器不能直接呼叫。`market.js` 的所有�
 
 1. Cloudflare 後台 → Workers → 建立 → 貼上 `worker/yahoo-proxy.js` → 部署
 2. 把 `ALLOWED_ORIGINS` 改成自己的 GitHub Pages 網域
-3. 網址填進 `js/config.js` 的 `DEFAULT_YAHOO_PROXY`（使用者也可在設定頁覆寫）
+3. 網址填進 `js/config.js` 的 `DEFAULT_YAHOO_PROXY`
 
 沒有代理時：即時報價與 USD/TWD 匯率改用試算表 `quotes` 分頁的 `GOOGLEFINANCE` 公式（需登入）；
 投資績效、股利建議、資料檢查的漏記股利項目無法使用，會顯示說明。部分台股 ETF 在 `GOOGLEFINANCE` 可能查不到報價（已知限制，平常走代理不受影響）。
@@ -86,7 +85,7 @@ node --test                  # 單元測試（FIFO、TWR、代管帳戶、股利
 
 `index.html` 開頭的 Content-Security-Policy 限制網頁只能連到列出的網域，就算有惡意程式碼混進來也很難把資料送出去。
 
-- 新增外部服務（換 Yahoo 代理網址、加新 API）時，要同步更新 `connect-src`，不然請求會被瀏覽器擋下來。設定頁自訂的代理網址也一樣受限制
+- 新增外部服務（換 Yahoo 代理網址、加新 API）時，要同步更新 `connect-src`，不然請求會被瀏覽器擋下來
 - Chart.js 有加 `integrity`（SRI）。升級版本時要重新算雜湊，並和 npm 官方套件比對：
   `curl -sL <網址> | openssl dgst -sha384 -binary | openssl base64 -A`
 - 要用 `dist/chart.umd.js`。4.4.1 的 npm 套件裡沒有 `chart.umd.min.js`，那個檔案是 jsdelivr 即時產生的，雜湊不保證固定

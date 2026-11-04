@@ -71,9 +71,9 @@ export const SCHEMA = {
   },
 };
 
-// Settings that never leave this device (secrets, per-device choices).
-export const LOCAL_SETTINGS = new Set(['gemini_api_key', 'yahoo_proxy_url']);
-const LOCAL_SETTINGS_KEY = 'fw.localSettings.v1';
+// Where device-only settings (a Gemini API key, a custom Yahoo proxy URL) used to be kept; both
+// are gone, so load() deletes it — mostly so an old API key doesn't linger in the browser.
+const RETIRED_LOCAL_SETTINGS_KEY = 'fw.localSettings.v1';
 
 // Values reported for settings nobody has saved yet.
 const SETTING_DEFAULTS = { usd_twd_rate: '32.0' };
@@ -83,7 +83,6 @@ export const SYNCED_TABLES = Object.keys(SCHEMA).filter((t) => SCHEMA[t].synced)
 let tables = {};
 let pending = {}; // table -> { up: Set(key), del: Set(key) }
 const listeners = new Set();
-let localSettingsCache = null;
 
 function storage() {
   try { return window.localStorage; } catch { return null; }
@@ -149,6 +148,7 @@ export function load() {
   pending = {};
   const ls = storage();
   if (!ls) return;
+  try { ls.removeItem(RETIRED_LOCAL_SETTINGS_KEY); } catch { /* ignore */ }
   try {
     const data = JSON.parse(ls.getItem(STORAGE_KEY) || '{}');
     const cache = JSON.parse(ls.getItem(CACHE_KEY) || '{}');
@@ -364,36 +364,21 @@ export async function transaction(fn) {
 
 // ---------------------------------------------------------------- settings
 
-function localSettings() {
-  if (!localSettingsCache) {
-    try { localSettingsCache = JSON.parse(storage()?.getItem(LOCAL_SETTINGS_KEY) || '{}'); } catch { localSettingsCache = {}; }
-  }
-  return localSettingsCache;
-}
-
 /** A setting's stored value; when unset, its default (or ''). */
 export function getSetting(key) {
-  if (LOCAL_SETTINGS.has(key)) return localSettings()[key] ?? '';
   const r = tables.settings.find((x) => x.key === key);
   return r ? r.value : (SETTING_DEFAULTS[key] ?? '');
 }
 
 export function setSetting(key, value) {
-  if (LOCAL_SETTINGS.has(key)) {
-    const s = { ...localSettings(), [key]: String(value) };
-    localSettingsCache = s;
-    try { storage()?.setItem(LOCAL_SETTINGS_KEY, JSON.stringify(s)); } catch { /* ignore */ }
-    return;
-  }
   upsert('settings', { key, value: String(value) });
 }
 
-/** Every setting, local-only keys included ('' when unset). */
+/** Every setting (defaults for the unset ones). */
 export function allSettings() {
   const out = { ...SETTING_DEFAULTS };
-  for (const k of LOCAL_SETTINGS) out[k] = '';
   for (const r of tables.settings) out[r.key] = r.value;
-  return { ...out, ...localSettings() };
+  return out;
 }
 
 // ---------------------------------------------------------------- sync support
@@ -445,8 +430,6 @@ export function mergeTable(table, remote, taken) {
   const before = tables[table];
   const localByKey = new Map(before.map((r) => [key(r), r]));
   const remoteByKey = new Map(remote.map((r) => { const n = normalizeRow(table, r); return [key(n), n]; }));
-  // Device-local settings typed into the sheet are ignored (and dropped from it).
-  if (table === 'settings') for (const k of LOCAL_SETTINGS) remoteByKey.delete(k);
   const merged = new Map(remoteByKey);
   const apply = (p) => {
     if (!p) return;
@@ -479,6 +462,5 @@ export function clearLocal() {
 export function _reset(data = {}) {
   tables = emptyTables();
   pending = {};
-  localSettingsCache = null;
   for (const [k, v] of Object.entries(data)) tables[k] = v.map((r) => normalizeRow(k, r));
 }

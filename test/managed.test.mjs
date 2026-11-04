@@ -129,14 +129,11 @@ test('expense stats: actuals per month with USD converted', async () => {
   await assert.rejects(post('/api/expenses', { amount: 0, date: '2026-01-01' }), (e) => e.status === 400);
 });
 
-test('settings: local keys stay local and backup omits gemini key', async () => {
-  await handle('/api/settings', { method: 'PUT', body: JSON.stringify({ usd_twd_rate: 31.5, gemini_api_key: 'secret' }) });
-  const s = await handle('/api/settings');
-  assert.equal(s.usd_twd_rate, '31.5');
-  assert.equal(s.gemini_api_key, 'secret');
-  assert.ok(!db.all('settings').some((r) => r.key === 'gemini_api_key'));
+test('settings are saved and included in the backup', async () => {
+  await handle('/api/settings', { method: 'PUT', body: JSON.stringify({ usd_twd_rate: 31.5 }) });
+  assert.equal((await handle('/api/settings')).usd_twd_rate, '31.5');
   const { buildBackup } = await import('../js/server/settings.js');
   const bk = buildBackup();
   assert.equal(bk.format, 'finance-watcher-backup');
-  assert.ok(!JSON.stringify(bk).includes('secret'));
+  assert.ok(bk.tables.settings.some((r) => r.key === 'usd_twd_rate' && r.value === '31.5'));
 });

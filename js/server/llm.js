@@ -1,41 +1,12 @@
-// AI analysis. The Gemini API is
-// called straight from the browser with the user's own key, which never leaves
-// this device except in the request to Google.
+// AI analysis: builds a prompt from the user's data; the user takes it to their own AI
+// (ChatGPT / Claude links or copy) — nothing is sent anywhere from here.
 
 import * as db from './db.js';
 import { route } from './router.js';
 import { fetchQuotes } from './market.js';
-import { HttpError, badRequest, body, cmp, round2, storedUSDTWDRate, sellCostBasis, sellReturnPct } from './util.js';
+import { body, cmp, round2, storedUSDTWDRate, sellCostBasis, sellReturnPct } from './util.js';
 import { holdingDetail } from './stocks.js';
-import { expenseTWD, monthlyActuals } from './expenses.js';
-
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
-
-// ---------------------------------------------------------------- Gemini
-
-export async function analyzeWithGemini(apiKey, prompt) {
-  let resp;
-  try {
-    resp = await fetch(GEMINI_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-      signal: AbortSignal.timeout ? AbortSignal.timeout(60000) : undefined,
-    });
-  } catch (e) {
-    throw new Error(`call Gemini API: ${e.message}`);
-  }
-  let gr;
-  try {
-    gr = await resp.json();
-  } catch (e) {
-    throw new Error(`decode Gemini response: ${e.message}`);
-  }
-  if (gr.error) throw new Error(`Gemini API error: ${gr.error.message}`);
-  const text = gr.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (text == null) throw new Error('empty Gemini response');
-  return text;
-}
+import { expenseTWD } from './expenses.js';
 
 // ---------------------------------------------------------------- data for the prompt
 
@@ -313,22 +284,6 @@ export function generateFinancialPrompt(data) {
 }
 
 // ---------------------------------------------------------------- routes
-
-route('POST', '/api/llm/analyze', async (req) => {
-  const r = body(req);
-  const apiKey = db.getSetting('gemini_api_key');
-  if (!apiKey) throw badRequest('gemini_api_key not configured in settings');
-  let prompt = r.prompt || '';
-  if (r.auto) prompt = await generateAutoPrompt(r.sections);
-  if (!prompt) throw badRequest('prompt is required');
-  let response;
-  try {
-    response = await analyzeWithGemini(apiKey, prompt);
-  } catch (e) {
-    throw new HttpError(500, 'Gemini API error: ' + e.message);
-  }
-  return { response };
-});
 
 route('POST', '/api/llm/prompt', async (req) => {
   let r = {};

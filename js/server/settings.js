@@ -12,11 +12,7 @@ export const BACKUP_VERSION = 1;
 /** Everything the user owns, in the format the importer accepts. */
 export function buildBackup() {
   const tables = {};
-  for (const name of db.SYNCED_TABLES) {
-    let rows = db.all(name);
-    if (name === 'settings') rows = rows.filter((r) => !db.LOCAL_SETTINGS.has(r.key));
-    tables[name] = rows;
-  }
+  for (const name of db.SYNCED_TABLES) tables[name] = db.all(name);
   return { format: BACKUP_FORMAT, version: BACKUP_VERSION, exported_at: new Date().toISOString(), tables };
 }
 
