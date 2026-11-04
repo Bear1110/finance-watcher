@@ -1767,7 +1767,6 @@ body[data-tab="expenses"] .fab { display: flex; }
   gap: 8px;
 }
 
-.ai-actions > span { display: contents; }
 
 .import-step {
   margin: 16px 0 8px;

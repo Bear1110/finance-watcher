@@ -973,16 +973,10 @@
       <div id="prompt-area" class="card" style="margin-bottom:20px;display:none">
         <div class="card-header">
           <h3>產生的 Prompt</h3>
-          <div class="header-actions">
-            <span id="analysis-ai-links">
-              <a id="analysis-chatgpt" class="btn btn-outline btn-sm" target="_blank" rel="noopener noreferrer">開啟 ChatGPT</a>
-              <a id="analysis-claude" class="btn btn-outline btn-sm" target="_blank" rel="noopener noreferrer">開啟 Claude</a>
-            </span>
-            <button class="btn btn-outline btn-sm" onclick="copyPrompt()">複製</button>
-          </div>
         </div>
-        <p class="form-hint" id="analysis-ai-too-long" style="display:none;margin:0 0 8px">提示詞太長，無法用連結帶入，請按「複製」再貼到 AI。</p>
-        <textarea id="generated-prompt" rows="12"></textarea>
+        <p class="form-hint" style="margin:0 0 8px">選一個 AI 開啟：提示詞會自動帶入，或已經複製好，在對話框貼上即可。</p>
+        <div class="ai-actions" id="analysis-ai-sites"></div><!-- setAILinks -->
+        <textarea id="generated-prompt" rows="12" oninput="setAILinks('analysis', this.value)"></textarea>
       </div>
 
       <!-- AI import: format-only prompt -> the user's AI -> paste the JSON back -->
@@ -990,19 +984,12 @@
         <div class="card-header">
           <h3>AI 匯入</h3>
         </div>
-        <p class="form-hint" style="margin:0 0 12px">把別處的資料（記帳 App 的截圖或月報表、筆記）交給 ChatGPT / Claude 整理成固定格式，再貼回來匯入。提示詞只有格式說明；你的資料是你自己貼給 AI 的，本網站不會送出。</p>
+        <p class="form-hint" style="margin:0 0 12px">把別處的資料（記帳 App 的截圖或月報表、筆記）交給你常用的 AI 整理成固定格式，再貼回來匯入。提示詞只有格式說明；你的資料是你自己貼給 AI 的，本網站不會送出。</p>
         <div class="llm-checkboxes" id="ai-import-kinds"></div>
         <div id="ai-import-steps">
-          <p class="import-step">1. 開啟 AI（已帶入提示詞），接著貼上你的資料或附上截圖</p>
-          <div class="ai-actions">
-            <span id="import-ai-links">
-              <a id="import-chatgpt" class="btn btn-outline" target="_blank" rel="noopener noreferrer">開啟 ChatGPT</a>
-              <a id="import-claude" class="btn btn-outline" target="_blank" rel="noopener noreferrer">開啟 Claude</a>
-            </span>
-            <button class="btn btn-outline" onclick="copyText(_aiImportPrompt)">複製提示詞</button>
-          </div>
-          <p class="form-hint" style="margin:6px 0 0">手機上的 ChatGPT / Claude App 有時不會帶入提示詞，這時用「複製提示詞」再貼上。</p>
-          <p class="form-hint" id="import-ai-too-long" style="display:none;margin:6px 0 0">勾選的種類多時提示詞太長，無法用連結帶入：請按「複製提示詞」再貼到 AI，或一次只勾一種。</p>
+          <p class="import-step">1. 選一個 AI 開啟，接著貼上你的資料或附上截圖</p>
+          <p class="form-hint" style="margin:0 0 8px">提示詞會自動帶入；沒帶入的話已經複製好了，在對話框貼上即可。</p>
+          <div class="ai-actions" id="import-ai-sites"></div><!-- setAILinks -->
           <p class="import-step">2. 把 AI 的回覆整段貼在這裡</p>
           <textarea id="ai-import-text" rows="6" placeholder="AI 回覆的 JSON（含 ```json 標記或前後說明文字都可以）"></textarea>
           <button class="btn btn-primary" style="margin-top:8px" onclick="previewAIImport()">預覽</button>

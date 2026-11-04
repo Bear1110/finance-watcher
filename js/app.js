@@ -3200,28 +3200,44 @@ async function generatePrompt() {
   }
 }
 
-function copyPrompt() {
-  copyText(document.getElementById('generated-prompt').value);
-}
-
 // ============================================================
 // SECTION: AI links + AI import
 // ============================================================
 
-// Encoded prompts longer than this are offered as copy-only: chat sites reject very long URLs.
+// Encoded prompts longer than this aren't put in links: chat sites reject very long URLs.
 const AI_LINK_MAX = 7000;
 
+/** AI chat sites. prefill: a URL whose ?q= fills the chat box (without sending); the rest get the prompt by paste. */
+const AI_SITES = [
+  { name: 'ChatGPT', url: 'https://chatgpt.com/', prefill: 'https://chatgpt.com/?q=' },
+  { name: 'Claude', url: 'https://claude.ai/new', prefill: 'https://claude.ai/new?q=' },
+  { name: 'Gemini', url: 'https://gemini.google.com/app' },
+  { name: 'Copilot', url: 'https://copilot.microsoft.com/' },
+  { name: 'Grok', url: 'https://grok.com/' },
+  { name: 'DeepSeek', url: 'https://chat.deepseek.com/' },
+];
+
+const _aiPrompts = {}; // block prefix ('analysis' / 'import') -> its prompt
+
 /**
- * Point the "開啟 ChatGPT / Claude" links in the block `#${prefix}-ai-links` at a prompt
- * (?q= pre-fills the chat box). Hidden when the prompt is too long for a URL.
+ * The AI site buttons in `#${prefix}-ai-sites`, always all of them. A click copies the prompt and
+ * opens the site, pre-filled where the site supports it and the prompt fits in a URL — so the
+ * buttons never come and go with the prompt's length, and the mobile apps that ignore ?q= still work.
  */
 function setAILinks(prefix, prompt) {
+  _aiPrompts[prefix] = prompt;
   const q = encodeURIComponent(prompt);
-  const ok = q.length <= AI_LINK_MAX;
-  document.getElementById(`${prefix}-chatgpt`).href = `https://chatgpt.com/?q=${q}`;
-  document.getElementById(`${prefix}-claude`).href = `https://claude.ai/new?q=${q}`;
-  document.getElementById(`${prefix}-ai-links`).style.display = ok ? '' : 'none';
-  document.getElementById(`${prefix}-ai-too-long`).style.display = ok ? 'none' : '';
+  const fits = q.length <= AI_LINK_MAX;
+  document.getElementById(`${prefix}-ai-sites`).innerHTML = AI_SITES.map(s => {
+    const prefilled = !!s.prefill && fits;
+    return `<a class="btn btn-outline btn-sm" href="${escapeAttr(prefilled ? s.prefill + q : s.url)}" target="_blank" rel="noopener noreferrer"` +
+      ` onclick="onAISiteClick('${prefix}', ${prefilled})">${s.name}</a>`;
+  }).join('') + `<button type="button" class="btn btn-outline btn-sm" onclick="copyText(_aiPrompts['${prefix}'])">只複製</button>`;
+}
+
+function onAISiteClick(prefix, prefilled) {
+  navigator.clipboard.writeText(_aiPrompts[prefix]).catch(() => {});
+  showToast(prefilled ? '已帶入提示詞（也複製了一份）' : '提示詞已複製，到 AI 對話框貼上即可', 'success');
 }
 
 function copyText(text) {
@@ -3230,7 +3246,6 @@ function copyText(text) {
     .catch(() => showToast('複製失敗，請手動選取複製', 'error'));
 }
 
-let _aiImportPrompt = '';
 let _aiImportMode = 'add'; // 'replace' = 以對帳單取代 (stock trades)
 let _aiImportKindLabels = {}; // kind id -> label, from /api/ai-import/kinds
 
@@ -3259,7 +3274,6 @@ async function refreshAIImportPrompt() {
   document.getElementById('ai-import-steps').style.display = kinds.length ? '' : 'none';
   if (!kinds.length) return;
   const { prompt } = await api('/api/ai-import/prompt', { method: 'POST', body: JSON.stringify({ kinds }) });
-  _aiImportPrompt = prompt;
   setAILinks('import', prompt);
 }
 
