@@ -135,6 +135,7 @@ export class Spreadsheet {
     this.id = id;
     this.titles = titles; // sheetId -> title
     this.headers = {}; // table -> [header names] as last read
+    this.extent = {}; // table -> { rows, cols } holding data, as last read or written
   }
 
   get url() {
@@ -167,6 +168,8 @@ export class Spreadsheet {
       const rows = data.valueRanges?.[i]?.values ?? [];
       const headers = (rows[0] ?? []).map((h) => String(h).trim());
       this.headers[table] = headers;
+      // The API trims empty trailing rows/cells, so this is the block that holds data
+      this.extent[table] = { rows: rows.length, cols: rows.reduce((m, r) => Math.max(m, r.length), 0) };
       const cols = SCHEMA[table].columns;
       out[table] = [];
       for (const row of rows.slice(1)) {
@@ -187,7 +190,9 @@ export class Spreadsheet {
   /**
    * Rewrite whole tabs: { table: rows }. Rows are written over the old ones first
    * and only then is the leftover tail cleared, so a failure midway never leaves
-   * a tab empty.
+   * a tab empty. The tail is the rows that held data before (readAll's extent), never
+   * an open range: past the grid's last row the API rejects it ("exceeds grid limits"),
+   * which happens once a tab has grown to exactly its row count.
    */
   async writeTables(token, byTable) {
     const data = [];
@@ -198,14 +203,17 @@ export class Spreadsheet {
       this.headers[table] = headers;
       const values = [headers, ...rows.map((r) => headers.map((h) => valueToCell(r[h])))];
       data.push({ range: this.range(table, 'A1'), values });
-      clears.push(this.range(table, `A${values.length + 1}:${colLetter(Math.max(headers.length, 26) - 1)}`));
+      const old = this.extent[table] ?? { rows: 0, cols: 0 };
+      const cols = Math.max(old.cols, headers.length);
+      if (old.rows > values.length) clears.push(this.range(table, `A${values.length + 1}:${colLetter(cols - 1)}${old.rows}`));
+      this.extent[table] = { rows: values.length, cols };
     }
     if (!data.length) return;
     await api(token, `${SHEETS}/${this.id}/values:batchUpdate`, {
       method: 'POST',
       body: { valueInputOption: 'RAW', data },
     });
-    await api(token, `${SHEETS}/${this.id}/values:batchClear`, { method: 'POST', body: { ranges: clears } });
+    if (clears.length) await api(token, `${SHEETS}/${this.id}/values:batchClear`, { method: 'POST', body: { ranges: clears } });
   }
 
   // ------------------------------------------------------------ GOOGLEFINANCE
