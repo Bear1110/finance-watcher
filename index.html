@@ -275,12 +275,13 @@
                   <th>市值</th>
                   <th>未實現損益 / %</th>
                   <th title="累計已領股利 / (未實現損益 + 累計股利) ÷ 投入金額">股利 / 含股利報酬</th>
-                  <th title="近 12 個月已領股利 ÷ 市值（現價殖利率）/ ÷ 投入金額（成本殖利率）">殖利率 現價 / 成本</th>
+                  <th title="近 12 個月已領股利 ÷ 市值">現價殖利率</th>
+                  <th title="近 12 個月已領股利 ÷ 投入金額">成本殖利率</th>
                   <th>操作</th>
                 </tr>
               </thead>
               <tbody id="holdings-body">
-                <tr><td colspan="9" class="empty-state">載入中...</td></tr>
+                <tr><td colspan="10" class="empty-state">載入中...</td></tr>
               </tbody>
               <tfoot id="holdings-foot" style="display:none">
                 <tr>
@@ -296,7 +297,8 @@
                     <div id="total-div"><strong>--</strong></div>
                     <div class="cell-sub" id="total-div-return"><strong>--</strong></div>
                   </td>
-                  <td id="total-yield" class="c-yld"><strong>--</strong></td>
+                  <td id="total-yield-price" class="c-yp"><strong>--</strong></td>
+                  <td id="total-yield-cost" class="c-yc"><strong>--</strong></td>
                   <td></td>
                 </tr>
               </tfoot>
@@ -690,9 +692,11 @@
     <!-- ==================== EXPENSES TAB ==================== -->
     <section id="tab-expenses" class="tab-content">
       <!-- Period + summary -->
-      <div class="exp-period">
+      <div class="exp-period period-stepper">
+        <button type="button" class="btn btn-outline btn-sm btn-icon" id="exp-prev" onclick="stepExpPeriod(-1)" aria-label="上一期" title="上一期"><span class="i" data-icon="chevron-left"></span></button>
         <select id="exp-year-filter" onchange="onExpYearChange()" class="input-sm" aria-label="年度"></select>
         <select id="exp-month-filter" onchange="renderExpensePage()" class="input-sm" aria-label="月份"></select>
+        <button type="button" class="btn btn-outline btn-sm btn-icon" id="exp-next" onclick="stepExpPeriod(1)" aria-label="下一期" title="下一期"><span class="i" data-icon="chevron-right"></span></button>
       </div>
 
       <div class="dash-stats">
@@ -759,7 +763,7 @@
           </div>
         </div>
         <div class="table-wrap">
-          <table>
+          <table class="expense-table">
             <thead>
               <tr>
                 <th>日期</th>
@@ -783,8 +787,12 @@
           <h3>年度收支計畫</h3>
           <div class="header-actions">
             <button class="btn btn-outline btn-sm" onclick="toggleBudgetTable()">展開/收合</button>
-            <select id="budget-year" onchange="loadBudgets()" class="input-sm">
-            </select>
+            <div class="period-stepper">
+              <button type="button" class="btn btn-outline btn-sm btn-icon" onclick="stepYearSelect('budget-year', -1)" aria-label="前一年" title="前一年"><span class="i" data-icon="chevron-left"></span></button>
+              <select id="budget-year" onchange="loadBudgets()" class="input-sm" aria-label="年度">
+              </select>
+              <button type="button" class="btn btn-outline btn-sm btn-icon" onclick="stepYearSelect('budget-year', 1)" aria-label="後一年" title="後一年"><span class="i" data-icon="chevron-right"></span></button>
+            </div>
           </div>
         </div>
         <div id="budget-section" style="display:none">
