@@ -2,13 +2,16 @@
 // past the rows that held data (the API rejects ranges beyond the grid, and a tab that grew to
 // exactly its row count has nothing after the last row).
 
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { Spreadsheet, SHEET_IDS } from '../js/cloud/sheets.js';
 import { SYNCED_TABLES } from '../js/server/db.js';
 
 const header = ['id', 'type', 'amount', 'currency', 'category', 'date', 'note', 'created_at'];
 const row = (id) => [id, 'expense', 100, 'TWD', '飲食', '2026-01-01', '', ''];
+
+const realFetch = globalThis.fetch;
+after(() => { globalThis.fetch = realFetch; });
 
 /** A fake Sheets API: the expenses tab holds `sheetRows` data rows; records every call. */
 function fakeSheets(sheetRows) {
@@ -33,9 +36,8 @@ test('fewer rows than before: only the old tail rows are cleared', async () => {
   const s = new Spreadsheet('sheet', titles);
   await s.readAll('token');
   await s.writeTables('token', { expenses: records(2) });
-  // header + 2 rows written; rows 4–6 held the old 3rd–5th records. Columns: the 8 read plus
-  // fx_rate / fx_pending added to the header = A–J
-  assert.deepEqual(clearsOf(calls), ["'expenses'!A4:J6"]);
+  // header + 2 rows written; rows 4–6 held the old 3rd–5th records
+  assert.deepEqual(clearsOf(calls), ["'expenses'!4:6"]);
 });
 
 test('same or more rows (a tab already at its grid size): nothing to clear, no out-of-grid range', async () => {

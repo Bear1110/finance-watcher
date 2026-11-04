@@ -65,12 +65,6 @@ async function api(token, url, { method = 'GET', body } = {}) {
 
 const quoteTitle = (title) => `'${title.replace(/'/g, "''")}'`;
 
-function colLetter(index) {
-  let s = '';
-  for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s;
-  return s;
-}
-
 const columnsOf = (table) => Object.keys(SCHEMA[table].columns);
 
 export async function fetchEmail(token) {
@@ -135,7 +129,7 @@ export class Spreadsheet {
     this.id = id;
     this.titles = titles; // sheetId -> title
     this.headers = {}; // table -> [header names] as last read
-    this.extent = {}; // table -> { rows, cols } holding data, as last read or written
+    this.rows = {}; // table -> rows holding data (header included), as last read
   }
 
   get url() {
@@ -168,8 +162,7 @@ export class Spreadsheet {
       const rows = data.valueRanges?.[i]?.values ?? [];
       const headers = (rows[0] ?? []).map((h) => String(h).trim());
       this.headers[table] = headers;
-      // The API trims empty trailing rows/cells, so this is the block that holds data
-      this.extent[table] = { rows: rows.length, cols: rows.reduce((m, r) => Math.max(m, r.length), 0) };
+      this.rows[table] = rows.length; // the API drops empty trailing rows: this is the last used row
       const cols = SCHEMA[table].columns;
       out[table] = [];
       for (const row of rows.slice(1)) {
@@ -190,9 +183,7 @@ export class Spreadsheet {
   /**
    * Rewrite whole tabs: { table: rows }. Rows are written over the old ones first
    * and only then is the leftover tail cleared, so a failure midway never leaves
-   * a tab empty. The tail is the rows that held data before (readAll's extent), never
-   * an open range: past the grid's last row the API rejects it ("exceeds grid limits"),
-   * which happens once a tab has grown to exactly its row count.
+   * a tab empty. Only rows that held data are cleared: a range past the grid is rejected.
    */
   async writeTables(token, byTable) {
     const data = [];
@@ -203,10 +194,8 @@ export class Spreadsheet {
       this.headers[table] = headers;
       const values = [headers, ...rows.map((r) => headers.map((h) => valueToCell(r[h])))];
       data.push({ range: this.range(table, 'A1'), values });
-      const old = this.extent[table] ?? { rows: 0, cols: 0 };
-      const cols = Math.max(old.cols, headers.length);
-      if (old.rows > values.length) clears.push(this.range(table, `A${values.length + 1}:${colLetter(cols - 1)}${old.rows}`));
-      this.extent[table] = { rows: values.length, cols };
+      const old = this.rows[table] ?? 0;
+      if (old > values.length) clears.push(this.range(table, `${values.length + 1}:${old}`)); // whole rows
     }
     if (!data.length) return;
     await api(token, `${SHEETS}/${this.id}/values:batchUpdate`, {
