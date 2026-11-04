@@ -1688,16 +1688,16 @@ body { overflow-x: clip; }
   table { font-size: 0.82rem; }
   thead th { padding: 0.5rem; font-size: 0.72rem; }
   tbody td, tfoot td { padding: 0.5rem; }
-  /* not in card/list views (.as-cards and .expense-table, see the end of this file) */
-  .table-wrap table:not(.as-cards, .expense-table) th:first-child,
-  .table-wrap table:not(.as-cards, .expense-table) td:first-child:not([colspan]) {
+  /* not in card view (.as-cards, see the end of this file) */
+  .table-wrap table:not(.as-cards) th:first-child,
+  .table-wrap table:not(.as-cards) td:first-child:not([colspan]) {
     position: sticky;
     left: 0;
     z-index: 1;
     background: var(--bg-card);
     box-shadow: 1px 0 0 var(--border-color);
   }
-  .table-wrap table:not(.as-cards, .expense-table) tbody tr:hover td:first-child:not([colspan]) { background: var(--bg-card-hover); }
+  .table-wrap table:not(.as-cards) tbody tr:hover td:first-child:not([colspan]) { background: var(--bg-card-hover); }
 
   /* --- Dashboard --- */
   .hero-card { padding: 20px 16px; border-radius: 12px; }
@@ -2162,31 +2162,26 @@ body[data-tab="expenses"] .fab { display: flex; }
 .fx-row input { width: 7.5rem; }
 #expense-fx-twd:not(:empty) + #expense-fx-source:not(:empty)::before { content: ' · '; }
 
-/* --- 收支明細在手機上：每筆一列，像記帳 App ---
-   🍔 餐飲               NT$120
+/* --- 收支明細：每筆一列，像記帳 App（手機與電腦同一個版面） ---
+   🍜 飲食               NT$120
    11/03 · 午餐            ✎ 🗑
-   日期與備註併到分類下方（.e-meta），類型改用金額顏色表示（收入綠色、前面加 +） */
-.e-meta { display: none; }
-@media (max-width: 599px) {
-  .expense-table thead { display: none; }
-  .expense-table, .expense-table tbody { display: block; }
-  .expense-table tbody tr {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: "cat amt" "cat act";
-    align-items: center;
-    gap: 2px 12px;
-    padding: 10px 2px;
-    border-bottom: 1px solid var(--border-color);
-  }
-  .expense-table tbody td { padding: 0; border: none; background: none; }
-  .expense-table td:is(.e-date, .e-type, .e-note) { display: none; }
-  .expense-table td.empty-state { display: block; padding: 1.5rem 0; }
-  .expense-table .e-cat { grid-area: cat; font-size: 0.95rem; min-width: 0; }
-  .expense-table .e-meta { display: block; margin-top: 2px; font-size: 0.78rem; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .expense-table .e-amt { grid-area: amt; text-align: right; font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
-  .expense-table .e-amt .cell-sub { font-size: 0.78rem; font-weight: 400; color: var(--text-secondary); }
-  .expense-table tr.exp-income .e-amt { color: var(--green); }
-  .expense-table tr.exp-income .e-amt::before { content: '+'; }
-  .expense-table .e-act { grid-area: act; display: flex; justify-content: flex-end; gap: 6px; }
+   類型用金額顏色表示（收入綠色、前面加 +） */
+/* wide screens: keep category and amount within reading distance */
+.expense-list { max-width: 760px; }
+.exp-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "cat amt" "cat act";
+  align-items: center;
+  gap: 2px 12px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--border-color);
 }
+.exp-row:hover { background: var(--bg-card-hover); }
+.exp-row .e-cat { grid-area: cat; font-size: 0.95rem; min-width: 0; }
+.exp-row .e-meta { display: block; margin-top: 2px; font-size: 0.78rem; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exp-row .e-amt { grid-area: amt; text-align: right; font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.exp-row .e-amt .cell-sub { font-size: 0.78rem; font-weight: 400; color: var(--text-secondary); opacity: 1; }
+.exp-income .e-amt { color: var(--green); }
+.exp-income .e-amt::before { content: '+'; }
+.exp-row .e-act { grid-area: act; display: flex; justify-content: flex-end; gap: 6px; }

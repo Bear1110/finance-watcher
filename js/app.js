@@ -3143,28 +3143,23 @@ function renderExpenseTable(month) {
   const filtered = _expAll.filter(e => e.date && e.date.startsWith(prefix) &&
     (typeFilter === 'all' || (e.type || 'expense') === typeFilter) &&
     (_expCatFilter === null || (e.category || '') === _expCatFilter));
-  const tbody = document.getElementById('expense-body');
+  const list = document.getElementById('expense-list');
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" class="empty-state">${month ? '這個月' : '此年度'}尚無紀錄</td></tr>`;
+    list.innerHTML = `<div class="empty-state">${month ? '這個月' : '此年度'}尚無紀錄</div>`;
     return;
   }
-  tbody.innerHTML = filtered.map(e => {
-    const t = e.type || 'expense';
-    // .e-meta (date · note under the category) only shows in the phone layout, where the date and note cells are hidden
+  // One row per record: category with date · note underneath, amount (income green with +), actions
+  list.innerHTML = filtered.map(e => {
     const meta = [shortDate(e.date), e.note || ''].filter(Boolean).join(' · ');
     return `
-      <tr class="exp-${t}">
-        <td class="e-date">${e.date || '--'}</td>
-        <td class="e-type"><span class="tag-${t}">${t === 'income' ? '收入' : '支出'}</span></td>
-        <td class="e-cat">${escapeHtml(catDisplay(e.category))}<span class="cell-sub e-meta">${escapeHtml(meta)}</span></td>
-        <td class="e-amt">${expAmountCell(e)}</td>
-        <td class="e-note">${escapeHtml(e.note || '')}</td>
-        <td class="e-act">
+      <div class="exp-row exp-${e.type || 'expense'}">
+        <div class="e-cat">${escapeHtml(catDisplay(e.category))}<span class="e-meta">${escapeHtml(meta)}</span></div>
+        <div class="e-amt">${expAmountCell(e)}</div>
+        <div class="e-act">
           ${rowBtn('edit', `editExpense(${e.id})`)}
           ${rowBtn('delete', `deleteExpense(${e.id})`)}
-        </td>
-      </tr>
-    `;
+        </div>
+      </div>`;
   }).join('');
 }
 
