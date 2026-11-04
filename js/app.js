@@ -3192,7 +3192,6 @@ async function generatePrompt() {
     });
     const prompt = result.prompt || '';
     document.getElementById('generated-prompt').value = prompt;
-    setAILinks('analysis', prompt);
     document.getElementById('prompt-area').style.display = 'block';
     showToast('Prompt 已產生', 'success');
   } catch (err) {
@@ -3207,42 +3206,50 @@ async function generatePrompt() {
 // Encoded prompts longer than this aren't put in links: chat sites reject very long URLs.
 const AI_LINK_MAX = 7000;
 
-/** AI chat sites. prefill: a URL whose ?q= fills the chat box (without sending); the rest get the prompt by paste. */
+/** AI chat sites. prefill: ?q= on the url fills the chat box (without sending); the rest get the prompt by paste. */
 const AI_SITES = [
-  { name: 'ChatGPT', url: 'https://chatgpt.com/', prefill: 'https://chatgpt.com/?q=' },
-  { name: 'Claude', url: 'https://claude.ai/new', prefill: 'https://claude.ai/new?q=' },
+  { name: 'ChatGPT', url: 'https://chatgpt.com/', prefill: true },
+  { name: 'Claude', url: 'https://claude.ai/new', prefill: true },
   { name: 'Gemini', url: 'https://gemini.google.com/app' },
   { name: 'Copilot', url: 'https://copilot.microsoft.com/' },
   { name: 'Grok', url: 'https://grok.com/' },
   { name: 'DeepSeek', url: 'https://chat.deepseek.com/' },
 ];
 
-const _aiPrompts = {}; // block prefix ('analysis' / 'import') -> its prompt
+let _aiImportPrompt = '';
+/** The prompt each `.ai-actions[data-ai]` block hands to the AI, read when a button is clicked. */
+const AI_PROMPTS = {
+  analysis: () => document.getElementById('generated-prompt').value, // the user may have edited it
+  import: () => _aiImportPrompt,
+};
 
-/**
- * The AI site buttons in `#${prefix}-ai-sites`, always all of them. A click copies the prompt and
- * opens the site, pre-filled where the site supports it and the prompt fits in a URL — so the
- * buttons never come and go with the prompt's length, and the mobile apps that ignore ?q= still work.
- */
-function setAILinks(prefix, prompt) {
-  _aiPrompts[prefix] = prompt;
+/** Every AI site button plus 只複製, always all of them (drawn once; the prompt is read on click). */
+function renderAISites() {
+  const buttons = AI_SITES.map(s =>
+    `<a class="btn btn-outline btn-sm" data-site="${s.name}" href="${s.url}" target="_blank" rel="noopener noreferrer">${s.name}</a>`).join('') +
+    '<button type="button" class="btn btn-outline btn-sm" data-copy>只複製</button>';
+  document.querySelectorAll('.ai-actions[data-ai]').forEach(el => { el.innerHTML = buttons; });
+}
+
+// A click copies the prompt and opens the site, pre-filled where the site supports it and the prompt
+// fits in a URL — so the buttons never come and go with the prompt's length, and the mobile apps
+// that ignore ?q= still get it by paste. The href is set before the browser follows the link.
+document.addEventListener('click', (e) => {
+  const block = e.target.closest('.ai-actions[data-ai]');
+  const button = block && e.target.closest('[data-site], [data-copy]');
+  if (!button) return;
+  const prompt = AI_PROMPTS[block.dataset.ai]();
+  const site = AI_SITES.find(s => s.name === button.dataset.site);
+  if (!site) return copyText(prompt);
   const q = encodeURIComponent(prompt);
-  const fits = q.length <= AI_LINK_MAX;
-  document.getElementById(`${prefix}-ai-sites`).innerHTML = AI_SITES.map(s => {
-    const prefilled = !!s.prefill && fits;
-    return `<a class="btn btn-outline btn-sm" href="${escapeAttr(prefilled ? s.prefill + q : s.url)}" target="_blank" rel="noopener noreferrer"` +
-      ` onclick="onAISiteClick('${prefix}', ${prefilled})">${s.name}</a>`;
-  }).join('') + `<button type="button" class="btn btn-outline btn-sm" onclick="copyText(_aiPrompts['${prefix}'])">只複製</button>`;
-}
+  const prefilled = site.prefill && q.length <= AI_LINK_MAX;
+  button.href = prefilled ? `${site.url}?q=${q}` : site.url;
+  copyText(prompt, prefilled ? '已帶入提示詞（也複製了一份）' : '提示詞已複製，到 AI 對話框貼上即可');
+});
 
-function onAISiteClick(prefix, prefilled) {
-  navigator.clipboard.writeText(_aiPrompts[prefix]).catch(() => {});
-  showToast(prefilled ? '已帶入提示詞（也複製了一份）' : '提示詞已複製，到 AI 對話框貼上即可', 'success');
-}
-
-function copyText(text) {
+function copyText(text, done = '已複製到剪貼簿') {
   navigator.clipboard.writeText(text)
-    .then(() => showToast('已複製到剪貼簿', 'success'))
+    .then(() => showToast(done, 'success'))
     .catch(() => showToast('複製失敗，請手動選取複製', 'error'));
 }
 
@@ -3274,7 +3281,7 @@ async function refreshAIImportPrompt() {
   document.getElementById('ai-import-steps').style.display = kinds.length ? '' : 'none';
   if (!kinds.length) return;
   const { prompt } = await api('/api/ai-import/prompt', { method: 'POST', body: JSON.stringify({ kinds }) });
-  setAILinks('import', prompt);
+  _aiImportPrompt = prompt;
 }
 
 /** From another tab (e.g. 收支): open the AI page with only that kind checked. */
@@ -3486,6 +3493,7 @@ document.addEventListener('DOMContentLoaded', () => {
   applyPrivacyUI();
   initTabs();
   initExpenseDefaults();
+  renderAISites();
 
   // Set default date on transaction form
   const txDateInput = document.querySelector('#tx-form [name="date"]');

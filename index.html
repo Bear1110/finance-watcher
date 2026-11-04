@@ -975,8 +975,8 @@
           <h3>產生的 Prompt</h3>
         </div>
         <p class="form-hint" style="margin:0 0 8px">選一個 AI 開啟：提示詞會自動帶入，或已經複製好，在對話框貼上即可。</p>
-        <div class="ai-actions" id="analysis-ai-sites"></div><!-- setAILinks -->
-        <textarea id="generated-prompt" rows="12" oninput="setAILinks('analysis', this.value)"></textarea>
+        <div class="ai-actions" data-ai="analysis"></div>
+        <textarea id="generated-prompt" rows="12"></textarea>
       </div>
 
       <!-- AI import: format-only prompt -> the user's AI -> paste the JSON back -->
@@ -989,7 +989,7 @@
         <div id="ai-import-steps">
           <p class="import-step">1. 選一個 AI 開啟，接著貼上你的資料或附上截圖</p>
           <p class="form-hint" style="margin:0 0 8px">提示詞會自動帶入；沒帶入的話已經複製好了，在對話框貼上即可。</p>
-          <div class="ai-actions" id="import-ai-sites"></div><!-- setAILinks -->
+          <div class="ai-actions" data-ai="import"></div>
           <p class="import-step">2. 把 AI 的回覆整段貼在這裡</p>
           <textarea id="ai-import-text" rows="6" placeholder="AI 回覆的 JSON（含 ```json 標記或前後說明文字都可以）"></textarea>
           <button class="btn btn-primary" style="margin-top:8px" onclick="previewAIImport()">預覽</button>
