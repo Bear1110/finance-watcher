@@ -1875,11 +1875,7 @@ function showLedgerWarnings(result) {
 }
 
 function exportCSV(kind) {
-  const year = kind === 'expenses'
-    ? (document.getElementById('exp-year-filter')?.value || '')
-    : kind === 'dividends'
-      ? (document.getElementById('div-year-filter')?.value || '')
-      : '';
+  const year = kind === 'dividends' ? (document.getElementById('div-year-filter')?.value || '') : '';
   const qs = /^\d{4}$/.test(year) ? '?year=' + year : '';
   api(`/api/${kind}/export${qs}`).catch(err => showToast('匯出失敗: ' + err.message, 'error'));
 }
@@ -2876,7 +2872,6 @@ async function submitExpense(e) {
     } else {
       closeModal('modal-expense');
     }
-    document.getElementById('exp-type-filter').value = 'all';
     loadExpenses();
     // Also refresh budget if visible
     if (_budgetVisible) loadBudgets();
@@ -3250,6 +3245,52 @@ function expTotals(records) {
   return [inc ? `收入 +${fmtTWD(inc)}` : '', out ? `支出 ${fmtTWD(out)}` : ''].filter(Boolean).join(' · ');
 }
 
+// --- 收支 export: pick a period (default: the one on screen), download CSV ---
+
+const pad2 = (n) => String(n).padStart(2, '0');
+
+/** [from, to] of the chosen export range ('' = open end; day 31 is a safe upper bound for any month). */
+function expenseExportRange() {
+  const f = document.getElementById('export-expenses-form').elements;
+  const y = expYear();
+  const m = pad2(expMonth());
+  switch (f.range.value) {
+    case 'month': return [`${y}-${m}-01`, `${y}-${m}-31`];
+    case 'year': return [`${y}-01-01`, `${y}-12-31`];
+    case 'custom': return [f.from.value, f.to.value];
+    default: return ['', ''];
+  }
+}
+
+function openExpenseExport() {
+  const f = document.getElementById('export-expenses-form').elements;
+  const y = expYear();
+  const m = expMonth();
+  document.getElementById('export-range-month').textContent = `${y} 年 ${m} 月`;
+  document.getElementById('export-range-month-row').hidden = !m; // 全年 on screen: no single month
+  document.getElementById('export-range-year').textContent = `${y} 整年`;
+  f.range.value = m ? 'month' : 'year';
+  // 自訂 starts as the period on screen
+  f.from.value = m ? `${y}-${pad2(m)}-01` : `${y}-01-01`;
+  f.to.value = m ? `${y}-${pad2(m)}-${pad2(new Date(y, m, 0).getDate())}` : `${y}-12-31`;
+  updateExpenseExportCount();
+  openModal('modal-export-expenses');
+}
+
+function updateExpenseExportCount() {
+  const [from, to] = expenseExportRange();
+  const n = _expAll.filter(e => (!from || e.date >= from) && (!to || e.date <= to)).length;
+  document.getElementById('export-count').textContent = `共 ${n} 筆`;
+}
+
+function submitExpenseExport(ev) {
+  ev.preventDefault();
+  const [from, to] = expenseExportRange();
+  api(`/api/expenses/export?from=${from}&to=${to}`)
+    .then(() => closeModal('modal-export-expenses'))
+    .catch(err => showToast('匯出失敗: ' + err.message, 'error'));
+}
+
 /**
  * The 收支明細 list: the selected month / year, or every record matching the search box. Grouped by
  * day (header: date, weekday, the day's totals); each row: category with note, amount, actions.
@@ -3257,9 +3298,7 @@ function expTotals(records) {
 function renderExpenseTable(month) {
   const prefix = month ? `${expYear()}-${String(month).padStart(2, '0')}` : String(expYear());
   const words = document.getElementById('exp-search').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const typeFilter = document.getElementById('exp-type-filter').value;
   const filtered = _expAll.filter(e => e.date && (words.length ? expenseMatches(e, words) : e.date.startsWith(prefix)) &&
-    (typeFilter === 'all' || (e.type || 'expense') === typeFilter) &&
     (_expCatFilter === null || (e.category || '') === _expCatFilter));
   const summary = document.getElementById('exp-search-summary');
   summary.hidden = !words.length;
@@ -3277,14 +3316,10 @@ function renderExpenseTable(month) {
   list.innerHTML = [...days].map(([date, recs]) => `
       <div class="exp-day"><span>${words.length ? `${date.slice(0, 4)}/` : ''}${dayLabel(date)}</span><span>${expTotals(recs)}</span></div>` +
     recs.map(e => `
-      <div class="exp-row exp-${e.type || 'expense'}">
-        <div class="e-cat">${escapeHtml(catDisplay(e.category))}${e.note ? `<span class="e-meta">${escapeHtml(e.note)}</span>` : ''}</div>
-        <div class="e-amt">${expAmountCell(e)}</div>
-        <div class="e-act">
-          ${rowBtn('edit', `editExpense(${e.id})`)}
-          ${rowBtn('delete', `deleteExpense(${e.id})`)}
-        </div>
-      </div>`).join('')).join('');
+      <button type="button" class="exp-row exp-${e.type || 'expense'}" onclick="editExpense(${e.id})" aria-label="編輯 ${escapeAttr(catLabel(e.category))}">
+        <span class="e-cat">${escapeHtml(catDisplay(e.category))}${e.note ? `<span class="e-meta">${escapeHtml(e.note)}</span>` : ''}</span>
+        <span class="e-amt">${expAmountCell(e)}</span>
+      </button>`).join('')).join('');
 }
 
 // ============================================================

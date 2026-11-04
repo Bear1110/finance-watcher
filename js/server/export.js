@@ -39,10 +39,11 @@ function exportTransactions(req) {
   return writeCSV('transactions', ['日期', '代號', '市場', '買賣', '股數', '價格', '手續費', '證交稅', '幣別', '已實現損益', '備註'], rows);
 }
 
-// GET /api/expenses/export?year=YYYY
+// GET /api/expenses/export?from=YYYY-MM-DD&to=YYYY-MM-DD (either end may be left out; neither = everything)
 function exportExpenses(req) {
-  const year = req.query.get('year') || '';
-  const rows = db.where('expenses', yearMatch(year))
+  const from = req.query.get('from') || '';
+  const to = req.query.get('to') || '';
+  const rows = db.where('expenses', (e) => (!from || e.date >= from) && (!to || e.date <= to))
     .sort((a, b) => cmp(a.date, b.date) || a.id - b.id)
     .map((e) => [e.date, e.type, e.category, ftoa(e.amount), e.currency, e.currency === 'TWD' ? '' : ftoa(e.fx_rate), ftoa(Math.round(expenseTWD(e))), e.note]);
   return writeCSV('expenses', ['日期', '類型', '類別', '金額', '幣別', '匯率', '台幣金額', '備註'], rows);

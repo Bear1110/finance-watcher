@@ -754,12 +754,7 @@
           <div class="header-actions">
             <button type="button" id="exp-cat-chip" class="filter-chip" style="display:none" onclick="setCategoryFilter(null)" title="清除分類篩選"></button>
             <button class="btn btn-outline btn-sm" onclick="openAIImport('expenses')" data-tour="ai-import"><span class="i" data-icon="sparkles"></span>AI 匯入</button>
-            <button class="btn btn-outline btn-sm" onclick="exportCSV('expenses')"><span class="i" data-icon="download"></span>匯出 CSV</button>
-            <select id="exp-type-filter" onchange="renderExpenseTable(expMonth())" class="input-sm">
-              <option value="all">全部</option>
-              <option value="income">僅收入</option>
-              <option value="expense">僅支出</option>
-            </select>
+            <button class="btn btn-outline btn-sm" onclick="openExpenseExport()"><span class="i" data-icon="download"></span>匯出 CSV</button>
           </div>
         </div>
         <div class="exp-search">
@@ -1498,7 +1493,32 @@
     </div>
   </div>
 
-  <!-- 收支: add / edit (opened by the + button or a row's 編輯) -->
+  <!-- 收支: export CSV — which period (openExpenseExport) -->
+  <div id="modal-export-expenses" class="modal-overlay" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>匯出收支 CSV</h3>
+        <button class="modal-close" onclick="closeModal('modal-export-expenses')">&times;</button>
+      </div>
+      <form id="export-expenses-form" onsubmit="submitExpenseExport(event)" onchange="updateExpenseExportCount()">
+        <div class="export-ranges">
+          <label class="llm-check" id="export-range-month-row"><input type="radio" name="range" value="month"><span id="export-range-month"></span></label>
+          <label class="llm-check"><input type="radio" name="range" value="year"><span id="export-range-year"></span></label>
+          <label class="llm-check"><input type="radio" name="range" value="all"><span>全部紀錄</span></label>
+          <label class="llm-check"><input type="radio" name="range" value="custom"><span>自訂期間</span></label>
+          <div class="export-custom" onfocusin="this.closest('form').elements.range.value = 'custom'">
+            <input type="date" name="from" aria-label="起日"><span>～</span><input type="date" name="to" aria-label="迄日">
+          </div>
+        </div>
+        <p class="form-hint" id="export-count"></p>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary"><span class="i" data-icon="download"></span>匯出</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 收支: add / edit (opened by the + button or by tapping a record) -->
   <div id="modal-expense" class="modal-overlay" style="display:none">
     <div class="modal">
       <div class="modal-header">

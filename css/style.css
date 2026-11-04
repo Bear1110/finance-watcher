@@ -1292,9 +1292,11 @@ select option {
   background: var(--bg-card-hover);
 }
 
-.llm-check input[type="checkbox"] {
+.llm-check input:is([type="checkbox"], [type="radio"]) {
+  flex: none;
   width: 18px;
   height: 18px;
+  margin: 0;
   accent-color: var(--accent);
   cursor: pointer;
 }
@@ -2179,7 +2181,7 @@ body[data-tab="expenses"] .fab { display: flex; }
 .cat-chip.active { font-weight: 600; } /* colors: shared with .filter-chip */
 
 /* --- 收支明細: search box, day headers --- */
-.exp-search { margin-bottom: 8px; max-width: 760px; }
+.exp-search { margin-bottom: 8px; }
 .exp-search input { width: 100%; }
 .exp-search-summary { margin-top: 6px; font-size: 0.85rem; color: var(--text-secondary); }
 .exp-day {
@@ -2210,26 +2212,35 @@ body[data-tab="expenses"] .fab { display: flex; }
   color: var(--text-primary);
 }
 
-/* --- 收支明細：每筆一列，像記帳 App（手機與電腦同一個版面） ---
-   🍜 飲食               NT$120
-   11/03 · 午餐            ✎ 🗑
+/* --- 收支明細：每筆一列，像記帳 App（手機與電腦同一個版面）；點一列 = 編輯（刪除在編輯視窗） ---
+   🍜 飲食                      NT$120
+   和同事吃拉麵
    類型用金額顏色表示（收入綠色、前面加 +） */
-/* wide screens: keep category and amount within reading distance */
-.expense-list { max-width: 760px; }
 .exp-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas: "cat amt" "cat act";
   align-items: center;
-  gap: 2px 12px;
+  gap: 12px;
+  width: 100%;
   padding: 10px 4px;
+  border: none;
   border-bottom: 1px solid var(--border-color);
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 .exp-row:hover { background: var(--bg-card-hover); }
-.exp-row .e-cat { grid-area: cat; font-size: 0.95rem; min-width: 0; }
+.exp-row .e-cat { font-size: 0.95rem; min-width: 0; }
 .exp-row .e-meta { display: block; margin-top: 2px; font-size: 0.78rem; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.exp-row .e-amt { grid-area: amt; text-align: right; font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.exp-row .e-amt { text-align: right; font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .exp-row .e-amt .cell-sub { font-size: 0.78rem; font-weight: 400; color: var(--text-secondary); opacity: 1; }
 .exp-income .e-amt { color: var(--green); }
 .exp-income .e-amt::before { content: '+'; }
-.exp-row .e-act { grid-area: act; display: flex; justify-content: flex-end; gap: 6px; }
+
+/* --- 收支 export dialog --- */
+.export-ranges { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
+.export-ranges label[hidden] { display: none; }
+.export-custom { display: flex; align-items: center; gap: 6px; }
+.export-custom input { flex: 1; min-width: 0; }
