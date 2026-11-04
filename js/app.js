@@ -213,6 +213,8 @@ const ICONS = {
   pencil: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>',
   trash: '<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6M14 11v6"/>',
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/>',
+  'chevron-left': '<path d="m15 18-6-6 6-6"/>',
+  'chevron-right': '<path d="m9 18 6-6-6-6"/>',
   sparkles: '<path d="M12 3l1.9 5.8L20 10.7l-6.1 1.9L12 18.5l-1.9-5.9L4 10.7l6.1-1.9z"/><path d="M19 17v4M17 19h4"/>',
 };
 
@@ -952,16 +954,16 @@ function divMetrics(pl, cost, mv, div) {
   };
 }
 
-// Two cells: dividends (+ total return incl. dividends underneath) and yield (price / cost)
+const fmtYield = (v) => (v == null ? '--' : `${fmtNum(v, 2)}%`);
+
+// Three cells: dividends (+ total return incl. dividends underneath), yield on price, yield on cost
 function divCells(m, cur) {
   const divTxt = m.total ? fmtCur(m.total, cur) : '--';
   const retTxt = m.ret == null ? '--' : fmtPct(m.ret);
-  const yieldTxt = m.yieldPrice == null
-    ? '--'
-    : `${m.yieldPrice.toFixed(2)}%<span class="cell-sub">成本 ${m.yieldCost.toFixed(2)}%</span>`;
   return `
       <td class="c-div">${divTxt}<span class="cell-sub ${plClass(m.ret)}">${retTxt}</span></td>
-      <td class="c-yld">${yieldTxt}</td>`;
+      <td class="c-yp">${fmtYield(m.yieldPrice)}</td>
+      <td class="c-yc">${fmtYield(m.yieldCost)}</td>`;
 }
 
 // Unrealized P&L amount with its % underneath
@@ -1011,7 +1013,7 @@ async function loadHoldings() {
     const tfoot = document.getElementById('holdings-foot');
 
     if (list.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="9" class="empty-state">尚無持倉資料</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" class="empty-state">尚無持倉資料</td></tr>';
       tfoot.style.display = 'none';
       return;
     }
@@ -1043,7 +1045,7 @@ async function loadHoldings() {
       const rows = list.filter(s => s.market === g.market);
       if (rows.length === 0) return '';
       const t = subtotal(rows);
-      return `<tr class="market-group-header"><td colspan="9">${g.label}</td></tr>` +
+      return `<tr class="market-group-header"><td colspan="10">${g.label}</td></tr>` +
         rows.map(renderHoldingRow).join('') +
         `<tr class="market-subtotal"><td colspan="2" class="c-sym">${g.subtotalLabel}</td><td class="c-cost">${fmtCur(t.cost, g.cur)}</td>${dayChangeCell(t.day, t.mv, g.cur)}<td class="c-mv">${fmtCur(t.mv, g.cur)}</td>${plCell(t.pl, t.pct, g.cur)}${divCells(t.dm, g.cur)}<td></td></tr>`;
     }).join('');
@@ -1059,9 +1061,8 @@ async function loadHoldings() {
     document.getElementById('total-div').innerHTML = `<strong>${totalDm.total ? fmtTWD(totalDm.total) : '--'}</strong>`;
     document.getElementById('total-div-return').innerHTML =
       `<strong class="${plClass(totalDm.ret)}">${totalDm.ret == null ? '--' : fmtPct(totalDm.ret)}</strong>`;
-    document.getElementById('total-yield').innerHTML = totalDm.yieldPrice == null
-      ? '<strong>--</strong>'
-      : `<strong>${totalDm.yieldPrice.toFixed(2)}%</strong><span class="cell-sub">成本 ${totalDm.yieldCost.toFixed(2)}%</span>`;
+    document.getElementById('total-yield-price').innerHTML = `<strong>${fmtYield(totalDm.yieldPrice)}</strong>`;
+    document.getElementById('total-yield-cost').innerHTML = `<strong>${fmtYield(totalDm.yieldCost)}</strong>`;
 
     document.getElementById('total-cost').innerHTML = `<strong>${fmtTWD(stockData.total_cost_twd)}</strong>`;
     const dayTwd = list.reduce((sum, s) => sum + (s.day_change_twd || 0), 0);
@@ -2774,8 +2775,46 @@ async function deleteExpenseFromModal() {
 let _expAutoMonth = true;      // first load / a year change picks the latest month that has data
 function onExpYearChange() {
   _expAutoMonth = true;
-  loadExpenses();
+  loadExpenseStats();
 }
+
+/** [oldest, newest] year a year <select> offers (initYearSelector lists them newest first). */
+const yearBounds = (select) => [Number(select.options[select.options.length - 1].value), Number(select.options[0].value)];
+
+/** ‹ › next to a year <select>: one year back / forward, then fire its onchange. */
+function stepYearSelect(id, delta) {
+  const select = document.getElementById(id);
+  const [min, max] = yearBounds(select);
+  const y = Number(select.value) + delta;
+  if (y < min || y > max) return;
+  select.value = String(y);
+  select.dispatchEvent(new Event('change'));
+}
+
+/** The 收支 period one step away: next/previous month (crossing years), or year when 全年 (m = 0); null past the ends. */
+function nextExpPeriod(delta) {
+  const [min, max] = yearBounds(document.getElementById('exp-year-filter'));
+  let y = expYear();
+  let m = expMonth();
+  if (m === 0) y += delta;
+  else {
+    m += delta;
+    if (m < 1) { m = 12; y--; }
+    if (m > 12) { m = 1; y++; }
+  }
+  return y < min || y > max ? null : { y, m };
+}
+
+function stepExpPeriod(delta) {
+  const next = nextExpPeriod(delta);
+  if (!next) return;
+  document.getElementById('exp-month-filter').value = String(next.m);
+  if (next.y === expYear()) { renderExpensePage(); return; }
+  document.getElementById('exp-year-filter').value = String(next.y);
+  _expAutoMonth = false; // keep the month we stepped to (also 全年, unlike picking a year from the list)
+  loadExpenseStats();
+}
+
 let _expCatType = 'expense';   // category ranking shows expense or income
 let _expCatFilter = null;      // raw category clicked in the ranking ('' = 未分類); null = no filter
 let _expStats = null;          // /api/expenses/stats of the selected year
@@ -2798,10 +2837,25 @@ const periodMonths = (stats, month) => (month ? [stats.months[month - 1]] : stat
 const expYear = () => Number(document.getElementById('exp-year-filter').value) || new Date().getFullYear();
 const expMonth = () => Number(document.getElementById('exp-month-filter').value) || 0; // 0 = whole year
 
+/** Records (all years) + the selected year's stats; after a record changes. */
 async function loadExpenses() {
   try {
-    const [expenses, stats] = await Promise.all([api('/api/expenses'), api(`/api/expenses/stats?year=${expYear()}`)]);
+    const expenses = await api('/api/expenses');
     _expAll = Array.isArray(expenses) ? expenses : [];
+  } catch (err) {
+    showToast('載入收支資料失敗: ' + err.message, 'error');
+    return;
+  }
+  await loadExpenseStats();
+}
+
+/** Only the selected year's stats (records don't depend on the year); the latest call wins when years change quickly. */
+let _expStatsSeq = 0;
+async function loadExpenseStats() {
+  const seq = ++_expStatsSeq;
+  try {
+    const stats = await api(`/api/expenses/stats?year=${expYear()}`);
+    if (seq !== _expStatsSeq) return;
     _expStats = stats;
     setExpenseStartYear(stats.first_year);
     if (_expAutoMonth) {
@@ -2821,6 +2875,8 @@ async function loadExpenses() {
 function renderExpensePage() {
   if (!_expStats) return; // not loaded yet
   const month = expMonth();
+  document.getElementById('exp-prev').disabled = !nextExpPeriod(-1);
+  document.getElementById('exp-next').disabled = !nextExpPeriod(1);
   renderExpenseSummary(_expStats, month);
   renderCategoryRank(_expStats, month);
   renderMonthlyChart(_expStats, month);
@@ -2984,14 +3040,16 @@ function renderExpenseTable(month) {
   }
   tbody.innerHTML = filtered.map(e => {
     const t = e.type || 'expense';
+    // .e-meta (date · note under the category) only shows in the phone layout, where the date and note cells are hidden
+    const meta = [(e.date || '').slice(5).replace('-', '/'), e.note || ''].filter(Boolean).join(' · ');
     return `
-      <tr>
-        <td>${e.date || '--'}</td>
-        <td><span class="tag-${t}">${t === 'income' ? '收入' : '支出'}</span></td>
-        <td>${escapeHtml(catDisplay(e.category))}</td>
-        <td>${fmtTWD(e.amount)}</td>
-        <td>${escapeHtml(e.note || '')}</td>
-        <td>
+      <tr class="exp-${t}">
+        <td class="e-date">${e.date || '--'}</td>
+        <td class="e-type"><span class="tag-${t}">${t === 'income' ? '收入' : '支出'}</span></td>
+        <td class="e-cat">${escapeHtml(catDisplay(e.category))}<span class="cell-sub e-meta">${escapeHtml(meta)}</span></td>
+        <td class="e-amt">${fmtTWD(e.amount)}</td>
+        <td class="e-note">${escapeHtml(e.note || '')}</td>
+        <td class="e-act">
           ${rowBtn('edit', `editExpense(${e.id})`)}
           ${rowBtn('delete', `deleteExpense(${e.id})`)}
         </td>
