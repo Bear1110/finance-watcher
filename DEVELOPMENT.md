@@ -25,6 +25,7 @@
 - 列的身分：多數表用 `id`，`stock_holdings` 用 `symbol`，`settings` 用 `key`，`budgets` 用 `年-月`
 - 分頁用固定 sheetId 辨識（`js/cloud/sheets.js` 的 `SHEET_IDS`，只能新增不能改號），使用者改分頁名稱不會壞；欄位依標題名稱對應
 - 寫入分頁時先覆寫、再清掉多出來的尾巴，寫到一半失敗也不會留下空分頁
+- 收支可以記外幣（`expenses.js` 的 `EXPENSE_CURRENCIES`）：每筆存當天的市場匯率 `fx_rate`（`{幣別}TWD=X` 當日或前一個交易日收盤，可手動改），統計一律換算台幣；沒有 `fx_rate` 的舊美金紀錄用設定的 USD/TWD 匯率。新增時預設上次用的幣別（本機 localStorage `expenseCurrency`）
 - 只存在本機、不同步的設定：`gemini_api_key`、`yahoo_proxy_url`（`db.LOCAL_SETTINGS`）
 
 ## AI 匯入

@@ -35,7 +35,7 @@ export const SCHEMA = {
   },
   expenses: {
     synced: true,
-    columns: { id: 'int', type: 'text', amount: 'real', currency: 'text', category: 'text', date: 'text', note: 'text', created_at: 'text' },
+    columns: { id: 'int', type: 'text', amount: 'real', currency: 'text', fx_rate: 'real', category: 'text', date: 'text', note: 'text', created_at: 'text' },
     defaults: { type: 'expense', currency: 'TWD' },
   },
   budgets: {

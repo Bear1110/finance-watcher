@@ -71,6 +71,19 @@ function fmtCur(n, currency) {
   return (isUSD ? '$' : 'NT$') + fmt(n, isUSD ? 2 : 0);
 }
 
+/** 收支 currencies by code (EXPENSE_CURRENCIES comes from js/server/expenses.js via main.js). */
+const expCurrency = (code) => EXPENSE_CURRENCIES.find(c => c.code === (code || 'TWD')) || EXPENSE_CURRENCIES[0];
+
+/** An amount in a 收支 currency: 🇯🇵 ¥1,200 */
+function fmtMoney(n, code) {
+  if (n == null || isNaN(n)) return '--';
+  const c = expCurrency(code);
+  return `${c.flag} ${c.symbol}${fmt(n, c.decimals)}`;
+}
+
+/** YYYY-MM-DD → MM/DD */
+const shortDate = (d) => (d || '').slice(5).replace('-', '/');
+
 /** Format a per-share price in native currency (always 2 decimals, TW prices can be fractional) */
 function fmtPrice(n, currency) {
   if (n == null || isNaN(n)) return '--';
@@ -785,7 +798,7 @@ function renderDashChangeStats({ assetList, latest, rate, liveNetWorth, twHoldin
     const inclusive = base.date >= yearStart; // a Jan 1 snapshot still counts Jan 1 records
     const inRange = e => (inclusive ? e.date >= base.date : e.date > base.date) && e.date <= latest.date;
     const records = expenses.filter(e => inRange(e) && !(e.type === 'income' && e.category === '股利'));
-    const savings = records.reduce((s, e) => s + (e.type === 'income' ? e.amount : -e.amount), 0);
+    const savings = records.reduce((s, e) => s + (e.type === 'income' ? e.amount_twd : -e.amount_twd), 0);
     const divTotal = dividends.filter(inRange).reduce((s, d) => s + toTWD(d.amount, d.currency, rate), 0);
     // Every recorded trade moves cash, imported-history SELLs included (unlike the ledger's countedTxns).
     const netBuys = txList.filter(inRange).reduce((s, t) => s + (t.action === 'BUY'
@@ -2598,9 +2611,17 @@ const CATEGORY_EMOJI = {
   飲食: '🍜', 飲料: '🧋', 交通: '🚗', 住房: '🏠', 娛樂: '🎮', 醫療: '💊', 日用品: '🧻', 購物: '🛍️', 送禮: '🎁',
   其他支出: '📦', 保險: '🛡️', 薪資: '💼', 股利: '📈', 獎金: '🎉', 其他收入: '💰', '': '❔',
 };
+/** Custom categories (typed by hand, or from AI import) by a word they contain: 餐飲, 午餐費, 日本旅遊… First match wins. */
+const CATEGORY_KEYWORD_EMOJI = [
+  ['飯店', '🏨'], ['住宿', '🏨'], ['早餐', '🥐'], ['咖啡', '☕'], ['餐', '🍜'], ['飯', '🍜'], ['吃', '🍜'], ['零食', '🍪'],
+  ['機票', '✈️'], ['旅', '✈️'], ['加油', '⛽'], ['停車', '🅿️'], ['車', '🚗'],
+  ['房租', '🏠'], ['水電', '💡'], ['電信', '📱'], ['手機', '📱'], ['網路', '🌐'], ['訂閱', '🔁'],
+  ['衣', '👕'], ['美容', '💇'], ['運動', '🏋️'], ['健身', '🏋️'], ['學', '📚'], ['教育', '📚'], ['書', '📚'],
+  ['寵物', '🐾'], ['孝親', '👪'], ['稅', '🧾'], ['投資', '📊'], ['利息', '🏦'], ['退款', '↩️'],
+];
 /** Display name of a category; records without one show as 未分類. */
 const catLabel = (c) => c || '未分類';
-const catEmoji = (c) => CATEGORY_EMOJI[c || ''] || '🏷️';
+const catEmoji = (c) => CATEGORY_EMOJI[c || ''] || CATEGORY_KEYWORD_EMOJI.find(([k]) => c.includes(k))?.[1] || '🏷️';
 /** Emoji + name, for lists and tables */
 const catDisplay = (c) => `${catEmoji(c)} ${catLabel(c)}`;
 
@@ -2612,8 +2633,14 @@ function buildCategoryOptions() {
     '<option value="__custom__">自訂...</option>';
 }
 
+function buildCurrencyOptions() {
+  document.getElementById('expense-currency').innerHTML =
+    EXPENSE_CURRENCIES.map(c => `<option value="${c.code}">${c.flag} ${c.symbol} ${c.name}</option>`).join('');
+}
+
 function initExpenseDefaults() {
   buildCategoryOptions();
+  buildCurrencyOptions();
   initYearSelector('exp-year-filter');
   initMonthSelector();
 }
@@ -2670,6 +2697,76 @@ function resetExpenseForm() {
   form.querySelector('[name="date"]').value = todayStr();
   setExpenseType('expense');
   document.getElementById('custom-category-group').style.display = 'none';
+  let last = null;
+  try { last = localStorage.getItem('expenseCurrency'); } catch (e) { /* ignore */ }
+  setExpenseCurrency(EXPENSE_CURRENCIES.some(c => c.code === last) ? last : 'TWD');
+}
+
+// --- 收支 dialog: currency and exchange rate ---
+// The rate field holds the date's market rate (looked up on currency/date change) until the user
+// types one (data-manual); an empty field is filled in by the server when saving.
+
+let _fxSeq = 0; // latest lookup wins
+
+const expField = (name) => document.getElementById('expense-form').elements[name];
+const expForeign = () => expField('currency').value !== 'TWD';
+const fxManual = () => 'manual' in expField('fx_rate').dataset;
+const setFxSource = (text) => { document.getElementById('expense-fx-source').textContent = text; };
+
+/** Shows/hides the rate row for `code`; keepRate keeps the rate already in the field (editing a record). */
+function setExpenseCurrency(code, keepRate = false) {
+  expField('currency').value = code;
+  const foreign = expForeign();
+  expField('currency').closest('.amount-row').classList.toggle('foreign', foreign);
+  document.getElementById('expense-fx').hidden = !foreign;
+  document.getElementById('expense-fx-hint').hidden = !foreign;
+  document.getElementById('expense-fx-cur').textContent = code;
+  const rate = expField('fx_rate');
+  if (keepRate && rate.value) {
+    rate.dataset.manual = '';
+    setFxSource('自訂匯率');
+  } else {
+    delete rate.dataset.manual;
+    rate.value = '';
+    setFxSource('');
+    if (foreign) lookupExpenseFx();
+  }
+  updateExpenseFxHint();
+}
+
+function onExpenseCurrencyChange() {
+  setExpenseCurrency(expField('currency').value);
+}
+
+function onExpenseDateChange() {
+  if (expForeign() && !fxManual()) lookupExpenseFx();
+}
+
+function onExpenseFxInput() {
+  expField('fx_rate').dataset.manual = '';
+  setFxSource('自訂匯率');
+  updateExpenseFxHint();
+}
+
+async function lookupExpenseFx() {
+  const seq = ++_fxSeq;
+  setFxSource('查詢匯率中…');
+  try {
+    const r = await api(`/api/expenses/fx?currency=${expField('currency').value}&date=${expField('date').value || todayStr()}`);
+    if (seq !== _fxSeq || fxManual()) return;
+    expField('fx_rate').value = Number(r.rate.toPrecision(5));
+    setFxSource(`${shortDate(r.date)} 市場匯率`);
+    updateExpenseFxHint();
+  } catch (err) {
+    if (seq === _fxSeq && !fxManual()) setFxSource(`查不到匯率，請手動填寫（${err.message}）`);
+  }
+}
+
+/** ≈ NT$ of the amount at the rate in the field (the hint's source part is set separately). */
+function updateExpenseFxHint() {
+  const amount = Number(expField('amount').value);
+  const rate = Number(expField('fx_rate').value);
+  document.getElementById('expense-fx-twd').textContent = expForeign() && amount > 0 && rate > 0 ? `≈ ${fmtTWD(amount * rate)}` : '';
 }
 
 /** Shows the expense modal in add or edit mode and focuses the amount. */
@@ -2702,6 +2799,8 @@ async function submitExpense(e) {
   const data = {
     type: form.querySelector('[name="type"]').value || 'expense',
     amount: Number(form.querySelector('[name="amount"]').value),
+    currency: form.querySelector('[name="currency"]').value,
+    fx_rate: Number(form.querySelector('[name="fx_rate"]').value) || 0,
     category,
     date: form.querySelector('[name="date"]').value,
     note: form.querySelector('[name="note"]').value,
@@ -2714,11 +2813,13 @@ async function submitExpense(e) {
     } else {
       await api('/api/expenses', { method: 'POST', body: JSON.stringify(data) });
       showToast('紀錄已新增', 'success');
+      try { localStorage.setItem('expenseCurrency', data.currency); } catch (err) { /* ignore */ }
     }
     if (!id && e.submitter?.dataset.continue) {
       // Keep type, category and date; clear the rest for the next entry
       form.querySelector('[name="amount"]').value = '';
       form.querySelector('[name="note"]').value = '';
+      updateExpenseFxHint();
       form.querySelector('[name="amount"]').focus();
     } else {
       closeModal('modal-expense');
@@ -2741,6 +2842,9 @@ function editExpense(id) {
   form.querySelector('[name="date"]').value = e.date;
   form.querySelector('[name="note"]').value = e.note || '';
   setExpenseType(e.type || 'expense');
+  // Keep the record's own rate (old USD rows have none: empty = looked up when saving)
+  form.querySelector('[name="fx_rate"]').value = e.fx_rate > 0 && e.currency !== 'TWD' ? e.fx_rate : '';
+  setExpenseCurrency(e.currency || 'TWD', true);
 
   // A category outside the preset list is edited as a custom one
   const select = form.querySelector('[name="category"]');
@@ -3027,6 +3131,12 @@ function setCategoryFilter(cat) {
   renderExpenseTable(expMonth());
 }
 
+/** TWD records as before; foreign ones in their currency with the TWD value underneath. */
+function expAmountCell(e) {
+  if ((e.currency || 'TWD') === 'TWD') return fmtTWD(e.amount);
+  return `${fmtMoney(e.amount, e.currency)}<span class="cell-sub">≈ ${fmtTWD(e.amount_twd)}</span>`;
+}
+
 function renderExpenseTable(month) {
   const prefix = month ? `${expYear()}-${String(month).padStart(2, '0')}` : String(expYear());
   const typeFilter = document.getElementById('exp-type-filter').value;
@@ -3041,13 +3151,13 @@ function renderExpenseTable(month) {
   tbody.innerHTML = filtered.map(e => {
     const t = e.type || 'expense';
     // .e-meta (date · note under the category) only shows in the phone layout, where the date and note cells are hidden
-    const meta = [(e.date || '').slice(5).replace('-', '/'), e.note || ''].filter(Boolean).join(' · ');
+    const meta = [shortDate(e.date), e.note || ''].filter(Boolean).join(' · ');
     return `
       <tr class="exp-${t}">
         <td class="e-date">${e.date || '--'}</td>
         <td class="e-type"><span class="tag-${t}">${t === 'income' ? '收入' : '支出'}</span></td>
         <td class="e-cat">${escapeHtml(catDisplay(e.category))}<span class="cell-sub e-meta">${escapeHtml(meta)}</span></td>
-        <td class="e-amt">${fmtTWD(e.amount)}</td>
+        <td class="e-amt">${expAmountCell(e)}</td>
         <td class="e-note">${escapeHtml(e.note || '')}</td>
         <td class="e-act">
           ${rowBtn('edit', `editExpense(${e.id})`)}
@@ -3244,7 +3354,7 @@ const IMPORT_COLUMNS = {
     ['日期', e => e.date],
     ['類型', e => `<span class="tag-${e.type}">${e.type === 'income' ? '收入' : '支出'}</span>`],
     ['分類', e => escapeHtml(catDisplay(e.category))],
-    ['金額', e => fmtCur(e.amount, e.currency)],
+    ['金額', expAmountCell],
     ['備註', e => escapeHtml(e.note || '')],
   ],
   transactions: [

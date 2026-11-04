@@ -8,7 +8,8 @@
 // then unavailable.
 
 import { DEFAULT_YAHOO_PROXY } from '../config.js';
-import { getSetting } from './db.js';
+import { getSetting, today } from './db.js';
+import { addDays } from './twr_calc.js';
 
 const QUOTE_TTL_MS = 5 * 60 * 1000;
 const FOREX_TTL_MS = 30 * 60 * 1000;
@@ -194,13 +195,13 @@ const unix = (d) => Math.floor(d.getTime() / 1000);
 const periodEnd = () => Math.ceil(Date.now() / 3600000) * 3600;
 
 /**
- * Daily closes for symbol from `since` (Date) to now, oldest first:
+ * Daily closes for symbol from `since` (Date) to `until` (Date, default now), oldest first:
  * [{ date, close, adj_close }]. close is split-adjusted, adj_close also folds
  * in dividends. The last bar may be today's in-progress price.
  */
-export async function fetchDailyCloses(symbol, since) {
+export async function fetchDailyCloses(symbol, since, until = null) {
   const body = await yahooGetJSON(
-    chartPath(symbol, `interval=1d&period1=${unix(since)}&period2=${periodEnd()}`),
+    chartPath(symbol, `interval=1d&period1=${unix(since)}&period2=${until ? unix(until) : periodEnd()}`),
     `${symbol} history`);
   if (body.chart?.error) throw new Error(`yahoo history error for ${symbol}: ${body.chart.error.description}`);
   const res = body.chart?.result?.[0];
@@ -218,6 +219,36 @@ export async function fetchDailyCloses(symbol, since) {
     if (out.length && out[out.length - 1].date === date) out[out.length - 1] = bar;
     else out.push(bar);
   });
+  return out;
+}
+
+// ---------------------------------------------------------------- forex on a date
+
+const fxCache = new Map(); // `${currency}|${date}` -> { rate, date }
+
+/**
+ * Market rate of 1 `currency` in TWD on `date` (YYYY-MM-DD): that day's close, or the last
+ * trading day before it (weekends, holidays). Without a proxy only today's rate is
+ * available (GOOGLEFINANCE in the sheet), so that is used for any date.
+ */
+export async function fetchFxRate(currency, date) {
+  const proxy = hasProxy();
+  const key = `${currency}|${proxy ? date : today()}`; // no proxy: one (today's) rate for every date
+  if (fxCache.has(key)) return fxCache.get(key);
+  const symbol = `${currency}TWD=X`;
+  let out;
+  if (proxy) {
+    const utc = (d) => new Date(`${d}T00:00:00Z`);
+    const bars = await fetchDailyCloses(symbol, utc(addDays(date, -10)), utc(addDays(date, 1)));
+    const bar = bars.filter((b) => b.date <= date).pop() || bars[0];
+    if (!bar) throw new Error(`查不到 ${currency} 匯率`);
+    out = { rate: bar.close, date: bar.date };
+  } else {
+    const price = (await fallbackQuotes([symbol]))[symbol]?.price;
+    if (!(price > 0)) throw new MarketUnavailableError(`查不到 ${currency} 匯率（沒有行情代理時需要登入），請手動填寫`);
+    out = { rate: price, date: today() };
+  }
+  fxCache.set(key, out);
   return out;
 }
 

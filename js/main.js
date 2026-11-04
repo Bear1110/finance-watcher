@@ -24,7 +24,7 @@ import './server/llm.js';
 import './server/managed.js';
 import './server/settings.js';
 import './server/aiimport.js';
-import { EXPENSE_CATEGORIES } from './server/expenses.js';
+import { EXPENSE_CATEGORIES, EXPENSE_CURRENCIES } from './server/expenses.js';
 
 db.load();
 
@@ -226,7 +226,7 @@ Object.assign(window, {
   LocalAPI: { handle },
   fwRefresh, renderCloudStatus, cloudSignIn, cloudSyncNow, cloudSignOut,
   onSyncPillClick, saveProxyURL, downloadBackup, clearLocalData, reloadApp,
-  EXPENSE_CATEGORIES,
+  EXPENSE_CATEGORIES, EXPENSE_CURRENCIES,
 });
 
 window.localApiReady = Promise.resolve();

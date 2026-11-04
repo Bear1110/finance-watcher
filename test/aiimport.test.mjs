@@ -18,6 +18,7 @@ const CLOSES = {
   '0050.TW': { '2024-10-24': 48.7, '2025-10-13': 60.0 },
   '00881.TW': { '2024-10-18': 25.0, '2024-11-14': 24.3 },
   '4128.TWO': { '2023-08-22': 48.0, '2023-09-05': 49.0 }, // 上櫃: only .TWO exists
+  'JPYTWD=X': { '2026-10-02': 0.21, '2026-10-05': 0.215 }, // 10/3–4 is a weekend
 };
 globalThis.fetch = async (url) => {
   const sym = decodeURIComponent((String(url).match(/\/chart\/([^?]+)/) || [])[1] || '');
@@ -83,6 +84,20 @@ test('expenses: lenient values, unknown category -> 其他 with note, existing d
     ['2026-10-04', 'expense', '其他支出', 800, 'TWD', '原分類：寵物'],
     ['2026-10-06', 'expense', '交通', 20, 'USD', ''],
   ]);
+});
+
+test('expenses: foreign currency gets the market rate of its date (or the last trading day before)', async () => {
+  const text = JSON.stringify({ expenses: [
+    { date: '2026-10-04', category: '飲食', amount: '¥1,200', currency: 'JPY' }, // Sunday -> Friday's close
+    { date: '2026-10-05', category: '交通', amount: 3000, currency: '日幣' },
+    { date: '2026-10-05', category: '飲食', amount: 5000, currency: 'KRW' },      // no market data
+    { date: '2026-10-05', category: '飲食', amount: 10, currency: 'GBP' },        // not in the list
+  ] });
+  const r = (await parseImport(text)).expenses;
+  assert.deepEqual(r.records.map((e) => [e.amount, e.currency, e.fx_rate]), [[1200, 'JPY', 0.21], [3000, 'JPY', 0.215]]);
+  assert.deepEqual(r.errors.map((e) => e.index), [2, 3]);
+  assert.match(r.errors[0].error, /KRW 匯率/);
+  assert.match(r.errors[1].error, /不支援的幣別/);
 });
 
 test('a bare array is read as the requested kind', async () => {

@@ -7,6 +7,7 @@ import { route } from './router.js';
 import { fetchQuotes } from './market.js';
 import { HttpError, badRequest, body, cmp, round2, storedUSDTWDRate, sellCostBasis, sellReturnPct } from './util.js';
 import { holdingDetail } from './stocks.js';
+import { expenseTWD, monthlyActuals } from './expenses.js';
 
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
@@ -122,27 +123,20 @@ function buildRealizedSummary() {
 function buildBudgetSummary(year) {
   const budgetMap = new Map();
   for (const b of db.where('budgets', (x) => x.year === year)) budgetMap.set(b.month, b);
-  const actual = new Map();
-  for (const e of db.where('expenses', (x) => x.date.startsWith(`${year}-`))) {
-    const m = parseInt(e.date.slice(5, 7), 10);
-    if (!(m >= 1 && m <= 12)) continue;
-    const pair = actual.get(m) || [0, 0];
-    if (e.type === 'income') pair[0] += e.amount; else pair[1] += e.amount;
-    actual.set(m, pair);
-  }
+  const actual = monthlyActuals(year);
   const resp = {
     year, months: [],
     total_planned_income: 0, total_planned_expense: 0, total_actual_income: 0, total_actual_expense: 0, total_net_savings: 0,
   };
   for (let m = 1; m <= 12; m++) {
     const b = budgetMap.get(m);
-    const a = actual.get(m);
+    const a = actual[m - 1];
     const d = {
       month: m,
       planned_income: b ? b.planned_income : 0,
       planned_expense: b ? b.planned_expense : 0,
-      actual_income: a ? a[0] : 0,
-      actual_expense: a ? a[1] : 0,
+      actual_income: a.income,
+      actual_expense: a.expense,
       income_diff: 0, expense_diff: 0, net_savings: 0,
     };
     resp.total_planned_income += d.planned_income;
@@ -296,8 +290,9 @@ export function generateFinancialPrompt(data) {
     for (const e of data.expenses) {
       const cat = e.category || '未分類';
       const m = e.type === 'income' ? incomeCats : expenseCats;
-      if (e.type === 'income') totalIncome += e.amount; else totalExpense += e.amount;
-      m.set(cat, (m.get(cat) || 0) + e.amount);
+      const v = expenseTWD(e);
+      if (e.type === 'income') totalIncome += v; else totalExpense += v;
+      m.set(cat, (m.get(cat) || 0) + v);
     }
     sb += `（資料期間內）總收入: NT$ ${f(totalIncome, 0)} / 總支出: NT$ ${f(totalExpense, 0)} / 淨儲蓄: NT$ ${f(totalIncome - totalExpense, 0)}\n\n`;
     if (totalIncome > 0) sb += `儲蓄率: ${f((totalIncome - totalExpense) / totalIncome * 100, 1)}%\n\n`;

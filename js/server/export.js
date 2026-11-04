@@ -3,6 +3,7 @@
 import * as db from './db.js';
 import { route } from './router.js';
 import { download, cmp } from './util.js';
+import { expenseTWD } from './expenses.js';
 import { queryDividends } from './dividends.js';
 
 /** encoding/csv quoting rules */
@@ -43,8 +44,8 @@ function exportExpenses(req) {
   const year = req.query.get('year') || '';
   const rows = db.where('expenses', yearMatch(year))
     .sort((a, b) => cmp(a.date, b.date) || a.id - b.id)
-    .map((e) => [e.date, e.type, e.category, ftoa(e.amount), e.currency, e.note]);
-  return writeCSV('expenses', ['日期', '類型', '類別', '金額', '幣別', '備註'], rows);
+    .map((e) => [e.date, e.type, e.category, ftoa(e.amount), e.currency, e.currency === 'TWD' ? '' : ftoa(e.fx_rate), ftoa(Math.round(expenseTWD(e))), e.note]);
+  return writeCSV('expenses', ['日期', '類型', '類別', '金額', '幣別', '匯率', '台幣金額', '備註'], rows);
 }
 
 // GET /api/dividends/export?year=YYYY

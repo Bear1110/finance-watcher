@@ -52,6 +52,22 @@ test('stats: monthly totals, category sums (USD converted), planned expense', as
   assert.deepEqual(s.prev_december, { income: 0, expense: 999 });
 });
 
+test('foreign records count in TWD at their own rate; old USD rows without one use the current rate', async () => {
+  db.insert('expenses', { date: '2026-05-01', type: 'expense', amount: 1000, currency: 'JPY', fx_rate: 0.2, category: '飲食', note: '' });
+  db.insert('expenses', { date: '2026-05-02', type: 'expense', amount: 10, currency: 'USD', category: '飲食', note: '' });
+  const s = await handle('/api/expenses/stats?year=2026');
+  assert.equal(s.months[4].expense, 200 + 300);
+  const list = await handle('/api/expenses');
+  assert.deepEqual(list.filter((e) => e.date.startsWith('2026-05')).map((e) => e.amount_twd).sort(), [200, 300]);
+});
+
+test('a foreign record keeps the rate it was saved with; unsupported currencies are rejected', async () => {
+  const post = (b) => handle('/api/expenses', { method: 'POST', body: JSON.stringify(b) });
+  const r = await post({ type: 'expense', amount: 500, currency: 'JPY', fx_rate: 0.205, category: '飲食', date: '2026-06-01' });
+  assert.equal(db.get('expenses', r.id).fx_rate, 0.205);
+  await assert.rejects(post({ type: 'expense', amount: 5, currency: 'GBP', category: '飲食', date: '2026-06-01' }), (e) => e.status === 400);
+});
+
 test('budgets: actual columns come from the same monthly totals', async () => {
   const b = await handle('/api/budgets?year=2026');
   assert.equal(b.months[2].actual_expense, 1800);

@@ -2,7 +2,8 @@
 
 import * as db from './db.js';
 import { route } from './router.js';
-import { badRequest, body, cmp, isDate, storedUSDTWDRate } from './util.js';
+import { badRequest, body, cmp, isDate, storedUSDTWDRate, toTWD } from './util.js';
+import { fetchFxRate } from './market.js';
 
 /** Preset categories (add/edit dialog and AI import prompt); the first of each list is that type's default. */
 export const EXPENSE_CATEGORIES = {
@@ -10,7 +11,35 @@ export const EXPENSE_CATEGORIES = {
   income: ['薪資', '股利', '獎金', '其他收入'],
 };
 
-export const expenseJSON = (e) => ({ id: e.id, type: e.type, amount: e.amount, currency: e.currency, category: e.category, note: e.note, date: e.date, created_at: e.created_at });
+/**
+ * Currencies a record can be in (the add/edit dialog lists them in this order; TWD first = default).
+ * aliases: other ways people write it, for AI import.
+ */
+export const EXPENSE_CURRENCIES = [
+  { code: 'TWD', flag: '🇹🇼', symbol: 'NT$', name: '台幣', decimals: 0, aliases: ['新台幣', 'ntd', '元'] },
+  { code: 'JPY', flag: '🇯🇵', symbol: '¥', name: '日圓', decimals: 0, aliases: ['日幣', '日元', '円'] },
+  { code: 'USD', flag: '🇺🇸', symbol: 'US$', name: '美金', decimals: 2, aliases: ['美元'] },
+  { code: 'KRW', flag: '🇰🇷', symbol: '₩', name: '韓元', decimals: 0, aliases: ['韓幣', '韓圜'] },
+  { code: 'EUR', flag: '🇪🇺', symbol: '€', name: '歐元', decimals: 2, aliases: [] },
+  { code: 'HKD', flag: '🇭🇰', symbol: 'HK$', name: '港幣', decimals: 2, aliases: ['港元'] },
+  { code: 'THB', flag: '🇹🇭', symbol: '฿', name: '泰銖', decimals: 2, aliases: ['泰幣'] },
+  { code: 'CNY', flag: '🇨🇳', symbol: 'CN¥', name: '人民幣', decimals: 2, aliases: ['rmb'] },
+];
+const CURRENCY_CODES = new Set(EXPENSE_CURRENCIES.map((c) => c.code));
+
+/**
+ * A record in TWD: amount × the rate saved with it (1 for TWD). Records from before fx_rate
+ * existed have none: TWD as is, USD at the current USD/TWD setting.
+ */
+export function expenseTWD(e) {
+  if (e.fx_rate > 0) return e.amount * e.fx_rate;
+  return e.currency === 'USD' ? toTWD(e.amount, 'USD', storedUSDTWDRate()) : e.amount;
+}
+
+export const expenseJSON = (e) => ({
+  id: e.id, type: e.type, amount: e.amount, currency: e.currency, fx_rate: e.fx_rate,
+  amount_twd: expenseTWD(e), category: e.category, note: e.note, date: e.date, created_at: e.created_at,
+});
 
 function list(req) {
   const q = req.query;
@@ -27,31 +56,51 @@ function list(req) {
     .map(expenseJSON);
 }
 
-/** Validates input and fills defaults (type=expense, currency=TWD). */
+/**
+ * Validates input and fills defaults (type=expense, currency=TWD). fx_rate is 1 for TWD and 0
+ * (= not known yet, see withFxRate) for a foreign record that didn't bring one.
+ */
 export function normalizeExpense(e) {
+  const currency = e.currency || 'TWD';
   const out = {
     type: e.type || 'expense',
     amount: Number(e.amount) || 0,
-    currency: e.currency || 'TWD',
+    currency,
+    fx_rate: currency === 'TWD' ? 1 : Number(e.fx_rate) > 0 ? Number(e.fx_rate) : 0,
     category: e.category || '',
     note: e.note || '',
     date: e.date || '',
   };
   if (out.type !== 'income' && out.type !== 'expense') throw badRequest('type must be income or expense');
   if (!(out.amount > 0)) throw badRequest('金額必須大於 0');
-  if (out.currency !== 'TWD' && out.currency !== 'USD') throw badRequest('currency must be TWD or USD');
+  if (!CURRENCY_CODES.has(out.currency)) throw badRequest(`不支援的幣別：${out.currency}`);
   if (!isDate(out.date)) throw badRequest('日期格式需為 YYYY-MM-DD');
   return out;
 }
 
-function create(req) {
-  const e = normalizeExpense(body(req));
+/**
+ * A foreign record without a rate gets its date's market rate. Without market data USD keeps
+ * fx_rate 0 (= the current USD/TWD rate, as before fx_rate existed); other currencies fail, and
+ * the user can type the rate.
+ */
+export async function withFxRate(e) {
+  if (e.fx_rate > 0) return e;
+  try {
+    return { ...e, fx_rate: (await fetchFxRate(e.currency, e.date)).rate };
+  } catch (err) {
+    if (e.currency === 'USD') return e;
+    throw badRequest(err.message);
+  }
+}
+
+async function create(req) {
+  const e = await withFxRate(normalizeExpense(body(req)));
   const row = db.insert('expenses', e);
   return { id: row.id, ...e, created_at: '' };
 }
 
-function updateExpense(req) {
-  const e = normalizeExpense(body(req));
+async function updateExpense(req) {
+  const e = await withFxRate(normalizeExpense(body(req)));
   db.update('expenses', req.params.id, e);
   return { status: 'updated' };
 }
@@ -73,18 +122,17 @@ function yearParam(req) {
 }
 
 /**
- * Actual totals of one year in TWD (USD at the stored rate), index 0 = January:
+ * Actual totals of one year in TWD (expenseTWD), index 0 = January:
  * { income, expense, byCategory: { income: {cat: amt}, expense: {cat: amt} } }.
  * Anything not 'income' counts as expense; an empty category stays '' (the UI labels it).
  */
-function monthlyActuals(year) {
-  const rate = storedUSDTWDRate();
+export function monthlyActuals(year) {
   const months = Array.from({ length: 12 }, () => ({ income: 0, expense: 0, byCategory: { income: {}, expense: {} } }));
   for (const e of db.where('expenses', (e) => e.date.startsWith(`${year}-`))) {
     const m = Number(e.date.slice(5, 7));
     if (!(m >= 1 && m <= 12)) continue;
     const type = e.type === 'income' ? 'income' : 'expense';
-    const v = e.currency === 'USD' ? e.amount * rate : e.amount;
+    const v = expenseTWD(e);
     const slot = months[m - 1];
     const cat = e.category;
     slot[type] += v;
@@ -168,3 +216,11 @@ route('PUT', '/api/expenses/{id}', updateExpense);
 route('DELETE', '/api/expenses/{id}', remove);
 route('GET', '/api/expenses/categories', categories);
 route('GET', '/api/expenses/stats', getStats);
+// Market rate for the add/edit dialog: ?currency=JPY&date=YYYY-MM-DD -> { rate, date }
+route('GET', '/api/expenses/fx', (req) => {
+  const currency = req.query.get('currency');
+  const date = req.query.get('date');
+  if (!CURRENCY_CODES.has(currency) || currency === 'TWD') throw badRequest('不支援的幣別');
+  if (!isDate(date)) throw badRequest('日期格式需為 YYYY-MM-DD');
+  return fetchFxRate(currency, date);
+});

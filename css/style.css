@@ -2150,6 +2150,18 @@ body[data-tab="expenses"] .fab { display: flex; }
 .holdings-table.as-cards tfoot tr { grid-template-areas: "sym sym" "mv pl" "px cost" ". div" "yp yc"; border-color: var(--accent); }
 .holdings-table.as-cards tfoot .c-sym { text-align: left; }
 
+/* --- 收支 dialog: currency picker beside the amount, rate row for foreign currencies --- */
+.amount-row { display: flex; gap: 6px; }
+.amount-row select { flex: 0 0 auto; width: auto; }
+.amount-row input { flex: 1; min-width: 0; }
+/* A foreign currency stands out, so a remembered ¥ isn't missed back home */
+.amount-row.foreign select { border-color: var(--accent); background: var(--accent-subtle); color: var(--accent); font-weight: 600; }
+.fx-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 0.85rem; color: var(--text-secondary); }
+.fx-row[hidden] { display: none; }
+.fx-row label { font-weight: 400; white-space: nowrap; }
+.fx-row input { width: 7.5rem; }
+#expense-fx-twd:not(:empty) + #expense-fx-source:not(:empty)::before { content: ' · '; }
+
 /* --- 收支明細在手機上：每筆一列，像記帳 App ---
    🍔 餐飲               NT$120
    11/03 · 午餐            ✎ 🗑
@@ -2173,6 +2185,7 @@ body[data-tab="expenses"] .fab { display: flex; }
   .expense-table .e-cat { grid-area: cat; font-size: 0.95rem; min-width: 0; }
   .expense-table .e-meta { display: block; margin-top: 2px; font-size: 0.78rem; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .expense-table .e-amt { grid-area: amt; text-align: right; font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .expense-table .e-amt .cell-sub { font-size: 0.78rem; font-weight: 400; color: var(--text-secondary); }
   .expense-table tr.exp-income .e-amt { color: var(--green); }
   .expense-table tr.exp-income .e-amt::before { content: '+'; }
   .expense-table .e-act { grid-area: act; display: flex; justify-content: flex-end; gap: 6px; }

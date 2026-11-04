@@ -1528,8 +1528,18 @@
           <input type="hidden" name="type" value="expense">
         </div>
         <div class="form-group">
-          <label>金額 (NT$)</label>
-          <input type="number" name="amount" required min="0" step="any" inputmode="decimal">
+          <label for="expense-amount">金額</label>
+          <div class="amount-row">
+            <select name="currency" id="expense-currency" onchange="onExpenseCurrencyChange()" aria-label="幣別"></select><!-- options: buildCurrencyOptions() -->
+            <input type="number" name="amount" id="expense-amount" required min="0" step="any" inputmode="decimal" oninput="updateExpenseFxHint()">
+          </div>
+          <!-- Foreign currency only: the date's market rate, editable; empty = looked up when saving -->
+          <div class="fx-row" id="expense-fx" hidden>
+            <label for="expense-fx-rate">1 <span id="expense-fx-cur"></span> =</label>
+            <input type="number" name="fx_rate" id="expense-fx-rate" min="0" step="any" inputmode="decimal" oninput="onExpenseFxInput()">
+            <span>TWD</span>
+          </div>
+          <div class="form-hint" id="expense-fx-hint" hidden><span id="expense-fx-twd"></span><span id="expense-fx-source"></span></div>
         </div>
         <div class="form-group">
           <label>分類</label>
@@ -1541,7 +1551,7 @@
         </div>
         <div class="form-group">
           <label>日期</label>
-          <input type="date" name="date" required>
+          <input type="date" name="date" required onchange="onExpenseDateChange()">
         </div>
         <div class="form-group">
           <label>備註</label>

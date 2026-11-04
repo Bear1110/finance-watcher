@@ -21,7 +21,7 @@
 import * as db from './db.js';
 import { route } from './router.js';
 import { badRequest, body, isCounted, isDate, round4 } from './util.js';
-import { EXPENSE_CATEGORIES, normalizeExpense } from './expenses.js';
+import { EXPENSE_CATEGORIES, EXPENSE_CURRENCIES, expenseTWD, normalizeExpense, withFxRate } from './expenses.js';
 import { normalizeTxn, applyAutoFee, replaySymbol, ledgerOrder, fmtShares } from './ledger.js';
 import { hasProxy } from './market.js';
 import { syncPriceHistory } from './twr.js';
@@ -42,7 +42,10 @@ function normDate(v) {
 }
 
 /** "1,200", "NT$ 1200", "-350元" → number (sign kept), or NaN. */
-const normAmount = (v) => (typeof v === 'number' ? v : Number(str(v).replace(/[,\s]|NT\$|US\$|\$|元|＄|股/gi, '')));
+// Currency symbols (longest first, so US$ goes before $), separators and units are dropped
+const AMOUNT_JUNK = new RegExp([...EXPENSE_CURRENCIES.map((c) => c.symbol).sort((a, b) => b.length - a.length), '$', '＄', '￥', '元', '円', '股']
+  .map((t) => t.replace(/[$]/g, '\\$')).join('|') + '|[,\\s]', 'gi');
+const normAmount = (v) => (typeof v === 'number' ? v : Number(str(v).replace(AMOUNT_JUNK, '')));
 
 /** null / "" / undefined stay null; anything else is a number (NaN if unreadable). */
 const optAmount = (v) => (v == null || str(v) === '' ? null : normAmount(v));
@@ -52,6 +55,13 @@ const CURRENCY_WORDS = { twd: 'TWD', ntd: 'TWD', 'nt$': 'TWD', 台幣: 'TWD', �
 // ---------------------------------------------------------------- 收支
 
 const TYPE_WORDS = { expense: 'expense', 支出: 'expense', income: 'income', 收入: 'income' };
+
+/** 收支 also take the travel currencies: code, symbol, name and aliases (lowercase keys). */
+const EXPENSE_CURRENCY_WORDS = {
+  ...CURRENCY_WORDS,
+  ...Object.fromEntries(EXPENSE_CURRENCIES.flatMap((c) =>
+    [c.code, c.symbol, c.name, ...c.aliases].map((w) => [w.toLowerCase(), c.code]))),
+};
 
 /** Preset categories plus every category already used, per type. */
 function expenseCategories() {
@@ -73,7 +83,7 @@ const expenses = {
 - date：YYYY-MM-DD。資料沒寫年份時先問我，不要猜。
 - type："expense"（支出）或 "income"（收入）。
 - amount：正數，不含貨幣符號與千分位。
-- currency："TWD" 或 "USD"，沒寫就用 "TWD"。
+- currency：${EXPENSE_CURRENCIES.map((c) => `"${c.code}"（${c.name}）`).join('、')}，沒寫就用 "TWD"。amount 填原幣金額，不要自己換算台幣。
 - category：用下面的分類，對不上的用「其他支出」或「其他收入」，原本的名稱寫進 note。
   支出：${cats.expense.join('、')}
   收入：${cats.income.join('、')}
@@ -86,7 +96,8 @@ const expenses = {
     const signed = normAmount(raw.amount);
     if (!Number.isFinite(signed) || signed === 0) return { error: `金額看不懂：${str(raw.amount) || '（空白）'}` };
     const type = TYPE_WORDS[str(raw.type).toLowerCase()] ?? 'expense'; // no type: expense (sign is dropped below)
-    const currency = CURRENCY_WORDS[str(raw.currency).toLowerCase()] ?? 'TWD';
+    const currency = str(raw.currency) ? EXPENSE_CURRENCY_WORDS[str(raw.currency).toLowerCase()] : 'TWD';
+    if (!currency) return { error: `不支援的幣別：${str(raw.currency)}` };
 
     const other = type === 'income' ? '其他收入' : '其他支出';
     let category = str(raw.category);
@@ -97,6 +108,27 @@ const expenses = {
       category = other;
     }
     return { row: normalizeExpense({ type, amount: Math.abs(signed), currency, category, date, note: notes.filter(Boolean).join('；') }) };
+  },
+  // Foreign rows get their date's market rate (one lookup per currency and date, all at once);
+  // a row whose rate can't be fetched can't be imported. amount_twd is for the preview.
+  async prepare(res) {
+    const lookups = new Map();
+    const rated = (r) => {
+      const k = `${r.currency}|${r.date}`;
+      if (!lookups.has(k)) lookups.set(k, withFxRate(r).then((x) => x.fx_rate));
+      return lookups.get(k);
+    };
+    const done = await Promise.allSettled(res.records.map(rated));
+    const kept = [];
+    res.records.forEach((r, i) => {
+      if (done[i].status === 'rejected') {
+        res.errors.push({ index: r.index, error: `${r.currency} 匯率：${done[i].reason.message}` });
+        return;
+      }
+      const row = { ...r, fx_rate: done[i].value };
+      kept.push({ ...row, amount_twd: expenseTWD(row) });
+    });
+    res.records = kept;
   },
   key: (r) => [r.date, r.type, r.category, Math.round(r.amount * 100), r.currency].join('|'),
   existing: () => db.all('expenses'),

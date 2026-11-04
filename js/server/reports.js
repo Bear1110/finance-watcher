@@ -44,10 +44,10 @@ route('GET', '/api/reports/weekly', ({ query }) => {
     .sort((a, b) => cmp(b.date, a.date) || a.id - b.id)
     .map(txnJSON);
 
-  let totalExpense = 0;
   const expenses = db.where('expenses', (x) => x.date >= weekStart && x.date <= weekEnd)
     .sort((a, b) => cmp(b.date, a.date) || a.id - b.id)
-    .map((e) => { totalExpense += e.amount; return expenseJSON(e); });
+    .map(expenseJSON);
+  const totalExpense = expenses.reduce((s, e) => s + e.amount_twd, 0);
 
   return {
     week_start: weekStart,
