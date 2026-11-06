@@ -952,10 +952,6 @@ select option {
   border: 1px solid var(--border-color);
 }
 
-.chart-card-wide {
-  grid-column: 1 / -1;
-}
-
 .chart-title {
   font-size: 0.95rem;
   font-weight: 500;
@@ -966,11 +962,6 @@ select option {
 .chart-container-md {
   position: relative;
   height: 220px;
-}
-
-.chart-container-bar {
-  position: relative;
-  height: 300px;
 }
 
 .chart-legend {
@@ -1006,9 +997,6 @@ select option {
   font-weight: 600;
 }
 
-.risk-ok {
-  color: var(--green);
-}
 
 @media (max-width: 768px) {
   .chart-row {
@@ -1602,7 +1590,6 @@ body { overflow-x: clip; }
   .chart-card { padding: 12px; min-width: 0; }
   .chart-container, .chart-container-md { height: 220px; }
   .chart-container-sm { height: 200px; }
-  .chart-container-bar { height: 280px; }
 
   /* --- Modals: full-screen sheet, actions pinned to the bottom --- */
   .modal-overlay { align-items: stretch; }
@@ -2174,3 +2161,56 @@ body[data-tab="expenses"] .fab { display: flex; }
 @media (max-width: 599px) {
   .snap-detail dl { grid-template-columns: 1fr 1fr; }
 }
+
+/* --- 組合分析: weights, concentration, TW/US rebalance --- */
+.pf-mkt-tw { --mkt: var(--accent); }
+.pf-mkt-us { --mkt: var(--yellow); }
+.pf-hint { margin: 0 0 12px 0; }
+
+.pf-row { padding: 0.65rem 0; border-top: 1px solid var(--border-color); }
+.pf-row:first-child { border-top: none; padding-top: 0; }
+.pf-row-head { display: flex; align-items: center; gap: 0.5rem; }
+.pf-sym { font-weight: 600; color: var(--text-heading); }
+.pf-mkt {
+  font-size: 0.72rem;
+  padding: 0 0.35rem;
+  border-radius: 3px;
+  border: 1px solid var(--mkt);
+  color: var(--mkt);
+}
+.pf-flag { font-size: 0.75rem; }
+.pf-weight { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pf-bar {
+  position: relative;
+  height: 8px;
+  margin: 0.4rem 0 0.35rem;
+  border-radius: 4px;
+  background: var(--bg-secondary);
+}
+.pf-bar-fill { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--mkt); opacity: 0.85; }
+.pf-bar-cost {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--text-primary);
+  border-radius: 1px;
+}
+.pf-row-sub { font-size: 0.8rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+.pf-split-bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; }
+.pf-split-bar span { background: var(--mkt); }
+.pf-split-legend {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.pf-target { display: flex; align-items: center; gap: 0.4rem; margin: 1rem 0 0.75rem; color: var(--text-secondary); }
+.pf-target input { width: 5.5em; }
+.pf-rebalance p { margin: 0 0 0.4rem; }
+.pf-rebalance-list { margin: 0 0 0.5rem; padding-left: 1.2rem; line-height: 1.7; }

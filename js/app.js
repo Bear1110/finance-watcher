@@ -1538,260 +1538,158 @@ async function loadTransactions() {
 // SECTION: Portfolio Analysis
 // ============================================================
 
-const CHART_COLORS = [
-  '#4e8cff', '#34d399', '#f87171', '#fbbf24', '#a78bfa',
-  '#f472b6', '#38bdf8', '#fb923c', '#6ee7b7', '#e879f9',
-  '#818cf8', '#22d3ee', '#facc15', '#fb7185', '#94a3b8',
-];
+let _portfolio = null; // { tw, us } stock values (TWD) for re-running the rebalance on a new target
 
-// Store chart instances for cleanup
-const portfolioCharts = {};
-
-function destroyChart(key) {
-  if (portfolioCharts[key]) {
-    portfolioCharts[key].destroy();
-    delete portfolioCharts[key];
-  }
-}
-
-function createDonut(canvasId, labels, data, legendId) {
-  destroyChart(canvasId);
-  const ctx = document.getElementById(canvasId);
-  const total = data.reduce((a, b) => a + b, 0);
-  const colors = CHART_COLORS.slice(0, labels.length);
-
-  portfolioCharts[canvasId] = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels,
-      datasets: [{
-        data,
-        backgroundColor: colors,
-        borderWidth: 0,
-        hoverOffset: 6,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      cutout: '55%',
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: ctx => {
-              const pct = total > 0 ? ((ctx.parsed / total) * 100).toFixed(1) : 0;
-              return `${ctx.label}: ${fmtTWD(ctx.parsed)} (${pct}%)`;
-            }
-          }
-        }
-      },
-    }
-  });
-
-  // Custom legend with percentages
-  const legend = document.getElementById(legendId);
-  legend.innerHTML = labels.map((l, i) => {
-    const pct = total > 0 ? ((data[i] / total) * 100).toFixed(1) : 0;
-    return `<span class="legend-item">
-      <span class="legend-dot" style="background:${colors[i]}"></span>
-      ${l}: ${fmtTWD(data[i])} (${pct}%)
-    </span>`;
-  }).join('');
-}
-
-function createBarChart(canvasId, labels, data, colors) {
-  destroyChart(canvasId);
-  const ctx = document.getElementById(canvasId);
-
-  portfolioCharts[canvasId] = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{
-        data,
-        backgroundColor: colors,
-        borderRadius: 6,
-        barPercentage: 0.6,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      indexAxis: 'y',
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: ctx => fmtTWD(ctx.parsed.x),
-          }
-        }
-      },
-      scales: {
-        x: {
-          ticks: {
-            color: '#5c6f8a',
-            callback: v => fmt(v),
-          },
-          grid: { color: 'rgba(42,58,78,0.4)' },
-        },
-        y: {
-          ticks: { color: '#e8ecf1', font: { weight: '500' } },
-          grid: { display: false },
-        }
-      }
-    }
-  });
-}
+/** Concentration label by market-value weight (%). */
+const concentration = (pct) => (pct >= 40 ? ['高度集中', 'risk-danger'] : pct >= 25 ? ['偏高', 'risk-warn'] : null);
 
 async function loadPortfolioAnalysis() {
   try {
-    const stockData = await api('/api/stocks');
-    const holdings = (stockData && stockData.holdings) ? stockData.holdings : [];
-
-    if (holdings.length === 0) {
+    const [stockData, cash, dividends, settings] = await Promise.all([
+      api('/api/stocks'),
+      api('/api/assets/cash').catch(() => null),
+      api('/api/dividends').catch(() => []),
+      api('/api/settings').catch(() => ({})),
+    ]);
+    const holdings = (stockData && stockData.holdings) || [];
+    const rate = Number(settings.usd_twd_rate) || 32;
+    const totalValue = holdings.reduce((s, h) => s + (h.market_value_twd || 0), 0);
+    const totalCost = holdings.reduce((s, h) => s + (h.cost_twd || 0), 0);
+    if (!holdings.length || !(totalValue > 0)) {
+      document.getElementById('pf-weights').innerHTML = '<div class="empty-state">尚無持股（或還沒抓到報價）</div>';
       return;
     }
 
-    const rate = stockData.total_value_twd && stockData.total_cost_twd ? 1 : 32; // fallback
-
-    // Prepare data: convert everything to TWD
-    const items = holdings.map(h => {
-      const isUS = h.currency === 'USD';
-      const r = isUS ? (stockData.total_value_twd / holdings.filter(x => x.currency === 'USD').reduce((s, x) => s + x.market_value * getImpliedRate(stockData, holdings), 0)) || 32 : 1;
-      return {
-        symbol: h.symbol,
-        market: h.market,
-        costTWD: h.market_value_twd ? (h.avg_cost * h.shares * (isUS ? getUsdRate(stockData, holdings) : 1)) : 0,
-        valueTWD: h.market_value_twd || 0,
-        plTWD: h.unrealized_pl_twd || 0,
-      };
-    });
-
-    // Simpler: derive USD rate from stockData
-    // total_cost_twd and total_value_twd already in TWD from API
-    // For per-stock cost in TWD, calculate from holdings data
-    const settingsResp = await api('/api/settings');
-    const usdRate = Number(settingsResp.usd_twd_rate) || 32;
-
-    const analyzed = holdings.map(h => {
-      const isUS = h.currency === 'USD';
-      const fx = isUS ? usdRate : 1;
-      return {
-        symbol: h.symbol,
-        market: h.market,
-        costTWD: h.avg_cost * h.shares * fx,
-        valueTWD: h.market_value_twd || 0,
-        plTWD: h.unrealized_pl_twd || 0,
-      };
-    });
-
-    const twStocks = analyzed.filter(s => s.market === 'TW');
-    const usStocks = analyzed.filter(s => s.market === 'US');
-
-    const twCostTotal = twStocks.reduce((s, x) => s + x.costTWD, 0);
-    const usCostTotal = usStocks.reduce((s, x) => s + x.costTWD, 0);
-    const twValueTotal = twStocks.reduce((s, x) => s + x.valueTWD, 0);
-    const usValueTotal = usStocks.reduce((s, x) => s + x.valueTWD, 0);
-    const totalCost = twCostTotal + usCostTotal;
-    const totalValue = twValueTotal + usValueTotal;
-
-    // 1. Market cost allocation
-    createDonut('chart-market-cost',
-      ['台股', '美股'],
-      [twCostTotal, usCostTotal],
-      'legend-market-cost'
-    );
-
-    // 2. Market value allocation
-    createDonut('chart-market-value',
-      ['台股', '美股'],
-      [twValueTotal, usValueTotal],
-      'legend-market-value'
-    );
-
-    // 3. TW per-stock cost
-    if (twStocks.length > 0) {
-      createDonut('chart-tw-cost',
-        twStocks.map(s => s.symbol),
-        twStocks.map(s => s.costTWD),
-        'legend-tw-cost'
-      );
+    // Trailing 12 months of dividends, per symbol, in TWD
+    const since = new Date();
+    since.setFullYear(since.getFullYear() - 1);
+    const sinceStr = since.toISOString().slice(0, 10);
+    const divBySymbol = {};
+    let divTotal = 0;
+    for (const d of (Array.isArray(dividends) ? dividends : [])) {
+      if (d.date < sinceStr) continue;
+      const v = toTWD(d.amount || 0, d.currency, rate);
+      divBySymbol[d.symbol] = (divBySymbol[d.symbol] || 0) + v;
+      divTotal += v;
     }
 
-    // 4. US per-stock cost
-    if (usStocks.length > 0) {
-      createDonut('chart-us-cost',
-        usStocks.map(s => s.symbol),
-        usStocks.map(s => s.costTWD),
-        'legend-us-cost'
-      );
-    }
+    const rows = holdings.map(h => ({
+      symbol: h.symbol,
+      market: h.market,
+      weight: h.market_value_twd / totalValue * 100,
+      costWeight: totalCost > 0 ? h.cost_twd / totalCost * 100 : 0,
+      pl: h.unrealized_pl_twd || 0,
+      plPct: h.pl_percent,
+      yield: h.cost_twd > 0 && divBySymbol[h.symbol] ? divBySymbol[h.symbol] / h.cost_twd * 100 : null,
+    })).sort((a, b) => b.weight - a.weight);
 
-    // 5. TW per-stock value
-    if (twStocks.length > 0) {
-      createDonut('chart-tw-value',
-        twStocks.map(s => s.symbol),
-        twStocks.map(s => s.valueTWD),
-        'legend-tw-value'
-      );
-    }
+    // Concentration
+    const top3 = rows.slice(0, 3).reduce((s, r) => s + r.weight, 0);
+    const effective = 1 / rows.reduce((s, r) => s + (r.weight / 100) ** 2, 0);
+    const topLabel = concentration(rows[0].weight);
+    const topEl = document.getElementById('pf-top');
+    topEl.textContent = `${rows[0].weight.toFixed(1)}%`;
+    topEl.className = 'stat-value ' + (topLabel ? topLabel[1] : '');
+    document.getElementById('pf-top-sub').innerHTML = `${escapeHtml(rows[0].symbol)}${rows.length > 3 ? ` · 前 3 大 ${top3.toFixed(1)}%` : ''}`;
+    document.getElementById('pf-effective').textContent = `${effective.toFixed(1)} 檔`;
+    document.getElementById('pf-effective-sub').textContent = `實際持有 ${rows.length} 檔；越小越集中`;
 
-    // 6. US per-stock value
-    if (usStocks.length > 0) {
-      createDonut('chart-us-value',
-        usStocks.map(s => s.symbol),
-        usStocks.map(s => s.valueTWD),
-        'legend-us-value'
-      );
-    }
+    // USD exposure: US stocks + carried-forward USD cash, against net worth
+    const usStock = holdings.filter(h => h.currency === 'USD').reduce((s, h) => s + h.market_value_twd, 0);
+    const usdCash = cash ? Math.max(0, cash.usd) * rate : 0;
+    const netWorth = totalValue + (cash ? cash.twd + cash.usd * rate : 0);
+    const usdTotal = usStock + usdCash;
+    document.getElementById('pf-usd').textContent = netWorth > 0 ? `${(usdTotal / netWorth * 100).toFixed(1)}%` : '--';
+    document.getElementById('pf-usd-sub').innerHTML =
+      `美股 ${fmtTWD(usStock)}${cash ? ` ＋ 美金現金 ${fmtTWD(usdCash)}` : '（尚無快照，只算股票）'}<br>台幣升值 1% ≈ ${fmtPL(-usdTotal / 100)}`;
 
-    // 7. P&L contribution bar chart (all stocks, sorted by absolute P&L)
-    const sorted = [...analyzed].sort((a, b) => b.plTWD - a.plTWD);
-    createBarChart('chart-pl-contribution',
-      sorted.map(s => s.symbol),
-      sorted.map(s => s.plTWD),
-      sorted.map(s => s.plTWD >= 0 ? 'rgba(52, 211, 153, 0.8)' : 'rgba(248, 113, 113, 0.8)')
-    );
+    // Dividends
+    document.getElementById('pf-div').textContent = fmtTWD(divTotal);
+    document.getElementById('pf-div-sub').textContent = divTotal > 0
+      ? `月均 ${fmtTWD(divTotal / 12)} · 殖利率 ${totalCost > 0 ? (divTotal / totalCost * 100).toFixed(2) : '--'}%`
+      : '近 12 個月沒有股利紀錄';
 
-    // 8. Risk concentration table
-    const riskBody = document.getElementById('risk-body');
-    const allSorted = [...analyzed].sort((a, b) => b.valueTWD - a.valueTWD);
-    riskBody.innerHTML = allSorted.map(s => {
-      const costPct = totalCost > 0 ? (s.costTWD / totalCost * 100) : 0;
-      const valuePct = totalValue > 0 ? (s.valueTWD / totalValue * 100) : 0;
-      const totalPL = analyzed.reduce((sum, x) => sum + Math.abs(x.plTWD), 0);
-      const plContrib = totalPL > 0 ? (s.plTWD / totalPL * 100) : 0;
-
-      let status = '', statusClass = 'risk-ok';
-      if (valuePct >= 40) { status = '高度集中'; statusClass = 'risk-danger'; }
-      else if (valuePct >= 25) { status = '偏高'; statusClass = 'risk-warn'; }
-      else { status = '正常'; }
-
-      return `
-        <tr>
-          <td><strong>${s.symbol}</strong></td>
-          <td>${s.market === 'TW' ? '台股' : '美股'}</td>
-          <td>${costPct.toFixed(1)}%</td>
-          <td>${valuePct.toFixed(1)}%</td>
-          <td class="${plClass(s.plTWD)}">${plContrib.toFixed(1)}% (${fmtTWD(s.plTWD)})</td>
-          <td class="${statusClass}">${status}</td>
-        </tr>
-      `;
+    // Weights: bar = weight now, tick = weight at cost; bars scale to the heaviest so small ones stay visible
+    const scale = Math.max(...rows.map(r => Math.max(r.weight, r.costWeight)));
+    document.getElementById('pf-weights').innerHTML = rows.map(r => {
+      const label = concentration(r.weight);
+      const drift = r.weight - r.costWeight;
+      const sub = [
+        `成本時 ${r.costWeight.toFixed(1)}%${Math.abs(drift) >= 0.1 ? ` <span class="${plClass(drift)}">${drift > 0 ? '↑' : '↓'}${Math.abs(drift).toFixed(1)}</span>` : ''}`,
+        `損益 <span class="${plClass(r.pl)}">${fmtPL(r.pl)}${r.plPct ? ` (${fmtPct(r.plPct)})` : ''}</span>`,
+        r.yield != null ? `殖利率 ${r.yield.toFixed(2)}%` : '',
+      ].filter(Boolean).join(' · ');
+      return `<div class="pf-row">
+        <div class="pf-row-head">
+          <span class="pf-sym">${escapeHtml(r.symbol)}</span>
+          <span class="pf-mkt pf-mkt-${r.market === 'TW' ? 'tw' : 'us'}">${r.market === 'TW' ? '台' : '美'}</span>
+          ${label ? `<span class="pf-flag ${label[1]}">${label[0]}</span>` : ''}
+          <span class="pf-weight">${r.weight.toFixed(1)}%</span>
+        </div>
+        <div class="pf-bar" aria-hidden="true">
+          <span class="pf-bar-fill pf-mkt-${r.market === 'TW' ? 'tw' : 'us'}" style="width:${r.weight / scale * 100}%"></span>
+          <span class="pf-bar-cost" style="left:${r.costWeight / scale * 100}%"></span>
+        </div>
+        <div class="pf-row-sub">${sub}</div>
+      </div>`;
     }).join('');
 
+    // TW / US split + rebalance
+    _portfolio = { tw: totalValue - usStock, us: usStock };
+    document.getElementById('pf-target-tw').value = settings.rebalance_target_tw || '';
+    renderRebalance(settings.rebalance_target_tw);
   } catch (err) {
     showToast('載入投資組合分析失敗: ' + err.message, 'error');
   }
 }
 
-function getUsdRate(stockData, holdings) {
-  // Fallback rate extraction
-  return 32;
+/** TW/US split bar and how to reach the target TW share: by buying only, or by switching. */
+function renderRebalance(targetStr) {
+  if (!_portfolio) return;
+  const { tw, us } = _portfolio;
+  const total = tw + us;
+  const twPct = tw / total * 100;
+  document.getElementById('pf-split').innerHTML = `
+    <div class="pf-split-bar" aria-hidden="true">
+      <span class="pf-mkt-tw" style="width:${twPct}%"></span><span class="pf-mkt-us" style="width:${100 - twPct}%"></span>
+    </div>
+    <div class="pf-split-legend">
+      <span>台股 ${twPct.toFixed(1)}% · ${fmtTWD(tw)}</span><span>美股 ${(100 - twPct).toFixed(1)}% · ${fmtTWD(us)}</span>
+    </div>`;
+
+  const out = document.getElementById('pf-rebalance');
+  const target = targetStr === '' || targetStr == null ? NaN : Number(targetStr);
+  if (!(target >= 0 && target <= 100)) {
+    out.innerHTML = '<p class="form-hint">填一個目標比例（例如台股 60%），算出要怎麼買才會回到目標。</p>';
+    return;
+  }
+  const f = target / 100;
+  const gap = f * total - tw; // > 0: TW is under target
+  if (Math.abs(gap) < total * 0.01) {
+    out.innerHTML = `<p>目前已在目標（台股 ${target}%／美股 ${100 - target}%）的 1% 以內，不用動。</p>`;
+    return;
+  }
+  const [under, over, underVal, underF] = gap > 0 ? ['台股', '美股', tw, f] : ['美股', '台股', us, 1 - f];
+  // Buy X of the under side: (underVal + X) / (total + X) = underF
+  const buyOnly = underF < 1 ? (underF * total - underVal) / (1 - underF) : Infinity;
+  out.innerHTML = `
+    <p>目標 台股 ${target}%／美股 ${100 - target}%，目前${under}偏低：</p>
+    <ul class="pf-rebalance-list">
+      <li><strong>只用買的：</strong>${under}再買 ${Number.isFinite(buyOnly) ? fmtTWD(buyOnly) : '--（目標 100% 只能靠賣出）'}</li>
+      <li><strong>用換的：</strong>賣出${over} ${fmtTWD(Math.abs(gap))}，換成${under}</li>
+    </ul>
+    <p class="form-hint">只看股票市值，不含現金；手續費、稅與匯差另計。</p>`;
 }
 
-function getImpliedRate(stockData, holdings) {
-  return 32;
+async function saveRebalanceTarget(v) {
+  const n = v === '' ? '' : Math.min(100, Math.max(0, Number(v)));
+  document.getElementById('pf-target-tw').value = n;
+  renderRebalance(n);
+  try {
+    await api('/api/settings', { method: 'PUT', body: JSON.stringify({ rebalance_target_tw: String(n) }) });
+  } catch (err) {
+    showToast('儲存目標比例失敗: ' + err.message, 'error');
+  }
 }
 
 // ============================================================

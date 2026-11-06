@@ -595,79 +595,47 @@
 
       <!-- 組合分析 Sub-tab -->
       <div id="subtab-portfolio" class="subtab-content">
-        <!-- Row 1: Market allocation (Cost vs Value side by side) -->
-        <h2 class="section-title">市場配置</h2>
-        <div class="chart-row">
-          <div class="chart-card">
-            <h3 class="chart-title">成本配置：台股 vs 美股</h3>
-            <div class="chart-container-md"><canvas id="chart-market-cost"></canvas></div>
-            <div id="legend-market-cost" class="chart-legend"></div>
+        <div class="dash-stats pf-stats">
+          <div class="stat-card">
+            <div class="stat-label" title="市值最大的一檔佔全部股票市值的比例。&#10;超過 25% 偏高、超過 40% 高度集中。">最大持股 ⓘ</div>
+            <div class="stat-value" id="pf-top">--</div>
+            <div class="stat-sub" id="pf-top-sub"></div>
           </div>
-          <div class="chart-card">
-            <h3 class="chart-title">市值配置：台股 vs 美股</h3>
-            <div class="chart-container-md"><canvas id="chart-market-value"></canvas></div>
-            <div id="legend-market-value" class="chart-legend"></div>
+          <div class="stat-card">
+            <div class="stat-label" title="1 ÷ Σ(各檔權重²)。每檔一樣重時就等於檔數；&#10;少數幾檔很重時會遠小於檔數，代表實際分散程度。">等效持股 ⓘ</div>
+            <div class="stat-value" id="pf-effective">--</div>
+            <div class="stat-sub" id="pf-effective-sub"></div>
           </div>
-      </div>
+          <div class="stat-card">
+            <div class="stat-label" title="美股市值 + 美金現金（最新快照加計之後的買賣與股利），佔淨資產的比例。&#10;台幣升值時這部分換回台幣會變少。">美元曝險 ⓘ</div>
+            <div class="stat-value" id="pf-usd">--</div>
+            <div class="stat-sub" id="pf-usd-sub"></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label" title="近 12 個月實際入帳的股利（扣掉預扣稅），美金依現行匯率換算。&#10;殖利率 = 近 12 個月股利 ÷ 目前持有成本。">近 12 月股利 ⓘ</div>
+            <div class="stat-value" id="pf-div">--</div>
+            <div class="stat-sub" id="pf-div-sub"></div>
+          </div>
+        </div>
 
-        <!-- Row 2: Per-stock cost breakdown -->
-        <h2 class="section-title">個股成本佔比</h2>
-        <div class="chart-row">
-          <div class="chart-card">
-            <h3 class="chart-title">台股成本佔比</h3>
-            <div class="chart-container-md"><canvas id="chart-tw-cost"></canvas></div>
-            <div id="legend-tw-cost" class="chart-legend"></div>
-          </div>
-          <div class="chart-card">
-            <h3 class="chart-title">美股成本佔比</h3>
-            <div class="chart-container-md"><canvas id="chart-us-cost"></canvas></div>
-            <div id="legend-us-cost" class="chart-legend"></div>
-          </div>
-      </div>
-
-        <!-- Row 3: Per-stock value breakdown -->
-        <h2 class="section-title">個股市值佔比</h2>
-        <div class="chart-row">
-          <div class="chart-card">
-            <h3 class="chart-title">台股市值佔比</h3>
-            <div class="chart-container-md"><canvas id="chart-tw-value"></canvas></div>
-            <div id="legend-tw-value" class="chart-legend"></div>
-          </div>
-          <div class="chart-card">
-            <h3 class="chart-title">美股市值佔比</h3>
-            <div class="chart-container-md"><canvas id="chart-us-value"></canvas></div>
-            <div id="legend-us-value" class="chart-legend"></div>
-          </div>
-      </div>
-
-        <!-- Row 4: P&L contribution -->
-        <h2 class="section-title">未實現損益貢獻度</h2>
-        <div class="chart-row">
-          <div class="chart-card chart-card-wide">
-            <h3 class="chart-title">各股損益貢獻（依金額排序）</h3>
-            <div class="chart-container-bar"><canvas id="chart-pl-contribution"></canvas></div>
-          </div>
-      </div>
-
-        <!-- Risk concentration -->
-        <h2 class="section-title">風險集中度</h2>
         <div class="card">
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>股票</th>
-                  <th>市場</th>
-                  <th>成本佔比</th>
-                  <th>市值佔比</th>
-                  <th>損益貢獻</th>
-                  <th>狀態</th>
-                </tr>
-              </thead>
-              <tbody id="risk-body"></tbody>
-            </table>
+          <div class="card-header">
+            <h3>持股權重</h3>
           </div>
-      </div>
+          <p class="form-hint pf-hint">依市值排序。長條是現在的權重，細線是用成本算的權重：長條超過細線代表漲得比其他檔多、變重了。</p>
+          <div id="pf-weights" class="pf-weights"><div class="empty-state">載入中...</div></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>台美配置與再平衡</h3>
+          </div>
+          <div id="pf-split" class="pf-split"></div>
+          <label class="pf-target">目標台股比例
+            <input type="number" id="pf-target-tw" class="input-sm" min="0" max="100" step="5" placeholder="例如 60" onchange="saveRebalanceTarget(this.value)">%
+          </label>
+          <div id="pf-rebalance" class="pf-rebalance"></div>
+        </div>
       </div>
     </section>
 
