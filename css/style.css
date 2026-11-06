@@ -3,6 +3,9 @@
    Modern dark finance theme with Traditional Chinese UI
    ============================================================ */
 
+/* `hidden` always wins over a component's own display */
+[hidden] { display: none !important; }
+
 /* --- CSS Variables / Theme --- */
 :root {
   --bg-primary: #0f1724;
@@ -2031,7 +2034,6 @@ body[data-tab="expenses"] .fab { display: flex; }
 /* A foreign currency stands out, so a remembered ¥ isn't missed back home */
 .amount-row.foreign select { border-color: var(--accent); background: var(--accent-subtle); color: var(--accent); font-weight: 600; }
 .fx-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 0.85rem; color: var(--text-secondary); }
-.fx-row[hidden] { display: none; }
 .fx-row label { font-weight: 400; white-space: nowrap; }
 .fx-row input { width: 7.5rem; }
 #expense-fx-twd:not(:empty) + #expense-fx-source:not(:empty)::before { content: ' · '; }
@@ -2112,13 +2114,11 @@ body[data-tab="expenses"] .fab { display: flex; }
 
 /* --- 收支 export dialog --- */
 .export-ranges { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
-.export-ranges label[hidden] { display: none; }
 .export-custom { display: flex; align-items: center; gap: 6px; }
 .export-custom input { flex: 1; min-width: 0; }
 
 /* --- Asset snapshots (dashboard): latest up front, history by year on demand --- */
 .snap-hint { margin: 0 0 12px 0; }
-.snap-toggle[hidden], .snap-history[hidden], #snapshot-cash-hint[hidden] { display: none; }
 #snapshot-cash-hint { margin: 0 0 0.6rem; }
 .snap-latest { margin-bottom: 0.75rem; }
 .snap-latest-meta { color: var(--text-secondary); font-size: 0.85rem; }

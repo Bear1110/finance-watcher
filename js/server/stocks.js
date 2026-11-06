@@ -26,7 +26,7 @@ export function holdingDetail(h) {
   };
 }
 
-/** Transaction as the API returns it (auto_fee/manual_pl/is_transfer/account_id omitted when empty). */
+/** Transaction as the API returns it (auto_fee/manual_pl/account_id omitted when empty). */
 export function txnJSON(t) {
   const out = {
     id: t.id, symbol: t.symbol, market: t.market, action: t.action,
@@ -34,7 +34,6 @@ export function txnJSON(t) {
   };
   if (t.auto_fee) out.auto_fee = true;
   if (t.manual_pl) out.manual_pl = true;
-  if (t.is_transfer) out.is_transfer = true; // imported position: no cash moved
   Object.assign(out, {
     currency: t.currency, date: t.date, realized_pl: t.realized_pl,
     note: t.note ?? '', created_at: t.created_at ?? '',

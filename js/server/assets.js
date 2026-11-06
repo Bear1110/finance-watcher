@@ -36,6 +36,35 @@ function list() {
     .map(assetJSON);
 }
 
+/** Is a dated record newer than the snapshot? Same-day ties go by entry time. */
+const afterSnapshot = (r, snap) => r.date > snap.date
+  || (r.date === snap.date && !!r.created_at && !!snap.created_at && r.created_at > snap.created_at);
+
+/**
+ * The latest snapshot's cash carried forward by what the app records since: own trades
+ * (imported positions moved no cash; managed accounts have their own cash) and dividends
+ * (net of withholding). So buying stock after a snapshot moves money instead of adding it.
+ * Returns null without snapshots; amounts in native currency.
+ */
+export function carriedCash() {
+  const [snap] = list();
+  if (!snap) return null;
+  const out = { date: snap.date, twd: snap.cash_twd || 0, usd: snap.cash_usd || 0, trades: 0, dividends: 0, moved_twd: 0, moved_usd: 0 };
+  const add = (currency, n) => { out[currency === 'USD' ? 'moved_usd' : 'moved_twd'] += n; };
+  for (const t of db.where('stock_transactions', (t) => t.account_id == null && !t.is_transfer && afterSnapshot(t, snap))) {
+    const gross = t.shares * t.price;
+    add(t.currency, t.action === 'BUY' ? -(gross + (t.fee || 0)) : gross - (t.fee || 0) - (t.tax || 0));
+    out.trades++;
+  }
+  for (const d of db.where('dividends', (d) => afterSnapshot(d, snap))) {
+    add(d.currency, d.amount || 0);
+    out.dividends++;
+  }
+  out.twd += out.moved_twd;
+  out.usd += out.moved_usd;
+  return out;
+}
+
 async function create(req) {
   const s = decode(req);
   if (!s.date) s.date = db.today();
@@ -52,6 +81,7 @@ async function update(req) {
 }
 
 route('GET', '/api/assets', list);
+route('GET', '/api/assets/cash', carriedCash);
 route('POST', '/api/assets', create);
 route('PUT', '/api/assets/{id}', update);
 route('DELETE', '/api/assets/{id}', (req) => { db.remove('asset_snapshots', req.params.id); return { status: 'deleted' }; });

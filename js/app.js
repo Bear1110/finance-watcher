@@ -406,37 +406,13 @@ document.addEventListener('click', (e) => {
 
 let assetTrendChart = null;
 let _cachedAssets = [];
-let _estimatedCash = null; // { twd, usd } for prefilling a new snapshot
-
-/** Is a dated record (trade / dividend) newer than the snapshot? Same-day ties go by entry time. */
-const afterSnapshot = (r, snap) => r.date > snap.date
-  || (r.date === snap.date && !!r.created_at && !!snap.created_at && r.created_at > snap.created_at);
-
-/**
- * Cash moved since a snapshot by what the app records: own trades (imported positions moved
- * no cash; managed accounts aren't listed) and dividends (net of withholding), per currency.
- */
-function cashSinceSnapshot(snap, txList, dividends) {
-  const out = { TWD: 0, USD: 0, trades: 0, dividends: 0 };
-  const cur = c => (c === 'USD' ? 'USD' : 'TWD');
-  for (const t of txList) {
-    if (t.is_transfer || !afterSnapshot(t, snap)) continue;
-    const gross = t.shares * t.price;
-    out[cur(t.currency)] += t.action === 'BUY' ? -(gross + (t.fee || 0)) : gross - (t.fee || 0) - (t.tax || 0);
-    out.trades++;
-  }
-  for (const d of dividends) {
-    if (!afterSnapshot(d, snap)) continue;
-    out[cur(d.currency)] += d.amount || 0;
-    out.dividends++;
-  }
-  return out;
-}
+let _carriedCash = null; // /api/assets/cash: the latest snapshot's cash carried forward; prefills a new snapshot
 
 async function loadDashboard() {
   try {
-    const [assets, stocks, transactions, expenses, xirr, dividends] = await Promise.all([
+    const [assets, cash, stocks, transactions, expenses, xirr, dividends] = await Promise.all([
       api('/api/assets').catch(() => []),
+      api('/api/assets/cash').catch(() => null),
       api('/api/stocks').catch(() => ({ holdings: [], total_value_twd: 0 })),
       api('/api/transactions').catch(() => []),
       api('/api/expenses').catch(() => []),
@@ -447,7 +423,6 @@ async function loadDashboard() {
     const assetList = Array.isArray(assets) ? assets : [];
     const stockData = (stocks && stocks.holdings) ? stocks : { holdings: [], total_value_twd: 0 };
     const txList = Array.isArray(transactions) ? transactions : [];
-    const divList = Array.isArray(dividends) ? dividends : [];
 
     _cachedAssets = assetList;
 
@@ -463,41 +438,33 @@ async function loadDashboard() {
     const latest = assetList.length > 0 ? assetList[0] : null;
     const rate = (latest && latest.usd_twd_rate) || 32;
 
-    // Cash = latest snapshot carried forward by later trades and dividends, so buying stock
-    // after the snapshot moves money from cash to stock instead of adding to net worth.
-    const moved = latest ? cashSinceSnapshot(latest, txList, divList) : null;
-    const cashTwd = latest ? (latest.cash_twd || 0) + moved.TWD : 0;
-    const cashUsd = latest ? (latest.cash_usd || 0) + moved.USD : 0;
-    _estimatedCash = latest ? { twd: Math.round(cashTwd), usd: Math.round(cashUsd * 100) / 100 } : null;
-
+    // Cash = latest snapshot carried forward by later trades and dividends (see assets.js carriedCash)
+    _carriedCash = latest ? cash : null;
+    const cashTwd = _carriedCash ? _carriedCash.twd : 0;
+    const cashUsd = _carriedCash ? _carriedCash.usd : 0;
     const liveNetWorth = latest ? cashTwd + cashUsd * rate + currentStockValue : null;
 
-    const growthEl = document.getElementById('dash-growth');
-    growthEl.innerHTML = '';
+    const netDate = document.getElementById('dash-net-date');
+    netDate.title = '';
     if (latest) {
       document.getElementById('dash-net-worth').textContent = fmtTWD(liveNetWorth);
-      const counted = [moved.trades && `${moved.trades} 筆交易`, moved.dividends && `${moved.dividends} 筆股利`].filter(Boolean);
-      const netDate = document.getElementById('dash-net-date');
+      const c = _carriedCash || { trades: 0, dividends: 0 };
+      const counted = [c.trades && `${c.trades} 筆交易`, c.dividends && `${c.dividends} 筆股利`].filter(Boolean);
       netDate.textContent = `現金：${latest.date} 快照${counted.length ? `＋之後 ${counted.join('、')}` : ''} / 股票為即時市值`;
-      netDate.title = counted.length
-        ? `快照現金加上之後的股票買賣（買進扣、賣出加，含手續費與稅）與股利入帳。\n台幣 ${fmtPL(moved.TWD)}、美金 ${fmtPLCur(moved.USD, 'USD')}\n收支紀錄不算進來，下次記快照時會對齊。`
-        : '';
-
-      const base = latest.total_asset || 0;
-      if (base > 0) {
-        const diff = liveNetWorth - base;
-        growthEl.innerHTML = `<span class="${plClass(diff)}">較 ${shortDate(latest.date)} 快照 ${fmtPct(diff / base * 100)} (${fmtPL(diff)})</span>`;
-      }
+      if (counted.length) netDate.title = `台幣 ${fmtPL(c.moved_twd)}、美金 ${fmtPLCur(c.moved_usd, 'USD')}（收支不算，下次記快照時對齊）`;
+      document.getElementById('dash-growth').innerHTML =
+        `較 ${shortDate(latest.date)} 快照 ${changeHtml(liveNetWorth, latest.total_asset)}`;
     } else {
       document.getElementById('dash-net-worth').textContent = '--';
-      document.getElementById('dash-net-date').textContent = '尚無快照，請新增';
+      netDate.textContent = '尚無快照，請新增';
+      document.getElementById('dash-growth').innerHTML = '';
     }
 
     renderDashChangeStats({
       assetList, latest, rate, liveNetWorth, txList, xirr,
       twHoldings, usHoldings, stockValue: currentStockValue,
       expenses: Array.isArray(expenses) ? expenses : [],
-      dividends: divList,
+      dividends: Array.isArray(dividends) ? dividends : [],
     });
     loadPerformance(); // separate request: the first run fetches price history
     loadDataCheckBadge();
@@ -553,7 +520,7 @@ async function loadDashboard() {
     }
 
     // Snapshots table
-    renderSnapshotTable(assetList);
+    renderSnapshots(assetList);
 
   } catch (err) {
     showToast('載入總覽資料失敗: ' + err.message, 'error');
@@ -759,8 +726,6 @@ function renderAssetTrendChart(assets) {
   });
 }
 
-let _snapshotHistoryOpen = false;
-
 /** Whole days from a YYYY-MM-DD date to today (local time). */
 function daysSince(d) {
   const [y, m, day] = d.split('-').map(Number);
@@ -768,23 +733,50 @@ function daysSince(d) {
   return Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - new Date(y, m - 1, day)) / 86400000);
 }
 
-/** "+12,345 (+1.23%)" from one total to another, colored. */
-function snapshotDelta(cur, prev, compact = false) {
-  if (!prev || !(prev.total_asset > 0)) return '';
-  const diff = cur.total_asset - prev.total_asset;
-  const pct = fmtPct(diff / prev.total_asset * 100);
+/** Colored change from base to cur: "+12,345 (+1.23%)", or just the percent when compact. '' without a base. */
+function changeHtml(cur, base, compact = false) {
+  if (!(base > 0)) return '';
+  const diff = cur - base;
+  const pct = fmtPct(diff / base * 100);
   return `<span class="${plClass(diff)}">${compact ? pct : `${fmtPL(diff)} (${pct})`}</span>`;
 }
 
-/** Snapshot card: the latest one up front; the full history (by year, rows expand) on demand. */
-function renderSnapshotTable(assets) {
+/** One history row: date, total and change in the summary; tap for the rest. */
+function snapshotRowHtml(a, prev) {
+  return `<details class="snap-row">
+    <summary>
+      <span class="snap-date">${shortDate(a.date)}</span>
+      <span class="snap-total">${fmtTWD(a.total_asset)}</span>
+      <span class="snap-delta">${prev ? changeHtml(a.total_asset, prev.total_asset, true) : ''}</span>
+    </summary>
+    <div class="snap-detail">
+      <dl>
+        <div><dt>台幣現金</dt><dd>${fmtTWD(a.cash_twd)}</dd></div>
+        <div><dt>美金現金</dt><dd>${fmtUSD(a.cash_usd)}</dd></div>
+        <div><dt>台股市值</dt><dd>${fmtTWD(a.stock_tw_value)}</dd></div>
+        <div><dt>美股市值</dt><dd>${fmtTWD(a.stock_us_value)}</dd></div>
+        <div><dt>匯率</dt><dd>${fmtNum(a.usd_twd_rate, 2)}</dd></div>
+        ${prev ? `<div><dt>較上一筆</dt><dd>${changeHtml(a.total_asset, prev.total_asset)}</dd></div>` : ''}
+      </dl>
+      ${a.note ? `<p class="snap-note">${escapeHtml(a.note)}</p>` : ''}
+      <div class="snap-actions">
+        ${rowBtn('edit', `editSnapshot(${a.id})`)}
+        ${rowBtn('delete', `deleteSnapshot(${a.id})`)}
+      </div>
+    </div>
+  </details>`;
+}
+
+/** Snapshot card: the latest one up front; the full history (by year, rows expand) behind a toggle. */
+function renderSnapshots(assets) {
   const latestEl = document.getElementById('snapshot-latest');
   const toggle = document.getElementById('snapshot-toggle');
   const history = document.getElementById('snapshot-history');
-  if (!assets || assets.length === 0) {
+  toggle.hidden = !assets.length;
+  if (!assets.length) {
     latestEl.innerHTML = '<div class="empty-state">尚無快照資料，請新增</div>';
-    toggle.hidden = true;
     history.hidden = true;
+    history.innerHTML = '';
     return;
   }
   const [latest, prev] = assets;
@@ -792,62 +784,45 @@ function renderSnapshotTable(assets) {
   latestEl.innerHTML = `
     <div class="snap-latest-meta">最新 ${latest.date} · ${days <= 0 ? '今天' : `${days} 天前`}</div>
     <div class="snap-latest-total">${fmtTWD(latest.total_asset)}</div>
-    ${prev ? `<div class="snap-latest-delta">較上一筆（${prev.date}）${snapshotDelta(latest, prev)}</div>` : ''}`;
-
-  toggle.hidden = false;
-  toggle.textContent = _snapshotHistoryOpen ? '收合紀錄' : `全部紀錄（${assets.length} 筆）`;
-  toggle.setAttribute('aria-expanded', String(_snapshotHistoryOpen));
-  history.hidden = !_snapshotHistoryOpen;
-  if (!_snapshotHistoryOpen) return;
+    ${prev ? `<div class="snap-latest-delta">較上一筆（${prev.date}）${changeHtml(latest.total_asset, prev.total_asset)}</div>` : ''}`;
+  syncSnapshotToggle();
 
   // assets are newest first, so the previous snapshot of assets[i] is assets[i + 1]
   const years = new Map();
   assets.forEach((a, i) => {
     const y = a.date.slice(0, 4);
     if (!years.has(y)) years.set(y, []);
-    years.get(y).push({ a, prev: assets[i + 1] });
+    years.get(y).push(snapshotRowHtml(a, assets[i + 1]));
   });
-  const yearList = [...years.keys()];
   const thisYear = String(new Date().getFullYear());
+  const yearList = [...years.keys()];
+  // year-end (or latest) snapshot of each year = first of its group
+  const yearEnd = new Map(yearList.map(y => [y, assets.find(a => a.date.startsWith(y))]));
   history.innerHTML = yearList.map((y, yi) => {
-    const rows = years.get(y);
-    const last = rows[0].a; // year-end (or latest) snapshot
-    const prevYear = years.get(yearList[yi + 1]);
-    const yoy = prevYear ? snapshotDelta(last, prevYear[0].a, true) : '';
+    const last = yearEnd.get(y);
+    const prevYear = yearEnd.get(yearList[yi + 1]);
+    const yoy = prevYear ? changeHtml(last.total_asset, prevYear.total_asset, true) : '';
     return `<details class="snap-year"${yi === 0 || y === thisYear ? ' open' : ''}>
       <summary>
         <span class="snap-year-label">${y}</span>
-        <span class="snap-year-meta">${rows.length} 筆 · ${y === thisYear ? '最新' : '年末'} ${fmtTWD(last.total_asset)}${yoy ? ` · 年增 ${yoy}` : ''}</span>
+        <span class="snap-year-meta">${years.get(y).length} 筆 · ${y === thisYear ? '最新' : '年末'} ${fmtTWD(last.total_asset)}${yoy ? ` · 年增 ${yoy}` : ''}</span>
       </summary>
-      ${rows.map(({ a, prev }) => `<details class="snap-row">
-        <summary>
-          <span class="snap-date">${shortDate(a.date)}</span>
-          <span class="snap-total">${fmtTWD(a.total_asset)}</span>
-          <span class="snap-delta">${snapshotDelta(a, prev, true)}</span>
-        </summary>
-        <div class="snap-detail">
-          <dl>
-            <div><dt>台幣現金</dt><dd>${fmtTWD(a.cash_twd)}</dd></div>
-            <div><dt>美金現金</dt><dd>${fmtUSD(a.cash_usd)}</dd></div>
-            <div><dt>台股市值</dt><dd>${fmtTWD(a.stock_tw_value)}</dd></div>
-            <div><dt>美股市值</dt><dd>${fmtTWD(a.stock_us_value)}</dd></div>
-            <div><dt>匯率</dt><dd>${fmtNum(a.usd_twd_rate, 2)}</dd></div>
-            ${prev ? `<div><dt>較上一筆</dt><dd>${snapshotDelta(a, prev)}</dd></div>` : ''}
-          </dl>
-          ${a.note ? `<p class="snap-note">${escapeHtml(a.note)}</p>` : ''}
-          <div class="snap-actions">
-            ${rowBtn('edit', `editSnapshot(${a.id})`)}
-            ${rowBtn('delete', `deleteSnapshot(${a.id})`)}
-          </div>
-        </div>
-      </details>`).join('')}
+      ${years.get(y).join('')}
     </details>`;
   }).join('');
 }
 
+function syncSnapshotToggle() {
+  const toggle = document.getElementById('snapshot-toggle');
+  const open = !document.getElementById('snapshot-history').hidden;
+  toggle.textContent = open ? '收合紀錄' : `全部紀錄（${_cachedAssets.length} 筆）`;
+  toggle.setAttribute('aria-expanded', String(open));
+}
+
 function toggleSnapshotHistory() {
-  _snapshotHistoryOpen = !_snapshotHistoryOpen;
-  renderSnapshotTable(_cachedAssets);
+  const history = document.getElementById('snapshot-history');
+  history.hidden = !history.hidden;
+  syncSnapshotToggle();
 }
 
 /** Dashboard change cards: today's P&L, YTD, YTD change sources, XIRR. Formulas are in each label's tooltip in index.html. */
@@ -947,13 +922,13 @@ function openSnapshotModal() {
   form.reset();
   form.querySelector('[name="id"]').value = '';
   form.querySelector('[name="date"]').value = todayStr();
-  if (_estimatedCash) { // the dashboard's carried-forward cash; the user corrects it to the real balance
-    form.querySelector('[name="cash_twd"]').value = Math.max(0, _estimatedCash.twd);
-    form.querySelector('[name="cash_usd"]').value = Math.max(0, _estimatedCash.usd);
+  if (_carriedCash) { // the user corrects it to the real balance
+    form.querySelector('[name="cash_twd"]').value = Math.max(0, Math.round(_carriedCash.twd));
+    form.querySelector('[name="cash_usd"]').value = Math.max(0, Math.round(_carriedCash.usd * 100) / 100);
   }
   document.getElementById('snapshot-modal-title').textContent = '新增資產快照';
   setSnapshotMode('auto');
-  document.getElementById('snapshot-cash-hint').hidden = !_estimatedCash;
+  document.getElementById('snapshot-cash-hint').hidden = !_carriedCash;
   openModal('modal-snapshot');
 }
 
