@@ -3,8 +3,9 @@
 
 import * as db from './db.js';
 import { route } from './router.js';
-import { body, cmp, round2, storedUSDTWDRate, sellCostBasis, sellReturnPct, toTWD } from './util.js';
+import { body, storedUSDTWDRate } from './util.js';
 import { buildOverview } from './overview.js';
+import { summarizeRealized } from './stocks.js';
 import { performance } from './twr.js';
 import { annualizePct } from './twr_calc.js';
 import { xirrHandler } from './performance.js';
@@ -12,59 +13,6 @@ import { check } from './datacheck.js';
 import { expenseTWD } from './expenses.js';
 
 // ---------------------------------------------------------------- data for the prompt
-
-function buildRealizedSummary() {
-  const rate = storedUSDTWDRate();
-  const sells = db.where('stock_transactions', (t) => t.action === 'SELL' && t.account_id == null)
-    .sort((a, b) => cmp(a.symbol, b.symbol) || cmp(a.date, b.date) || a.id - b.id);
-  const bySymbol = new Map();
-  for (const t of sells) {
-    if (!bySymbol.has(t.symbol)) bySymbol.set(t.symbol, []);
-    bySymbol.get(t.symbol).push(t);
-  }
-
-  const byStock = [];
-  let overallPLTWD = 0;
-  let totalTrades = 0;
-  let wins = 0;
-  let losses = 0;
-  for (const [sym, trades] of bySymbol) {
-    let totalShares = 0, totalRev = 0, totalPL = 0, totalCost = 0;
-    const pcts = [];
-    for (const t of trades) {
-      const rev = t.shares * t.price;
-      totalShares += t.shares;
-      totalRev += rev;
-      totalPL += t.realized_pl;
-      totalCost += sellCostBasis(t);
-      const pct = sellReturnPct(t); // null: no real cost (配股)
-      if (pct != null) pcts.push(pct);
-      if (t.realized_pl >= 0) wins++; else losses++;
-    }
-    totalTrades += trades.length;
-    const avgRet = totalCost > 0 ? totalPL / totalCost * 100 : 0;
-    const cur = trades[0].currency;
-    overallPLTWD += toTWD(totalPL, cur, rate);
-    byStock.push({
-      symbol: sym, market: trades[0].market, total_trades: trades.length,
-      total_shares_sold: totalShares, total_revenue: totalRev,
-      total_cost: totalCost, total_realized_pl: totalPL,
-      avg_return_pct: round2(avgRet), best_trade_pct: pcts.length ? round2(Math.max(...pcts)) : null, worst_trade_pct: pcts.length ? round2(Math.min(...pcts)) : null,
-      currency: cur,
-    });
-  }
-  return {
-    by_stock: byStock,
-    overall: {
-      total_realized_pl_twd: overallPLTWD,
-      usd_twd_rate: rate,
-      total_trades: totalTrades,
-      winning_trades: wins,
-      losing_trades: losses,
-      win_rate: totalTrades > 0 ? wins / totalTrades * 100 : 0,
-    },
-  };
-}
 
 export async function generateAutoPrompt(sections) {
   if (!Array.isArray(sections) || sections.length === 0) {
@@ -90,7 +38,7 @@ export async function generateAutoPrompt(sections) {
     portfolio: set.has('portfolio') ? portfolio : null,
     perf,
     xirr,
-    realized: set.has('realized') ? buildRealizedSummary() : null,
+    realized: set.has('realized') ? summarizeRealized() : null,
     expenses: set.has('expenses') ? db.where('expenses', (e) => e.date.startsWith(`${year}-`)) : [],
     warnings: ((checks && checks.checks) || []).filter((c) => c.level === 'warn').map((c) => c.title),
   });
@@ -189,7 +137,7 @@ function realizedSection(data) {
   let sb = '';
   const o = data.realized.overall;
   sb += `- 總交易次數: ${o.total_trades} 筆\n`;
-  sb += `- 勝率: ${f(o.win_rate, 1)}% (${o.winning_trades} 勝 / ${o.losing_trades} 負)\n`;
+  sb += `- 勝率: ${f(o.win_rate, 1)}% (${o.winning_trades} 勝 / ${o.losing_trades} 負${o.flat_trades ? ` / ${o.flat_trades} 平` : ''})\n`;
   sb += `- 總已實現損益 (TWD): ${money(o.total_realized_pl_twd)}\n\n`;
   sb += '### 各股交易績效\n\n';
   sb += '| 股票 | 市場 | 交易次數 | 已實現損益 | 平均報酬率 | 最佳% | 最差% |\n';

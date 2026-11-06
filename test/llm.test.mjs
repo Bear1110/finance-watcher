@@ -30,3 +30,18 @@ test('prompt: built from the app numbers, only markets held, data warnings, no p
   assert.doesNotMatch(p, /軟體工程師|30歲/);
   assert.doesNotMatch(p, /收支與儲蓄/); // section not chosen
 });
+
+test('prompt: 已實現 section uses the same summary as the 已實現損益 page (flat trades counted apart)', async () => {
+  const db = await import('../js/server/db.js');
+  const { summarizeRealized } = await import('../js/server/stocks.js');
+  db._reset({ stock_transactions: [
+    { id: 1, symbol: 'AAA', market: 'TW', currency: 'TWD', action: 'SELL', shares: 1, price: 10, fee: 0, tax: 0, date: '2026-01-02', realized_pl: 5 },
+    { id: 2, symbol: 'AAA', market: 'TW', currency: 'TWD', action: 'SELL', shares: 1, price: 10, fee: 0, tax: 0, date: '2026-01-03', realized_pl: 0 },
+    { id: 3, symbol: 'AAA', market: 'TW', currency: 'TWD', action: 'SELL', shares: 1, price: 10, fee: 0, tax: 0, date: '2026-01-04', realized_pl: -2 },
+  ] });
+  const realized = summarizeRealized();
+  assert.deepEqual([realized.overall.winning_trades, realized.overall.losing_trades, realized.overall.flat_trades], [1, 1, 1]);
+  const p = generateFinancialPrompt({ sections: new Set(['realized']), rate: 30, realized, warnings: [], expenses: [] });
+  assert.match(p, /勝率: 33\.3% \(1 勝 \/ 1 負 \/ 1 平\)/);
+  assert.match(p, /\| AAA \| TW \| 3 \| NT\$ 3 \|/);
+});

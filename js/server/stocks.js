@@ -248,11 +248,14 @@ async function deleteTransaction(req) {
   });
 }
 
-function realizedSummary(req) {
+/**
+ * 已實現損益 of the self account, optionally for one year ('' = all): per stock, overall win rate,
+ * best / worst trade, and dividends. Shared by the 已實現損益 page and the AI prompt.
+ */
+export function summarizeRealized(yearFilter = '') {
   const sells = db.where('stock_transactions', (t) => t.action === 'SELL' && t.account_id == null)
     .sort((a, b) => cmp(a.symbol, b.symbol) || cmp(a.date, b.date));
 
-  const yearFilter = req.query.get('year') || '';
   const yearSet = new Set();
   const symbolOrder = [];
   const symbolTrades = new Map();
@@ -378,7 +381,7 @@ route('GET', '/api/transactions', listTransactions);
 route('POST', '/api/transactions', recordTransaction);
 route('PUT', '/api/transactions/{id}', updateTransaction);
 route('DELETE', '/api/transactions/{id}', deleteTransaction);
-route('GET', '/api/transactions/summary', realizedSummary);
+route('GET', '/api/transactions/summary', (req) => summarizeRealized(req.query.get('year') || ''));
 // Wipe the self account's trades and holdings of one market (e.g. before importing full broker
 // statements). Dividends, snapshots, expenses and managed accounts stay.
 // Body: { market: 'TW' | 'US' | 'ALL', dry } → { market, transactions, holdings }; dry only counts.
