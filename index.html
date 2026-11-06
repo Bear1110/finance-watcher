@@ -936,17 +936,17 @@
       </button>
 
       <div class="card">
-        <div class="card-header"><h3><span class="i" data-icon="trending"></span>生活費</h3></div>
+        <div class="card-header"><h3><span class="i" data-icon="wallet"></span>生活費</h3></div>
         <div class="settings-row">
           <div><strong>每月生活費</strong><p class="form-hint">用來算總覽的「現金可撐幾個月」。留空就用收支紀錄近 12 個月的平均。</p></div>
-          <label class="settings-input">NT$ <input type="number" id="goal-monthly-expense" class="input-sm" min="0" step="1000" onchange="saveGoalSetting('monthly_expense', this.value)"></label>
+          <label class="settings-input">NT$ <input type="number" id="living-cost" class="input-sm" min="0" step="1000" onchange="saveSetting('monthly_expense', this.value)"></label>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-header"><h3><span class="i" data-icon="wallet"></span>其他資產</h3></div>
+        <div class="card-header"><h3><span class="i" data-icon="briefcase"></span>其他資產</h3></div>
         <p class="form-hint other-hint">房子、車子、勞退、保單解約金等不常變動的資產。自己填目前大約的價值，偶爾更新就好；之後記的快照會一起記下當時的總額。</p>
-        <label class="other-toggle"><input type="checkbox" id="other-include" onchange="saveGoalSetting('include_other_assets', this.checked ? '1' : '0')"> 計入總覽的淨資產（含走勢與年度成長）</label>
+        <label class="other-toggle"><input type="checkbox" id="other-include" onchange="saveSetting('include_other_assets', this.checked ? '1' : '0')"> 計入總覽的淨資產（含走勢與年度成長）</label>
         <div id="other-list"></div>
         <form id="other-form" class="other-form" onsubmit="submitOtherAsset(event)">
           <input type="hidden" name="other_id">

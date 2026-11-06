@@ -5,14 +5,9 @@
 import * as db from './db.js';
 import { route } from './router.js';
 import { fetchQuotes } from './market.js';
-import { HttpError, badRequest, body, cmp, refreshAndPersistRate, round2 } from './util.js';
+import { HttpError, badRequest, body, cmp, refreshAndPersistRate, round2, storedUSDTWDRate, toTWD, realizedTWD } from './util.js';
 
 // USD/TWD rate: stored rate, 32 when missing or 0.
-function getUSDTWDRate() {
-  const v = Number(db.getSetting('usd_twd_rate'));
-  return Number.isFinite(v) && v !== 0 ? v : 32.0;
-}
-
 function parseID(s) {
   if (!/^-?\d+$/.test(String(s))) throw badRequest('invalid id');
   return Number(s);
@@ -107,7 +102,7 @@ export async function computeHoldings(accountID) {
   }
 
   const quotes = await fetchQuotes(pendings.map((p) => p.sym));
-  const rate = getUSDTWDRate();
+  const rate = storedUSDTWDRate();
 
   return pendings.map((p) => {
     const avgCost = p.shares > 0 ? p.costBasis / p.shares : 0;
@@ -115,7 +110,7 @@ export async function computeHoldings(accountID) {
     const mv = p.shares * price;
     const upl = mv - p.costBasis;
     const plPct = p.costBasis > 0 ? upl / p.costBasis * 100 : 0;
-    const fx = p.currency === 'USD' ? rate : 1;
+    const twd = (v) => toTWD(v, p.currency, rate);
     return {
       symbol: p.sym,
       market: p.market,
@@ -124,22 +119,17 @@ export async function computeHoldings(accountID) {
       avg_cost: avgCost,
       current_price: price,
       market_value: mv,
-      market_value_twd: mv * fx,
-      cost_twd: p.costBasis * fx,
+      market_value_twd: twd(mv),
+      cost_twd: twd(p.costBasis),
       unrealized_pl: upl,
-      unrealized_pl_twd: upl * fx,
+      unrealized_pl_twd: twd(upl),
       pl_percent: plPct,
     };
   });
 }
 
-function realizedTWD(accountID, rate) {
-  let sum = 0;
-  for (const t of db.where('stock_transactions', (x) => x.action === 'SELL' && x.account_id === accountID)) {
-    sum += t.currency === 'USD' ? t.realized_pl * rate : t.realized_pl;
-  }
-  return round2(sum);
-}
+const accountRealizedTWD = (accountID, rate) =>
+  round2(realizedTWD(db.where('stock_transactions', (x) => x.action === 'SELL' && x.account_id === accountID), rate));
 
 function txnJSON(t) {
   return {
@@ -164,7 +154,7 @@ async function getSummary(req) {
   const id = parseID(req.params.id);
   const acc = getAccount(id);
   const holdings = await computeHoldings(id);
-  const rate = getUSDTWDRate();
+  const rate = storedUSDTWDRate();
 
   const s = {
     account: accountJSON(acc),
@@ -190,7 +180,7 @@ async function getSummary(req) {
   }
   s.cash_total_twd = acc.cash_twd + acc.cash_usd * rate;
   s.total_value_twd = s.cash_total_twd + s.stock_value_twd;
-  s.realized_pl_twd = realizedTWD(id, rate);
+  s.realized_pl_twd = accountRealizedTWD(id, rate);
   s.transactions = fetchTransactions(id);
   s.cash_movements = fetchCashMovements(id);
   return s;
@@ -257,7 +247,7 @@ async function takeSnapshot(req) {
   });
   snap.cash_total_twd = acc.cash_twd + acc.cash_usd * rate;
   snap.total_value_twd = snap.cash_total_twd + snap.stock_value_twd;
-  snap.realized_pl_twd = realizedTWD(id, rate);
+  snap.realized_pl_twd = accountRealizedTWD(id, rate);
   snap.detail_json = JSON.stringify(details);
   snap.date = req.query.get('date') || db.today();
   snap.note = req.query.get('note') || '';
@@ -278,10 +268,6 @@ function deleteSnapshot(req) {
 }
 
 // ---------------------------------------------------------------- transactions
-
-function listTransactions(req) {
-  return fetchTransactions(parseID(req.params.id));
-}
 
 /**
  * Record a BUY/SELL for the managed account. Adjusts the account's cash
@@ -363,7 +349,6 @@ route('POST', '/api/managed/accounts', createAccount);
 route('PUT', '/api/managed/accounts/{id}', updateAccount);
 route('DELETE', '/api/managed/accounts/{id}', deleteAccount);
 route('GET', '/api/managed/accounts/{id}/summary', getSummary);
-route('GET', '/api/managed/accounts/{id}/transactions', listTransactions);
 route('POST', '/api/managed/accounts/{id}/transactions', recordTransaction);
 route('DELETE', '/api/managed/transactions/{id}', deleteTransaction);
 route('POST', '/api/managed/accounts/{id}/snapshot', takeSnapshot);

@@ -70,16 +70,11 @@ route('DELETE', '/api/dividends/{id}', ({ params }) => {
   return { status: 'deleted' };
 });
 
-function localDate(d) {
-  const p = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
 /** Dividends received per symbol in its own currency: all-time and trailing 12 months. */
 export function dividendsBySymbol() {
   const c = new Date();
   c.setFullYear(c.getFullYear() - 1);
-  const cutoff = localDate(c);
+  const cutoff = db.today(c);
   const groups = new Map();
   for (const d of db.all('dividends')) {
     const k = `${d.symbol}\u0000${d.currency}`;
@@ -229,7 +224,7 @@ route('GET', '/api/dividends/suggestions', async () => {
     return await dividendSuggestions();
   } catch (e) {
     if (e instanceof MarketUnavailableError) {
-      throw new HttpError(503, '無法取得除息資料：請先在「設定 → 行情來源」設定 Yahoo 行情代理，才能估算股利。');
+      throw new HttpError(503, '無法取得除息資料：這個網站沒有設定 Yahoo 行情代理（js/config.js 的 DEFAULT_YAHOO_PROXY），無法估算股利。');
     }
     throw e;
   }

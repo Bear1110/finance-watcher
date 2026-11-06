@@ -4,11 +4,11 @@
 
 import * as db from './db.js';
 import { route } from './router.js';
-import { isHistorySell, sellCostBasis, settingString, storedUSDTWDRate, cmp, round4 } from './util.js';
+import { isHistorySell, sellCostBasis, storedUSDTWDRate, cmp, round4, goRound } from './util.js';
 import { fetchDailyCloses, fetchQuotes, hasProxy, MarketUnavailableError, USDTWD_SYMBOL } from './market.js';
 import { queryDividends } from './dividends.js';
 import {
-  computePerformance, perfSegments, benchValues, benchReturn, addDays, addDate, isDateOnly, goRound,
+  computePerformance, perfSegments, benchValues, benchReturn, addDays, addDate, isDateOnly,
 } from './twr_calc.js';
 import { listSnapshots, netWorthSeries } from './assets.js';
 import { includeOtherAssets } from './other_assets.js';
@@ -178,7 +178,7 @@ export function heldSymbols() {
  * when it is a valid later date. Returns { setting, origin } (origin '' with no trades).
  */
 export function perfOrigin(txns) {
-  const setting = settingString(PERF_START_KEY);
+  const setting = db.getSetting(PERF_START_KEY);
   if (txns.length === 0) return { setting, origin: '' };
   let origin = txns[0].date;
   if (isDateOnly(setting) && setting > origin) origin = setting;
@@ -200,7 +200,7 @@ async function performance() {
     return { as_of: today, periods: [], start_setting: startSetting };
   }
   if (!hasProxy()) {
-    throw new MarketUnavailableError('投資績效需要 Yahoo 歷史股價，請先到「設定 → 行情來源」設定行情代理網址');
+    throw new MarketUnavailableError('投資績效需要 Yahoo 歷史股價，但這個網站沒有設定行情代理（js/config.js 的 DEFAULT_YAHOO_PROXY）');
   }
   const first = txns[0].date;
 

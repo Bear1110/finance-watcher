@@ -12,7 +12,6 @@ export const APP_PROPERTY = { key: 'financeWatcher', value: '1' };
 export const SPREADSHEET_TITLE = 'Finance Watcher 財務紀錄';
 
 // Yahoo Finance 不允許瀏覽器直接呼叫（沒有 CORS），行情要經過一個轉送代理。
-// 部署 worker/yahoo-proxy.js 到 Cloudflare Workers 後把網址填在這裡（結尾不加斜線），
-// 使用者也可以在「設定」頁覆寫成自己的代理。
+// 部署 worker/yahoo-proxy.js 到 Cloudflare Workers 後把網址填在這裡（結尾不加斜線）。
 // 留空時：即時報價與匯率改用 Google 試算表的 GOOGLEFINANCE（需登入），歷史股價相關功能（績效、股利建議）無法使用。
 export const DEFAULT_YAHOO_PROXY = 'https://finance-watcher-yahoo.bearcc01205.workers.dev';

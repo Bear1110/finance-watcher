@@ -11,6 +11,9 @@ export const otherAssetsTotal = () => db.all('other_assets').reduce((s, a) => s 
 /** Does net worth include 其他資產? */
 export const includeOtherAssets = () => db.getSetting('include_other_assets') !== '0';
 
+/** The 其他資產 total that counts toward net worth (0 when the setting is off). */
+export const countedOtherAssets = () => (includeOtherAssets() ? otherAssetsTotal() : 0);
+
 function decode(req) {
   const b = body(req);
   const a = { name: String(b.name ?? '').trim(), value: Number(b.value), note: String(b.note ?? '') };

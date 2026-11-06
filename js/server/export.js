@@ -15,8 +15,7 @@ function csvField(s) {
 }
 
 function writeCSV(name, header, rows) {
-  const d = new Date();
-  const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  const stamp = db.today().replaceAll('-', '');
   const lines = [header, ...rows].map((r) => r.map(csvField).join(',') + '\n').join('');
   return download(`${name}-${stamp}.csv`, '﻿' + lines);
 }

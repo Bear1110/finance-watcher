@@ -6,7 +6,7 @@ import { route } from './router.js';
 import { storedUSDTWDRate, toTWD } from './util.js';
 import { listHoldings } from './stocks.js';
 import { carriedCash, netWorthOf } from './assets.js';
-import { otherAssetsTotal, includeOtherAssets } from './other_assets.js';
+import { countedOtherAssets } from './other_assets.js';
 import { dividendsBySymbol } from './dividends.js';
 
 /** Concentration by market-value weight (%): '' | 'warn' (≥ 25) | 'danger' (≥ 40). */
@@ -92,6 +92,6 @@ route('GET', '/api/stocks/portfolio', async () => {
     cash: carriedCash(),
     rate,
     targetPct: target === '' || target == null ? null : Number(target),
-    other: includeOtherAssets() ? otherAssetsTotal() : 0,
+    other: countedOtherAssets(),
   });
 });

@@ -9,7 +9,6 @@ import { SCHEMA, SYNCED_TABLES } from '../server/db.js';
 
 const SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets';
 const DRIVE = 'https://www.googleapis.com/drive/v3/files';
-export const SCHEMA_VERSION = 1;
 
 // Stable ids: never renumber, only add.
 export const SHEET_IDS = {

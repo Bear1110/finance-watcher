@@ -33,9 +33,6 @@ export function sellReturnPct(t) {
   return cost > t.shares * t.price * 0.01 ? (t.realized_pl / cost) * 100 : null;
 }
 
-/** Text setting ('' when missing). */
-export const settingString = (key) => getSetting(key);
-
 /** Numeric setting: def when missing, unparsable or rejected by valid. */
 export function settingFloat(key, def, valid = () => true) {
   const s = getSetting(key);
@@ -47,6 +44,9 @@ export function settingFloat(key, def, valid = () => true) {
 export const storedUSDTWDRate = () => settingFloat('usd_twd_rate', 32.0, (v) => v > 0);
 
 export const toTWD = (v, currency, rate) => (currency === 'USD' ? v * rate : v);
+
+/** Sum of realized P&L of SELLs, in TWD. */
+export const realizedTWD = (sells, rate) => sells.reduce((s, t) => s + toTWD(t.realized_pl, t.currency, rate), 0);
 
 /** Yahoo's .TW / .TWO suffixes mean Taiwan, anything else US. */
 export const marketForSymbol = (symbol) => (symbol.endsWith('.TW') || symbol.endsWith('.TWO') ? 'TW' : 'US');

@@ -330,15 +330,6 @@ function initTabs() {
     });
   });
 
-  // LLM toggle
-  document.querySelectorAll('.toggle-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      document.querySelectorAll('.llm-mode').forEach(m => m.classList.remove('active'));
-      document.getElementById('llm-mode-' + btn.dataset.mode).classList.add('active');
-    });
-  });
 }
 
 function applyPrivacyUI() {
@@ -3309,7 +3300,7 @@ async function loadSettings() {
       document.getElementById('settings-version').textContent = 'v' + (ver.version || '?');
     } catch (_) {}
 
-    loadGoalSettings();
+    loadLivingCostSetting();
     loadOtherAssets();
 
     // Font size buttons
@@ -3326,14 +3317,14 @@ async function loadSettings() {
 // SECTION: Settings › 生活費 / 其他資產
 // ============================================================
 
-async function loadGoalSettings() {
+async function loadLivingCostSetting() {
   const s = await api('/api/settings');
-  document.getElementById('goal-monthly-expense').value = s.monthly_expense || '';
+  document.getElementById('living-cost').value = s.monthly_expense || '';
   const est = _overview && _overview.spending.recorded_monthly_expense; // from the dashboard, if it was opened
-  document.getElementById('goal-monthly-expense').placeholder = est ? `依收支估 ${Math.round(est)}` : '例如 50000';
+  document.getElementById('living-cost').placeholder = est ? `依收支估 ${Math.round(est)}` : '例如 50000';
 }
 
-async function saveGoalSetting(key, value) {
+async function saveSetting(key, value) {
   try {
     await api('/api/settings', { method: 'PUT', body: JSON.stringify({ [key]: value === '' ? '' : String(Number(value)) }) });
     showToast('已儲存', 'success');

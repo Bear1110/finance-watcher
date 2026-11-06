@@ -3,11 +3,11 @@
 
 import * as db from './db.js';
 import { route } from './router.js';
-import { storedUSDTWDRate, toTWD } from './util.js';
+import { storedUSDTWDRate, toTWD, goRound } from './util.js';
 import { portfolioValues } from './stocks.js';
 import { queryDividends } from './dividends.js';
 import { loadPerfTxns } from './twr.js';
-import { isDateOnly, goRound } from './twr_calc.js';
+import { isDateOnly } from './twr_calc.js';
 
 const DAY_MS = 86400000;
 const utcMs = (s) => Date.parse(s + 'T00:00:00Z');

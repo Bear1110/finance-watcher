@@ -21,7 +21,6 @@ import './server/performance.js';
 import './server/datacheck.js';
 import './server/dividends.js';
 import './server/expenses.js';
-import './server/reports.js';
 import './server/llm.js';
 import './server/managed.js';
 import './server/settings.js';
@@ -36,7 +35,7 @@ route('GET', '/api/version', () => ({ version: VERSION }));
 
 
 /** Validate an import file and count rows per table. */
-function parseImport(data) {
+function validateBackup(data) {
   if (!data || typeof data !== 'object' || data.format !== BACKUP_FORMAT || typeof data.tables !== 'object') {
     throw badRequest('不是本網站的備份檔');
   }
@@ -55,7 +54,7 @@ function parseImport(data) {
 // (account_id) stay valid.
 route('POST', '/api/import', async (req) => {
   const data = body(req);
-  const counts = parseImport(data);
+  const counts = validateBackup(data);
   await db.transaction(async () => {
     for (const t of Object.keys(counts)) {
       const rows = data.tables[t];
@@ -84,7 +83,7 @@ function onImportFile(e) {
   reader.onload = () => {
     try {
       const data = JSON.parse(reader.result);
-      const counts = parseImport(data);
+      const counts = validateBackup(data);
       pendingImport = data;
       const items = Object.entries(counts).map(([t, n]) => `<li>${TABLE_LABELS[t] || t}：${n} 筆</li>`).join('');
       box.innerHTML = `<div class="card" style="padding:12px">

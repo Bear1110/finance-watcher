@@ -9,7 +9,6 @@ import { USDTWD_SYMBOL } from './market.js';
 import { goRound, round2, round4, toTWD } from './util.js';
 import { lotFromBuy, takeLots, lotsTotal } from './lots.js';
 
-export { goRound, round2 };
 
 // perfTxn: { symbol, market, action, currency, date, shares, price, fee, tax, transfer, realized_pl? }
 // transfer: a 匯入持倉 BUY whose price is the average cost and whose date may be
@@ -24,10 +23,7 @@ export { goRound, round2 };
 export const perfSegments = ['ALL', 'TW', 'US'];
 
 /** Add n days to a 'YYYY-MM-DD' date (UTC arithmetic). */
-export function addDays(date, n) {
-  const [y, m, d] = date.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
-}
+export const addDays = (date, n) => addDate(date, 0, 0, n);
 
 /** Add years/months/days to a date string; overflow normalizes like Date (UTC). */
 export function addDate(date, years, months, days) {

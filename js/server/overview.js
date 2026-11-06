@@ -5,7 +5,7 @@ import { route } from './router.js';
 import { storedUSDTWDRate, toTWD, daysBetween } from './util.js';
 import { listSnapshots, afterSnapshot, tradeCash, carriedCash, netWorthOf } from './assets.js';
 import { listHoldings } from './stocks.js';
-import { otherAssetsTotal, includeOtherAssets } from './other_assets.js';
+import { countedOtherAssets, includeOtherAssets } from './other_assets.js';
 import { expenseTWD } from './expenses.js';
 import { portfolioStats, ttmDividendsTWD } from './portfolio.js';
 
@@ -144,7 +144,7 @@ route('GET', '/api/overview', async () => {
   const snaps = listSnapshots().map((s) => ({ ...s, total: s.net_worth, other: includeOther ? s.other_assets : 0 }));
   const cash = carriedCash(snaps[0]);
   const stocks = await listHoldings();
-  const other = includeOther ? otherAssetsTotal() : 0;
+  const other = countedOtherAssets();
   const netWorth = cash ? netWorthOf({ cashTWD: cash.twd, cashUSD: cash.usd, rate, stocks: stocks.total_value_twd, other }) : null;
   const ttmTWD = ttmDividendsTWD(rate);
   const pf = portfolioStats({ holdings: stocks.holdings, ttmTWD, cash, rate, targetPct: null, other });

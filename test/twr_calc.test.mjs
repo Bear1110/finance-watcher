@@ -2,8 +2,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  computePerformance, benchValues, benchReturn, round2, fmtNum,
+  computePerformance, benchValues, benchReturn, fmtNum,
 } from '../js/server/twr_calc.js';
+import { round2 } from '../js/server/util.js';
 import { USDTWD_SYMBOL } from '../js/server/market.js';
 
 function closesOf(...pairs) {

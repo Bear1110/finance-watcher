@@ -1,12 +1,12 @@
-// Holdings, transactions, realized P&L summary and
-// portfolio snapshots. (/api/stocks/xirr and /api/stocks/performance live in
-// performance.js / twr.js.)
+// Holdings, transactions and the realized P&L summary. (/api/stocks/xirr,
+// /api/stocks/performance and /api/stocks/portfolio live in performance.js /
+// twr.js / portfolio.js.)
 
 import * as db from './db.js';
 import { route } from './router.js';
 import { fetchQuotes, invalidateCache, lastFetchTime } from './market.js';
 import {
-  HttpError, badRequest, body, storedUSDTWDRate, toTWD, fmtLocal, round2, cmp, sellCostBasis, sellReturnPct,
+  HttpError, badRequest, body, storedUSDTWDRate, toTWD, realizedTWD, fmtLocal, round2, cmp, sellCostBasis, sellReturnPct,
 } from './util.js';
 import { replaySymbol, normalizeTxn, applyAutoFee, uncoveredWarnings, fmtShares } from './ledger.js';
 
@@ -65,11 +65,7 @@ export async function listHoldings() {
   const quotes = await fetchQuotes(holdings.map((h) => h.symbol));
   const rate = storedUSDTWDRate();
 
-  // Realized P&L from transactions (self only)
-  let realizedPLTWD = 0;
-  for (const t of db.where('stock_transactions', (t) => t.action === 'SELL' && t.account_id == null)) {
-    realizedPLTWD += t.currency === 'USD' ? t.realized_pl * rate : t.realized_pl;
-  }
+  const realizedPLTWD = realizedTWD(db.where('stock_transactions', (t) => t.action === 'SELL' && t.account_id == null), rate);
 
   const summary = {
     holdings: [],
@@ -92,10 +88,9 @@ export async function listHoldings() {
       d.unrealized_pl = (q.price - h.avg_cost) * h.shares;
       if (h.avg_cost > 0) d.pl_percent = (q.price - h.avg_cost) / h.avg_cost * 100;
     }
-    const fx = h.currency === 'USD' ? rate : 1;
-    d.cost_twd = h.avg_cost * h.shares * fx;
-    d.market_value_twd = d.market_value * fx;
-    d.unrealized_pl_twd = d.unrealized_pl * fx;
+    d.cost_twd = toTWD(h.avg_cost * h.shares, h.currency, rate);
+    d.market_value_twd = toTWD(d.market_value, h.currency, rate);
+    d.unrealized_pl_twd = toTWD(d.unrealized_pl, h.currency, rate);
 
     summary.total_cost_twd += d.cost_twd;
     summary.total_value_twd += d.market_value_twd;

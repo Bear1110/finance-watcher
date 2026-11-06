@@ -15,7 +15,7 @@ const CACHE_KEY = 'fw.cache.v1';
 export const SCHEMA = {
   asset_snapshots: {
     synced: true,
-    columns: { id: 'int', date: 'text', cash_twd: 'real', cash_usd: 'real', stock_tw_value: 'real', stock_us_value: 'real', stock_value_twd: 'real', usd_twd_rate: 'real', total_asset: 'real', other_assets: 'real', income: 'real', expense: 'real', note: 'text', created_at: 'text' },
+    columns: { id: 'int', date: 'text', cash_twd: 'real', cash_usd: 'real', stock_tw_value: 'real', stock_us_value: 'real', stock_value_twd: 'real', usd_twd_rate: 'real', total_asset: 'real', other_assets: 'real', note: 'text', created_at: 'text' },
     defaults: { usd_twd_rate: 32 },
   },
   stock_holdings: {
@@ -63,7 +63,7 @@ export const SCHEMA = {
     columns: { id: 'int', key: 'text', value: 'text' },
     defaults: {},
   },
-  // Local caches of Yahoo daily closes (see services port in market.js / priceHistory.js)
+  // Local caches of Yahoo daily closes (filled and read by twr.js)
   price_history: {
     synced: false, key: (r) => `${r.symbol}|${r.date}`,
     columns: { symbol: 'text', date: 'text', close: 'real', adj_close: 'real' },

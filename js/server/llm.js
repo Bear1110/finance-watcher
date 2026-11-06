@@ -3,39 +3,12 @@
 
 import * as db from './db.js';
 import { route } from './router.js';
-import { fetchQuotes } from './market.js';
-import { body, cmp, round2, storedUSDTWDRate, sellCostBasis, sellReturnPct } from './util.js';
-import { holdingDetail } from './stocks.js';
+import { body, cmp, round2, storedUSDTWDRate, sellCostBasis, sellReturnPct, toTWD } from './util.js';
+import { listHoldings } from './stocks.js';
 import { expenseTWD } from './expenses.js';
 
 // ---------------------------------------------------------------- data for the prompt
 
-async function buildPortfolioSummary() {
-  const rate = storedUSDTWDRate();
-  const holdings = db.where('stock_holdings', (h) => h.shares > 0);
-  const quotes = await fetchQuotes(holdings.map((h) => h.symbol)).catch(() => ({}));
-  const summary = { holdings: [], total_cost_twd: 0, total_value_twd: 0, total_pl_twd: 0, total_pl_percent: 0, realized_pl_twd: 0 };
-  for (const h of holdings) {
-    const d = holdingDetail(h);
-    const q = quotes[h.symbol];
-    if (q) d.current_price = q.price;
-    const cost = h.avg_cost * h.shares;
-    d.market_value = d.current_price * h.shares;
-    d.unrealized_pl = d.market_value - cost;
-    if (cost > 0) d.pl_percent = d.unrealized_pl / cost * 100;
-    const fx = h.currency === 'USD' ? rate : 1;
-    d.market_value_twd = d.market_value * fx;
-    d.unrealized_pl_twd = d.unrealized_pl * fx;
-    summary.total_cost_twd += cost * fx;
-    summary.total_value_twd += d.market_value_twd;
-    summary.total_pl_twd += d.unrealized_pl_twd;
-    summary.holdings.push(d);
-  }
-  if (summary.total_cost_twd > 0) summary.total_pl_percent = summary.total_pl_twd / summary.total_cost_twd * 100;
-  summary.realized_pl_twd = db.where('stock_transactions', (t) => t.action === 'SELL' && t.account_id == null)
-    .reduce((s, t) => s + (t.currency === 'USD' ? t.realized_pl * rate : t.realized_pl), 0);
-  return summary;
-}
 
 
 function buildRealizedSummary() {
@@ -69,7 +42,7 @@ function buildRealizedSummary() {
     totalTrades += trades.length;
     const avgRet = totalCost > 0 ? totalPL / totalCost * 100 : 0;
     const cur = trades[0].currency;
-    overallPLTWD += cur === 'USD' ? totalPL * rate : totalPL;
+    overallPLTWD += toTWD(totalPL, cur, rate);
     byStock.push({
       symbol: sym, market: trades[0].market, total_trades: trades.length,
       total_shares_sold: totalShares, total_revenue: totalRev,
@@ -104,7 +77,7 @@ export async function generateAutoPrompt(sections) {
       .sort((a, b) => cmp(b.date, a.date) || cmp(b.created_at, a.created_at) || b.id - a.id)
       .slice(0, 12);
   }
-  if (set.has('portfolio')) data.portfolio = await buildPortfolioSummary();
+  if (set.has('portfolio')) data.portfolio = await listHoldings().catch(() => null);
   if (set.has('realized')) data.realized = buildRealizedSummary();
   if (set.has('expenses')) {
     data.expenses = db.where('expenses', (e) => e.date.startsWith(`${year}-`))
@@ -259,7 +232,7 @@ export function generateFinancialPrompt(data) {
     sb += '- 現金 vs 股票的比例是否合理？以這位用戶的年齡層（約30歲上班族）來看是否適當？\n';
     sb += '- 台股 vs 美股的配置是否需要調整？\n';
     sb += '- 是否過度集中於某些個股？\n';
-    sb += '- 從歷史快照來看，資產成長速度是否健康？成長主要來自儲蓄還是投資增值？\n\n';
+    sb += '- 從歷史快照來看，資產成長速度是否健康？成長主要來自存入的錢（薪水、別人給的）還是投資增值？\n\n';
   }
   if (inc('portfolio')) {
     sb += `## ${n++}. 投資績效評估\n`;
