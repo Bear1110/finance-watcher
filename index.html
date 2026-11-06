@@ -91,13 +91,7 @@
         <div class="hero-sub" id="dash-net-date">--</div>
       </div>
 
-      <div class="dash-stats dash-stats-2" data-tour="dash-stats">
-        <div class="stat-card">
-          <div class="stat-label" title="淨資產 ÷（每月生活費 × 12 ÷ 提領率）。&#10;提領率 4% 代表資產是年支出的 25 倍時，每年領 4% 就夠生活。&#10;生活費與提領率可在設定頁調整。">財務自由進度 ⓘ</div>
-          <div class="stat-value" id="dash-fire">--</div>
-          <div class="source-bar" id="dash-fire-bar"></div>
-          <div class="stat-sub" id="dash-fire-sub"></div>
-        </div>
+      <div class="dash-stats dash-stats-1" data-tour="dash-stats">
         <div class="stat-card">
           <div class="stat-label" title="你股票部位的時間加權報酬（不受買賣時點影響），對照「照你的台美比例買 0050 和 S&amp;P 500」的報酬。&#10;詳細的各期間報酬在 股票 › 績效。">投資成績 vs 大盤 ⓘ</div>
           <div class="stat-value" id="dash-invest">--</div>
@@ -962,14 +956,10 @@
       </button>
 
       <div class="card">
-        <div class="card-header"><h3><span class="i" data-icon="trending"></span>財務目標</h3></div>
+        <div class="card-header"><h3><span class="i" data-icon="trending"></span>生活費</h3></div>
         <div class="settings-row">
-          <div><strong>每月生活費</strong><p class="form-hint" id="goal-expense-hint">用來算總覽的「財務自由進度」與「現金可撐幾個月」。留空就用收支紀錄估算。</p></div>
+          <div><strong>每月生活費</strong><p class="form-hint">用來算總覽的「現金可撐幾個月」。留空就用收支紀錄近 12 個月的平均。</p></div>
           <label class="settings-input">NT$ <input type="number" id="goal-monthly-expense" class="input-sm" min="0" step="1000" onchange="saveGoalSetting('monthly_expense', this.value)"></label>
-        </div>
-        <div class="settings-row">
-          <div><strong>提領率</strong><p class="form-hint">每年從資產領出多少當生活費。4% 是常見的經驗值（資產 = 年支出 × 25），想保守一點可以填 3～3.5。</p></div>
-          <label class="settings-input"><input type="number" id="goal-withdraw-rate" class="input-sm" min="1" max="10" step="0.1" placeholder="4" onchange="saveGoalSetting('withdraw_rate', this.value)"> %</label>
         </div>
       </div>
 

@@ -97,22 +97,15 @@ export function avgMonthlyExpense(expenses, today, months) {
 }
 
 /**
- * 財務自由: net worth against monthly spending × 12 ÷ withdrawal rate. Spending is the setting,
- * else the recorded 12-month average. Also how much of it dividends cover, and how many months cash lasts.
+ * Monthly living cost (the setting, else the recorded 12-month average) and how many months cash lasts.
  */
-export function fireStats({ netWorth, cashTWD, setting, recorded, withdrawRate, dividendsTTM }) {
+export function spendingStats({ cashTWD, setting, recorded }) {
   const monthly = setting > 0 ? setting : recorded;
-  const rate = withdrawRate > 0 ? withdrawRate : 4;
-  const out = { monthly_expense: monthly || null, source: setting > 0 ? 'setting' : recorded ? 'records' : null,
-    recorded_monthly_expense: recorded, withdraw_rate: rate };
-  if (!monthly) return out;
-  const target = monthly * 12 / (rate / 100);
   return {
-    ...out,
-    target,
-    progress: netWorth != null ? netWorth / target * 100 : null,
-    dividend_cover: dividendsTTM / (monthly * 12) * 100,
-    cash_months: cashTWD != null ? cashTWD / monthly : null,
+    monthly_expense: monthly || null,
+    source: setting > 0 ? 'setting' : recorded ? 'records' : null,
+    recorded_monthly_expense: recorded,
+    cash_months: monthly && cashTWD != null ? cashTWD / monthly : null,
   };
 }
 
@@ -120,7 +113,7 @@ export function fireStats({ netWorth, cashTWD, setting, recorded, withdrawRate, 
  * Things worth acting on, most important first. Each: { level: 'warn'|'info', text, action }.
  * A stale snapshot is the data check's job (/api/data-check); the dashboard shows its warnings too.
  */
-export function buildAlerts({ today, latestSnapshot, topHolding, fire, month, liabilities }) {
+export function buildAlerts({ today, latestSnapshot, topHolding, spending, month, liabilities }) {
   const out = [];
   if (!latestSnapshot) {
     out.push({ level: 'info', text: '還沒有資產快照：記一筆現金餘額，才算得出淨資產', action: 'snapshot' });
@@ -128,8 +121,8 @@ export function buildAlerts({ today, latestSnapshot, topHolding, fire, month, li
   if (topHolding && topHolding.level === 'danger') {
     out.push({ level: 'warn', text: `${topHolding.symbol} 佔股票 ${topHolding.weight.toFixed(0)}%，高度集中`, action: 'portfolio' });
   }
-  if (fire.cash_months != null && fire.cash_months < 3) {
-    out.push({ level: 'warn', text: `現金只夠撐 ${Math.max(0, fire.cash_months).toFixed(1)} 個月生活費（一般建議 3～6 個月）`, action: 'settings' });
+  if (spending.cash_months != null && spending.cash_months < 3) {
+    out.push({ level: 'warn', text: `現金只夠撐 ${Math.max(0, spending.cash_months).toFixed(1)} 個月生活費（一般建議 3～6 個月）`, action: 'settings' });
   }
   if (month.last_record) {
     const days = daysBetween(month.last_record, today);
@@ -155,13 +148,10 @@ route('GET', '/api/overview', async () => {
 
   const expenses = db.all('expenses').map((e) => ({ ...e, amount_twd: expenseTWD(e) }));
   const month = monthSummary(expenses, today);
-  const fire = fireStats({
-    netWorth,
+  const spending = spendingStats({
     cashTWD: cash ? cash.twd + cash.usd * rate : null,
     setting: Number(db.getSetting('monthly_expense')) || 0,
     recorded: avgMonthlyExpense(expenses, today, 12),
-    withdrawRate: Number(db.getSetting('withdraw_rate')) || 0,
-    dividendsTTM: pf ? pf.dividends.ttm : 0,
   });
   const dayPL = (mkt) => stocks.holdings.filter((h) => !mkt || h.market === mkt).reduce((s, h) => s + h.day_change_twd, 0);
   const pl = dayPL();
@@ -178,7 +168,7 @@ route('GET', '/api/overview', async () => {
       rate,
     }) : [],
     month,
-    fire,
-    alerts: buildAlerts({ today, latestSnapshot: snaps[0], topHolding: pf && pf.rows[0], fire, month, liabilities: db.all('liabilities') }),
+    spending,
+    alerts: buildAlerts({ today, latestSnapshot: snaps[0], topHolding: pf && pf.rows[0], spending, month, liabilities: db.all('liabilities') }),
   };
 });

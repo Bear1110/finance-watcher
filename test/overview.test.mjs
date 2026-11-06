@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { growthBetween, yearlyGrowth, monthSummary, avgMonthlyExpense, fireStats, buildAlerts } from '../js/server/overview.js';
+import { growthBetween, yearlyGrowth, monthSummary, avgMonthlyExpense, spendingStats, buildAlerts } from '../js/server/overview.js';
 
 const snap = (date, stock, total, created_at = `${date} 12:00:00`) => ({ date, created_at, stock_value_twd: stock, total });
 const tx = (o) => ({ currency: 'TWD', fee: 0, tax: 0, created_at: '', ...o });
@@ -70,19 +70,13 @@ test('avgMonthlyExpense: full months only, since records began', () => {
   assert.equal(avgMonthlyExpense([], '2026-11-06', 12), null);
 });
 
-test('fireStats: setting wins over records, 4% default, dividends and cash coverage', () => {
-  const f = fireStats({ netWorth: 6_000_000, cashTWD: 300_000, setting: 50_000, recorded: 40_000, withdrawRate: 0, dividendsTTM: 60_000 });
-  assert.equal(f.source, 'setting');
-  assert.equal(f.target, 15_000_000);
-  assert.equal(f.progress, 40);
-  assert.equal(f.dividend_cover, 10);
-  assert.equal(f.cash_months, 6);
-  const r = fireStats({ netWorth: 1, cashTWD: null, setting: 0, recorded: 40_000, withdrawRate: 3.5, dividendsTTM: 0 });
-  assert.equal(r.source, 'records');
-  assert.ok(Math.abs(r.target - 40_000 * 12 / 0.035) < 1e-6);
-  assert.equal(r.cash_months, null);
-  assert.deepEqual(fireStats({ netWorth: 1, setting: 0, recorded: null, withdrawRate: 0 }),
-    { monthly_expense: null, source: null, recorded_monthly_expense: null, withdraw_rate: 4 });
+test('spendingStats: setting wins over records, cash runway', () => {
+  assert.deepEqual(spendingStats({ cashTWD: 300_000, setting: 50_000, recorded: 40_000 }),
+    { monthly_expense: 50_000, source: 'setting', recorded_monthly_expense: 40_000, cash_months: 6 });
+  assert.deepEqual(spendingStats({ cashTWD: null, setting: 0, recorded: 40_000 }),
+    { monthly_expense: 40_000, source: 'records', recorded_monthly_expense: 40_000, cash_months: null });
+  assert.deepEqual(spendingStats({ cashTWD: 1, setting: 0, recorded: null }),
+    { monthly_expense: null, source: null, recorded_monthly_expense: null, cash_months: null });
 });
 
 test('buildAlerts: no snapshot, concentration, low cash, stale 收支 and liabilities', () => {
@@ -90,7 +84,7 @@ test('buildAlerts: no snapshot, concentration, low cash, stale 收支 and liabil
     today: '2026-11-06',
     latestSnapshot: null,
     topHolding: { symbol: '0050.TW', weight: 42, level: 'danger' },
-    fire: { cash_months: 2.1 },
+    spending: { cash_months: 2.1 },
     month: { last_record: '2026-10-01' },
     liabilities: [{ name: '房貸', updated: '2026-01-01' }, { name: '車貸', updated: '2026-10-01' }],
   });
@@ -99,5 +93,5 @@ test('buildAlerts: no snapshot, concentration, low cash, stale 收支 and liabil
   assert.match(a[4].text, /房貸/);
   // a stale snapshot is left to the data check
   assert.deepEqual(buildAlerts({ today: '2026-11-06', latestSnapshot: { date: '2026-01-01' }, topHolding: { weight: 30, level: 'warn' },
-    fire: {}, month: { last_record: '' }, liabilities: [] }), []);
+    spending: {}, month: { last_record: '' }, liabilities: [] }), []);
 });

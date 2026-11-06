@@ -431,8 +431,7 @@ async function loadDashboard() {
     _overview = ov;
     _cachedAssets = assets;
     renderHero(ov);
-    renderFire(ov.fire);
-    renderMonth(ov.month, ov.fire);
+    renderMonth(ov.month, ov.spending);
     renderGrowthYears(ov.years);
     renderSnapshots(assets);
     renderRecentTx(transactions);
@@ -496,24 +495,6 @@ function renderHero(ov) {
 
 /** "每月 NT$ 44,333，依收支估算" — where the monthly spending figure came from. */
 const monthlyExpenseNote = (f) => `每月 ${fmtTWD(f.monthly_expense)}${f.source === 'records' ? '，依收支紀錄估算' : ''}`;
-
-function renderFire(f) {
-  const el = document.getElementById('dash-fire');
-  const bar = document.getElementById('dash-fire-bar');
-  const sub = document.getElementById('dash-fire-sub');
-  if (!f.monthly_expense || f.progress == null) {
-    el.textContent = '--';
-    bar.innerHTML = '';
-    sub.innerHTML = !f.monthly_expense
-      ? '<a href="#" onclick="goToTab(\'settings\');return false">到設定填每月生活費</a>，看離財務自由還有多遠'
-      : '需要先記一筆資產快照';
-    return;
-  }
-  el.textContent = `${f.progress.toFixed(1)}%`;
-  bar.innerHTML = `<span style="width:${Math.min(100, Math.max(0, f.progress))}%;background:var(--accent)"></span>`;
-  sub.innerHTML = `目標 ${fmtTWD(f.target)}（${monthlyExpenseNote(f)}）` +
-    `<br>股利已能支付 ${f.dividend_cover.toFixed(0)}% 的生活費`;
-}
 
 /** This month so far: spending vs the same days last month, income, top categories, cash runway. */
 function renderMonth(m, f) {
@@ -3312,8 +3293,7 @@ async function loadSettings() {
 async function loadGoalSettings() {
   const s = await api('/api/settings');
   document.getElementById('goal-monthly-expense').value = s.monthly_expense || '';
-  document.getElementById('goal-withdraw-rate').value = s.withdraw_rate || '';
-  const est = _overview && _overview.fire.recorded_monthly_expense; // from the dashboard, if it was opened
+  const est = _overview && _overview.spending.recorded_monthly_expense; // from the dashboard, if it was opened
   document.getElementById('goal-monthly-expense').placeholder = est ? `依收支估 ${Math.round(est)}` : '例如 50000';
 }
 
