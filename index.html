@@ -115,47 +115,6 @@
         <div id="dash-month-body"></div>
       </div>
 
-      <!-- Time-weighted return by period -->
-      <div class="card">
-        <div class="card-header">
-          <h3 title="時間加權報酬（TWR，同 IB「業績」）：每天算 (收盤市值 + 當日賣出所得與股利) ÷ (前一日市值 + 當日買入成本) − 1，再把每天串乘起來。&#10;買賣的時點與金額不影響報酬率，已實現、未實現、股利、手續費、匯率都包含在內。&#10;只算股票部位（不含現金），以台幣計；歷史市值用 Yahoo 日收盤價與當日匯率重建，股利以除息日計。&#10;「匯入持倉」的買入視為以當天市價轉入；只記了損益的歷史賣出，視為賣出前一天以反推成本買進。下方金額為期間損益 = 期末市值 − 期初市值 − 買入 + 賣出 + 股利。">投資績效（時間加權報酬）ⓘ</h3>
-          <small class="text-muted"><span id="perf-note"></span><span id="perf-check-badge"></span></small>
-        </div>
-        <div class="chart-controls perf-controls">
-          <div class="chart-type-toggle" id="perf-periods"></div>
-          <select id="perf-bench" class="input-sm" onchange="renderPerfChart(_perfPeriod)" title="比較基準用含息還原價（股利再投入），美股換算成台幣">
-            <option value="">不比較大盤</option>
-          </select>
-        </div>
-        <div class="chart-container-md"><canvas id="chart-perf"></canvas></div>
-        <div class="table-wrap">
-          <table class="perf-table">
-            <thead><tr id="perf-head"><th></th></tr></thead>
-            <tbody id="perf-body"><tr><td class="text-muted">載入中…</td></tr></tbody>
-          </table>
-        </div>
-        <div class="table-wrap">
-          <table class="perf-risk-table">
-            <thead><tr id="perf-risk-head"></tr></thead>
-            <tbody id="perf-risk-body"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Monthly return heatmap -->
-      <div class="card">
-        <div class="card-header">
-          <h3 title="每個月的時間加權報酬（月初前一日收盤 → 月底收盤）。第一個月與本月為部分月份。">月報酬 ⓘ</h3>
-          <div class="chart-type-toggle" id="heatmap-seg"></div>
-        </div>
-        <div class="table-wrap">
-          <table class="heatmap-table">
-            <thead><tr><th>年</th><th>1月</th><th>2月</th><th>3月</th><th>4月</th><th>5月</th><th>6月</th><th>7月</th><th>8月</th><th>9月</th><th>10月</th><th>11月</th><th>12月</th><th>全年</th></tr></thead>
-            <tbody id="heatmap-body"><tr><td colspan="14" class="text-muted">載入中…</td></tr></tbody>
-          </table>
-        </div>
-      </div>
-
       <!-- Net worth over time + yearly growth + snapshots -->
       <div class="card" data-tour="snapshots">
         <div class="card-header">
@@ -297,6 +256,47 @@
           <div class="trend-summary" id="holdings-trend-summary"></div>
           <div class="chart-container-md"><canvas id="chart-holdings-trend" aria-label="市值、持有成本與損益的每日走勢"></canvas></div>
           <p class="form-hint chart-note" id="holdings-trend-hint">每天的持股 × 當日收盤價（美股以當日匯率換算台幣），由交易紀錄自動計算。持有成本與已實現損益依先進先出，與已實現損益頁一致；美股成本以當日匯率換算，未實現損益不含匯率漲跌。</p>
+        </div>
+
+        <!-- Time-weighted return by period -->
+        <div class="card">
+          <div class="card-header">
+            <h3 title="時間加權報酬（TWR，同 IB「業績」）：每天算 (收盤市值 + 當日賣出所得與股利) ÷ (前一日市值 + 當日買入成本) − 1，再把每天串乘起來。&#10;買賣的時點與金額不影響報酬率，已實現、未實現、股利、手續費、匯率都包含在內。&#10;只算股票部位（不含現金），以台幣計；歷史市值用 Yahoo 日收盤價與當日匯率重建，股利以除息日計。&#10;「匯入持倉」的買入視為以當天市價轉入；只記了損益的歷史賣出，視為賣出前一天以反推成本買進。下方金額為期間損益 = 期末市值 − 期初市值 − 買入 + 賣出 + 股利。">投資績效（時間加權報酬）ⓘ</h3>
+            <small class="text-muted"><span id="perf-note"></span><span id="perf-check-badge"></span></small>
+          </div>
+          <div class="chart-controls perf-controls">
+            <div class="chart-type-toggle" id="perf-periods"></div>
+            <select id="perf-bench" class="input-sm" onchange="renderPerfChart(_perfPeriod)" title="比較基準用含息還原價（股利再投入），美股換算成台幣">
+              <option value="">不比較大盤</option>
+            </select>
+          </div>
+          <div class="chart-container-md"><canvas id="chart-perf"></canvas></div>
+          <div class="table-wrap">
+            <table class="perf-table">
+              <thead><tr id="perf-head"><th></th></tr></thead>
+              <tbody id="perf-body"><tr><td class="text-muted">載入中…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="table-wrap">
+            <table class="perf-risk-table">
+              <thead><tr id="perf-risk-head"></tr></thead>
+              <tbody id="perf-risk-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Monthly return heatmap -->
+        <div class="card">
+          <div class="card-header">
+            <h3 title="每個月的時間加權報酬（月初前一日收盤 → 月底收盤）。第一個月與本月為部分月份。">月報酬 ⓘ</h3>
+            <div class="chart-type-toggle" id="heatmap-seg"></div>
+          </div>
+          <div class="table-wrap">
+            <table class="heatmap-table">
+              <thead><tr><th>年</th><th>1月</th><th>2月</th><th>3月</th><th>4月</th><th>5月</th><th>6月</th><th>7月</th><th>8月</th><th>9月</th><th>10月</th><th>11月</th><th>12月</th><th>全年</th></tr></thead>
+              <tbody id="heatmap-body"><tr><td colspan="14" class="text-muted">載入中…</td></tr></tbody>
+            </table>
+          </div>
         </div>
       </div>
 

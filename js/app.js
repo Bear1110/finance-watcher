@@ -358,7 +358,8 @@ function togglePrivacy() {
 
 /** What each 股票 sub-tab loads when it is shown (only the visible one loads). */
 const STOCKS_SUBTAB_LOADERS = {
-  holdings: [loadHoldings, loadXirr, loadHoldingsTrend],
+  // loadPerformance first: it refreshes the shared performance data that loadHoldingsTrend reuses
+  holdings: [loadHoldings, loadXirr, loadPerformance, loadDataCheckBadge, loadHoldingsTrend],
   portfolio: [loadPortfolioAnalysis],
   realized: [loadRealizedSummary],
   transactions: [loadTransactions],
@@ -447,7 +448,6 @@ async function loadDashboard() {
       const warns = (d.checks || []).filter(c => c.level === 'warn').length;
       if (warns) renderAlerts([...ov.alerts, { level: 'warn', text: `資料檢查有 ${warns} 項提醒`, action: 'settings' }]);
     }).catch(() => {});
-    loadPerformance();
     renderNetWorthChart(); // snapshots now; daily once the performance series arrives
     getPerf().then(() => { renderNetWorthChart(); renderInvest(); }).catch(err => renderInvest(err));
   } catch (err) {
@@ -1751,7 +1751,7 @@ function selectedBench() {
   return ((_perfData && _perfData.benchmarks) || []).find(b => b.symbol === sym);
 }
 
-/** Dashboard performance card + monthly heatmap from /api/stocks/performance */
+/** 持倉總覽 performance card + monthly heatmap from /api/stocks/performance */
 let _perfPromise = null;
 
 /** /api/stocks/performance, fetched once and shared until data changes (invalidatePerf). */
@@ -1762,7 +1762,7 @@ function getPerf() {
   return _perfPromise;
 }
 
-/** Called by main.js on every data change, and by the dashboard to pick up fresh quotes. */
+/** Called by main.js on every data change, and by 持倉總覽 to pick up fresh quotes. */
 function invalidatePerf() {
   _perfPromise = null;
   _perfData = null;
@@ -1774,7 +1774,7 @@ async function loadPerformance() {
   if (!head || !body) return;
   let data;
   try {
-    invalidatePerf(); // the dashboard always shows today's quotes
+    invalidatePerf(); // always show today's quotes
     data = await getPerf();
   } catch (err) {
     // 503 = no Yahoo proxy configured; its message says where to set one
