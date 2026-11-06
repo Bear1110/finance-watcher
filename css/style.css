@@ -2167,8 +2167,6 @@ body[data-tab="expenses"] .fab { display: flex; }
 .hero-comp { max-width: 520px; height: 8px; margin: 18px auto 8px; border-radius: 4px; }
 .hero-comp-legend { justify-content: center; gap: 4px 12px; margin: 0 0 10px; font-size: 0.8rem; }
 
-.dash-stats-1 { grid-template-columns: minmax(0, 1fr); }
-.dash-invest-periods { margin-top: 10px; width: fit-content; }
 
 .month-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .month-grid > div { display: flex; flex-direction: column; gap: 2px; }

@@ -91,14 +91,8 @@
         <div class="hero-sub" id="dash-net-date">--</div>
       </div>
 
-      <div class="dash-stats dash-stats-1" data-tour="dash-stats">
-        <div class="stat-card">
-          <div class="stat-label" title="你股票部位的時間加權報酬（不受買賣時點影響），對照「照你的台美比例買 0050 和 S&amp;P 500」的報酬。&#10;詳細的各期間報酬在 股票 › 績效。">投資成績 vs 大盤 ⓘ</div>
-          <div class="stat-value" id="dash-invest">--</div>
-          <div class="stat-sub" id="dash-invest-sub">計算中…</div>
-          <div class="chart-type-toggle dash-invest-periods" id="dash-invest-periods"></div>
-        </div>
-      </div>
+      <!-- Investment return: the 績效 card without the risk table (built by perfCardHtml) -->
+      <div id="perf-dash" data-tour="dash-stats"></div>
 
       <!-- This month's spending -->
       <div class="card" id="dash-month">
@@ -265,32 +259,8 @@
           <p class="form-hint chart-note" id="holdings-trend-hint">每天的持股 × 當日收盤價（美股以當日匯率換算台幣），由交易紀錄自動計算。持有成本與已實現損益依先進先出，與已實現損益頁一致；美股成本以當日匯率換算，未實現損益不含匯率漲跌。</p>
         </div>
 
-        <!-- Time-weighted return by period -->
-        <div class="card">
-          <div class="card-header">
-            <h3 title="時間加權報酬（TWR，同 IB「業績」）：每天算 (收盤市值 + 當日賣出所得與股利) ÷ (前一日市值 + 當日買入成本) − 1，再把每天串乘起來。&#10;買賣的時點與金額不影響報酬率，已實現、未實現、股利、手續費、匯率都包含在內。&#10;只算股票部位（不含現金），以台幣計；歷史市值用 Yahoo 日收盤價與當日匯率重建，股利以除息日計。&#10;「匯入持倉」的買入視為以當天市價轉入；只記了損益的歷史賣出，視為賣出前一天以反推成本買進。下方金額為期間損益 = 期末市值 − 期初市值 − 買入 + 賣出 + 股利。">投資績效（時間加權報酬）ⓘ</h3>
-            <small class="text-muted"><span id="perf-note"></span><span id="perf-check-badge"></span></small>
-          </div>
-          <div class="chart-controls perf-controls">
-            <div class="chart-type-toggle" id="perf-periods"></div>
-            <select id="perf-bench" class="input-sm" onchange="renderPerfChart(_perfPeriod)" title="比較基準用含息還原價（股利再投入），美股換算成台幣">
-              <option value="">不比較大盤</option>
-            </select>
-          </div>
-          <div class="chart-container-md"><canvas id="chart-perf"></canvas></div>
-          <div class="table-wrap">
-            <table class="perf-table">
-              <thead><tr id="perf-head"><th></th></tr></thead>
-              <tbody id="perf-body"><tr><td class="text-muted">載入中…</td></tr></tbody>
-            </table>
-          </div>
-          <div class="table-wrap">
-            <table class="perf-risk-table">
-              <thead><tr id="perf-risk-head"></tr></thead>
-              <tbody id="perf-risk-body"></tbody>
-            </table>
-          </div>
-        </div>
+        <!-- Time-weighted return by period (built by perfCardHtml) -->
+        <div id="perf-main"></div>
 
         <!-- Monthly return heatmap -->
         <div class="card">
@@ -598,7 +568,7 @@
             <div class="stat-value" id="pf-effective">--</div>
             <div class="stat-sub" id="pf-effective-sub"></div>
           </div>
-          <div class="stat-card">
+          <div class="stat-card" id="pf-usd-card">
             <div class="stat-label" title="淨資產中美金計價的部分：(美股市值 + 美金現金) ÷ 淨資產。&#10;美金現金是最新快照加計之後的買賣與股利。&#10;這部分換回台幣的價值會跟著匯率變：台幣升值就變少。">美元資產佔比 ⓘ</div>
             <div class="stat-value" id="pf-usd">--</div>
             <div class="stat-sub" id="pf-usd-sub"></div>
@@ -618,7 +588,7 @@
           <div id="pf-weights"><div class="empty-state">載入中...</div></div>
         </div>
 
-        <div class="card">
+        <div class="card" id="pf-rebalance-card">
           <div class="card-header">
             <h3>台美配置與再平衡</h3>
           </div>

@@ -410,7 +410,6 @@ let _cachedAssets = [];
 let _overview = null; // /api/overview; its carried-forward cash also prefills a new snapshot
 let _netWorthChart = null;
 let _nwYears = 3; // net worth chart window, 0 = all
-let _investPeriod = 'YTD';
 
 /** Net worth parts in the hero's bar */
 const COMP_PARTS = [
@@ -439,7 +438,8 @@ async function loadDashboard() {
     renderAlerts(ov.alerts);
     getDataCheck().then(d => renderAlerts([...ov.alerts, ...dataCheckWarnings(d).map(c => ({ ...c, text: c.title }))])).catch(() => {});
     renderNetWorthChart(); // snapshots now; daily once the performance series arrives
-    getPerf().then(() => { renderNetWorthChart(); renderInvest(); }).catch(err => renderInvest(err));
+    loadPerformance('dash');
+    getPerf().then(renderNetWorthChart).catch(() => {});
   } catch (err) {
     showToast('載入總覽資料失敗: ' + err.message, 'error');
   }
@@ -489,7 +489,8 @@ function renderHero(ov) {
     d ? `今日 <span class="${plClass(d.pl)}">${fmtPL(d.pl)}${d.prev_value > 0 ? ` (${fmtPct(d.pl / d.prev_value * 100)})` : ''}</span>` : '',
     `現金：${c.date} 快照${counted.length ? `＋之後 ${counted.join('、')}` : ''}`,
   ].filter(Boolean).join(' · ');
-  sub.title = (d ? `今日：台股 ${fmtPL(d.tw)}、美股 ${fmtPL(d.us)}（最近一個交易日，不含匯率）\n` : '') +
+  const dayParts = [ov.parts.tw > 0 && `台股 ${fmtPL(d && d.tw)}`, ov.parts.us > 0 && `美股 ${fmtPL(d && d.us)}`].filter(Boolean);
+  sub.title = (d && dayParts.length > 1 ? `今日：${dayParts.join('、')}（最近一個交易日，不含匯率）\n` : '') +
     (counted.length ? `現金調整：台幣 ${fmtPL(c.moved_twd)}、美金 ${fmtPLCur(c.moved_usd, 'USD')}` : '');
 }
 
@@ -596,45 +597,6 @@ function renderNetWorthChart() {
       },
     },
   });
-}
-
-const INVEST_PERIODS = [['YTD', '今年'], ['1Y', '1 年'], ['ALL', '全部（年化）']];
-
-function setInvestPeriod(key) {
-  _investPeriod = key;
-  renderInvest();
-}
-
-/** Stock return (TWR) vs the benchmark mixed like the portfolio (twr.js blendBenchmarks). 全部 compares yearly rates. */
-function renderInvest(err) {
-  const el = document.getElementById('dash-invest');
-  const sub = document.getElementById('dash-invest-sub');
-  const chips = document.getElementById('dash-invest-periods');
-  const p = !err && _perfData && (_perfData.periods || []).find(x => x.key === _investPeriod);
-  const mine = p && p.markets.ALL;
-  if (!mine || mine.twr == null) {
-    el.textContent = '--';
-    el.className = 'stat-value';
-    chips.innerHTML = '';
-    sub.textContent = err && err.status === 503 ? err.message : err ? '無法計算績效' : '還沒有股票交易';
-    return;
-  }
-  chips.innerHTML = INVEST_PERIODS.map(([k, label]) =>
-    `<button type="button" class="chart-type-btn${k === _investPeriod ? ' active' : ''}" onclick="setInvestPeriod('${k}')">${label}</button>`).join('');
-  const yearly = _investPeriod === 'ALL' && mine.annualized != null;
-  const pick = r => (yearly ? r.annualized : r.ret ?? r.twr);
-  const mineV = pick(mine);
-  el.textContent = fmtPct(mineV);
-  el.className = 'stat-value ' + plClass(mineV);
-  const b = p.blend;
-  if (!b || pick(b) == null) {
-    sub.textContent = '大盤資料不足';
-    return;
-  }
-  const diff = mineV - pick(b);
-  const weights = [b.weight_tw, 1 - b.weight_tw];
-  sub.innerHTML = `<strong class="${plClass(diff)}">${diff >= 0 ? '贏' : '輸'}大盤 ${Math.abs(diff).toFixed(1)} 個百分點</strong>` +
-    `<br>大盤 ${fmtPct(pick(b))} = ` + b.parts.map((x, i) => `${escapeHtml(x.label)} ${x.ret == null ? '--' : fmtPct(pick(x))} × ${(weights[i] * 100).toFixed(0)}%`).join(' ＋ ');
 }
 
 /** A growthBetween result (js/server/overview.js) as colored parts: 股價 / 股利 / 儲蓄. */
@@ -1435,6 +1397,7 @@ function renderPortfolioStats(p) {
     top.level ? CONCENTRATION[top.level][1] : '');
   set('pf-effective', `${p.effective.toFixed(1)} 檔`, `實際持有 ${p.rows.length} 檔；越小越集中`);
   const usdTotal = p.usd.stock + (p.usd.cash || 0);
+  document.getElementById('pf-usd-card').hidden = !(usdTotal > 0); // no US stock or USD cash
   set('pf-usd', p.usd.pct == null ? '--' : `${p.usd.pct.toFixed(1)}%`,
     `淨資產中美金計價的比例<br>美股 ${fmtTWD(p.usd.stock)}${p.usd.cash == null ? '（尚無快照，只算股票）' : ` ＋ 美金現金 ${fmtTWD(p.usd.cash)}`}<br>台幣升值 1% ≈ ${fmtPL(-usdTotal / 100)}`);
   const d = p.dividends;
@@ -1472,6 +1435,9 @@ function renderPortfolioWeights(rows) {
 /** TW/US split bar and how to reach the target TW share. */
 function renderRebalance(p) {
   const { tw, us } = p.split;
+  // Only one market held: nothing to balance
+  document.getElementById('pf-rebalance-card').hidden = !(tw > 0 && us > 0);
+  if (!(tw > 0 && us > 0)) return;
   const twPct = tw / (tw + us) * 100;
   document.getElementById('pf-split').innerHTML = `
     <div class="source-bar pf-split-bar" aria-hidden="true">
@@ -1693,7 +1659,10 @@ async function loadXirr() {
   } catch (err) { /* leave every cell at -- */ }
   targets.forEach(([market, id]) => {
     const el = document.getElementById(id);
-    if (el) el.innerHTML = xirrHtml(data[market]);
+    if (!el) return;
+    el.innerHTML = xirrHtml(data[market]);
+    // A market never traded has only today's (zero) value as a flow
+    if (market !== 'ALL') el.parentElement.hidden = !(data[market] && data[market].flows > 1);
   });
 }
 
@@ -1702,9 +1671,14 @@ async function loadXirr() {
 // ============================================================
 
 let _perfData = null;
-let _perfPeriod = '1Y';
-let _perfChart = null;
 let _heatmapSeg = 'ALL';
+
+/** The performance card appears twice: on 總覽 without the risk table, and on 績效 in full. */
+const PERF_VIEWS = {
+  dash: { root: 'perf-dash', risk: false, period: 'YTD', chart: null },
+  main: { root: 'perf-main', risk: true, period: '1Y', chart: null },
+};
+const perfEl = (view, name) => document.querySelector(`#${PERF_VIEWS[view].root} [data-perf="${name}"]`);
 
 const PERF_ROWS = [
   { seg: 'ALL', name: '全部', color: '#4e8cff', width: 2 },
@@ -1712,13 +1686,60 @@ const PERF_ROWS = [
   { seg: 'US', name: '美股', color: '#fbbf24', width: 1.5, dash: [4, 2] },
 ];
 
-/** The benchmark picked in the dropdown, or undefined */
-function selectedBench() {
-  const sym = document.getElementById('perf-bench').value;
+/** 全部 plus each market that was ever held; with one market, 全部 already is it. */
+function perfRows() {
+  const m = (_perfData && _perfData.markets) || ['TW', 'US'];
+  return m.length > 1 ? PERF_ROWS.filter(r => r.seg === 'ALL' || m.includes(r.seg)) : PERF_ROWS.slice(0, 1);
+}
+
+const PERF_TITLE = '時間加權報酬（TWR，同 IB「業績」）：每天算 (收盤市值 + 當日賣出所得與股利) ÷ (前一日市值 + 當日買入成本) − 1，再把每天串乘起來。&#10;' +
+  '它衡量「投資的選擇」好不好：買賣的時點與金額不影響報酬率，已實現、未實現、股利、手續費、匯率都包含在內。&#10;' +
+  '+100% 代表期初的 1 元變成 2 元，不是「賺的錢 ÷ 投入成本」。年化 = 換算成每年平均的複利報酬。&#10;' +
+  '只算股票部位（不含現金），以台幣計；歷史市值用 Yahoo 日收盤價與當日匯率重建，股利以除息日計。&#10;' +
+  '下方金額才是實際賺賠的錢：期末市值 − 期初市值 − 買入 + 賣出 + 股利。錢大多在下跌前才投入時，報酬率可能是正的、金額卻是負的。';
+
+function perfCardHtml(view) {
+  const { risk } = PERF_VIEWS[view];
+  return `<div class="card">
+    <div class="card-header">
+      <h3 title="${PERF_TITLE}">投資績效（時間加權報酬）ⓘ</h3>
+      <small class="text-muted"><span data-perf="note"></span>${view === 'main' ? '<span id="perf-check-badge"></span>' : ''}</small>
+    </div>
+    <div class="chart-controls perf-controls">
+      <div class="chart-type-toggle" data-perf="periods"></div>
+      <select data-perf="bench" class="input-sm" onchange="renderPerfChart(PERF_VIEWS.${view}.period, '${view}')" title="比較基準用含息還原價（股利再投入），美股換算成台幣">
+        <option value="">不比較大盤</option>
+      </select>
+    </div>
+    <div class="chart-container-md"><canvas data-perf="chart"></canvas></div>
+    <div class="table-wrap">
+      <table class="perf-table">
+        <thead><tr data-perf="head"><th></th></tr></thead>
+        <tbody data-perf="body"><tr><td class="text-muted">載入中…</td></tr></tbody>
+      </table>
+    </div>
+    ${risk ? `<div class="table-wrap">
+      <table class="perf-risk-table">
+        <thead><tr data-perf="risk-head"></tr></thead>
+        <tbody data-perf="risk-body"></tbody>
+      </table>
+    </div>` : ''}
+  </div>`;
+}
+
+function initPerfCards() {
+  for (const view of Object.keys(PERF_VIEWS)) {
+    const el = document.getElementById(PERF_VIEWS[view].root);
+    if (el) el.innerHTML = perfCardHtml(view);
+  }
+}
+
+/** The benchmark picked in the view's dropdown, or undefined */
+function selectedBench(view) {
+  const sym = perfEl(view, 'bench').value;
   return ((_perfData && _perfData.benchmarks) || []).find(b => b.symbol === sym);
 }
 
-/** 績效 performance card + monthly heatmap from /api/stocks/performance */
 let _perfPromise = null;
 let _perfAt = 0; // when _perfPromise was started
 
@@ -1731,15 +1752,16 @@ function getPerf() {
   return _perfPromise;
 }
 
-/** Called by main.js on every data change, and by 績效 to pick up fresh quotes. */
+/** Called by main.js on every data change, and when the data is over 5 minutes old (today's quotes). */
 function invalidatePerf() {
   _perfPromise = null;
   _perfData = null;
 }
 
-async function loadPerformance() {
-  const head = document.getElementById('perf-head');
-  const body = document.getElementById('perf-body');
+/** Fill one performance card (and, on 績效, the monthly heatmap). */
+async function loadPerformance(view = 'main') {
+  const head = perfEl(view, 'head');
+  const body = perfEl(view, 'body');
   if (!head || !body) return;
   let data;
   try {
@@ -1757,7 +1779,7 @@ async function loadPerformance() {
     return;
   }
 
-  const benchSel = document.getElementById('perf-bench');
+  const benchSel = perfEl(view, 'bench');
   const benchKept = benchSel.value;
   benchSel.innerHTML = '<option value="">不比較大盤</option>' +
     (data.benchmarks || []).map(b => `<option value="${b.symbol}">比較 ${b.label}</option>`).join('');
@@ -1766,26 +1788,30 @@ async function loadPerformance() {
   head.innerHTML = '<th></th>' + periods.map(p => {
     const title = `${p.start} 收盤 → ${data.as_of}（${p.days} 天）` +
       (p.partial ? '\n期間起點早於起算日，從起算日開始算' : '');
-    return `<th data-period="${p.key}" class="perf-period-th" title="${title}" onclick="renderPerfChart('${p.key}')">${p.label}${p.partial ? '*' : ''}</th>`;
+    return `<th data-period="${p.key}" class="perf-period-th" title="${title}" onclick="renderPerfChart('${p.key}', '${view}')">${p.label}${p.partial ? '*' : ''}</th>`;
   }).join('');
-  document.getElementById('perf-periods').innerHTML = periods.map(p =>
-    `<button class="chart-type-btn" data-period="${p.key}" onclick="renderPerfChart('${p.key}')">${p.label}</button>`).join('');
-  document.getElementById('heatmap-seg').innerHTML = PERF_ROWS.map(r =>
-    `<button class="chart-type-btn" data-seg="${r.seg}" onclick="renderHeatmap('${r.seg}')">${r.name}</button>`).join('');
+  perfEl(view, 'periods').innerHTML = periods.map(p =>
+    `<button class="chart-type-btn" data-period="${p.key}" onclick="renderPerfChart('${p.key}', '${view}')">${p.label}</button>`).join('');
 
   const notes = [`自 ${data.inception} 起`];
   if (data.start_setting) notes.push('起算日可在設定頁調整');
   if (data.missing && data.missing.length) notes.push(`${data.missing.join(', ')} 無 Yahoo 歷史價，以成交價估`);
-  document.getElementById('perf-note').textContent = notes.join(' · ');
-  renderPerfChart(_perfPeriod);
-  renderHeatmap(_heatmapSeg);
+  perfEl(view, 'note').textContent = notes.join(' · ');
+  renderPerfChart(PERF_VIEWS[view].period, view);
+  if (view === 'main') {
+    const rows = perfRows();
+    const seg = document.getElementById('heatmap-seg');
+    seg.hidden = rows.length < 2;
+    seg.innerHTML = rows.map(r => `<button class="chart-type-btn" data-seg="${r.seg}" onclick="renderHeatmap('${r.seg}')">${r.name}</button>`).join('');
+    renderHeatmap(rows.some(r => r.seg === _heatmapSeg) ? _heatmapSeg : 'ALL');
+  }
 }
 
 /** Return rows per market, plus the selected benchmark's row */
-function renderPerfTableBody() {
+function renderPerfTableBody(view) {
   const data = _perfData;
   const periods = data.periods || [];
-  let html = PERF_ROWS.map(({ seg, name }) => `<tr><td><strong>${name}</strong></td>` + periods.map(p => {
+  let html = perfRows().map(({ seg, name }) => `<tr><td><strong>${name}</strong></td>` + periods.map(p => {
     const r = p.markets[seg];
     if (!r || r.twr == null) return '<td>--</td>';
     const title = `期初市值 ${fmtTWD(r.start_value)}\n期末市值 ${fmtTWD(r.end_value)}`;
@@ -1794,27 +1820,28 @@ function renderPerfTableBody() {
       `<span class="cell-sub ${plClass(r.pnl)}">${fmtTWD(r.pnl)}${annual}</span></td>`;
   }).join('') + '</tr>').join('');
 
-  const bench = selectedBench();
+  const bench = selectedBench(view);
   if (bench) {
     html += `<tr class="perf-bench-row"><td>${bench.label}</td>` + periods.map(p => {
       const v = p.bench[bench.symbol];
       return `<td>${v == null ? '--' : `<span class="${plClass(v)}">${fmtPct(v)}</span>`}</td>`;
     }).join('') + '</tr>';
   }
-  document.getElementById('perf-body').innerHTML = html;
+  perfEl(view, 'body').innerHTML = html;
 }
 
 /** Cumulative TWR line chart for one period: the daily growth index rebased to 0% at the period's start close. */
-function renderPerfChart(key) {
+function renderPerfChart(key, view = 'main') {
   const data = _perfData;
   const p = data && (data.periods || []).find(x => x.key === key);
   const s = data && data.series;
+  const v = PERF_VIEWS[view];
   if (!p || !s) return;
-  _perfPeriod = key;
-  renderPerfTableBody();
-  document.querySelectorAll('#perf-periods .chart-type-btn, .perf-period-th').forEach(el =>
+  v.period = key;
+  renderPerfTableBody(view);
+  document.querySelectorAll(`#${v.root} [data-perf="periods"] .chart-type-btn, #${v.root} .perf-period-th`).forEach(el =>
     el.classList.toggle('active', el.dataset.period === key));
-  renderPerfRisk(p);
+  if (v.risk) renderPerfRisk(p, view);
 
   // Window from the period's base close to today; weekends are flat, drop them.
   let b = s.dates.findIndex(d => d >= p.start);
@@ -1829,13 +1856,12 @@ function renderPerfChart(key) {
     label, data: rebased(vals || []), borderColor: color, backgroundColor: 'transparent',
     borderWidth: width, borderDash: dash || [], pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 8, tension: 0,
   });
-  const datasets = PERF_ROWS.map(r => line(r.name, s.growth[r.seg], r.color, r.width, r.dash));
-  const bench = selectedBench();
+  const datasets = perfRows().map(r => line(r.name, s.growth[r.seg], r.color, r.width, r.dash));
+  const bench = selectedBench(view);
   if (bench) datasets.push(line(bench.label, s.bench[bench.symbol], '#c3cede', 1.5, [1, 3]));
 
-  const ctx = document.getElementById('chart-perf');
-  if (_perfChart) _perfChart.destroy();
-  _perfChart = new Chart(ctx, {
+  if (v.chart) v.chart.destroy();
+  v.chart = new Chart(perfEl(view, 'chart'), {
     type: 'line',
     data: { labels: idx.map(i => s.dates[i]), datasets },
     options: {
@@ -1896,6 +1922,11 @@ let _trendPeriod = '1Y';
 function renderHoldingsTrend() {
   const s = _perfData && _perfData.series;
   if (!s || !s.dates || !s.dates.length) return;
+  const segToggle = document.querySelector('[data-trend="seg"]');
+  const shown = perfRows().map(r => r.seg);
+  segToggle.hidden = shown.length < 2;
+  segToggle.querySelectorAll('.chart-type-btn').forEach(b => { b.hidden = !shown.includes(b.dataset.v); });
+  if (!shown.includes(trendPick('seg'))) segToggle.querySelectorAll('.chart-type-btn').forEach(b => b.classList.toggle('active', b.dataset.v === 'ALL'));
   const seg = trendPick('seg') || 'ALL';
   const mode = trendPick('mode') || 'value';
   // Same calendar periods as the 投資績效 card (1 個月 … 全部), from the server
@@ -1973,15 +2004,16 @@ document.addEventListener('click', (e) => {
 });
 
 /** Max drawdown and volatility of the selected period, per market */
-function renderPerfRisk(p) {
-  document.getElementById('perf-risk-head').innerHTML =
-    `<th>風險（${p.label}）</th>` + PERF_ROWS.map(r => `<th>${r.name}</th>`).join('');
-  const cells = fn => PERF_ROWS.map(({ seg }) => {
+function renderPerfRisk(p, view) {
+  const rows = perfRows();
+  perfEl(view, 'risk-head').innerHTML =
+    `<th>風險（${p.label}）</th>` + rows.map(r => `<th>${r.name}</th>`).join('');
+  const cells = fn => rows.map(({ seg }) => {
     const r = p.markets[seg];
     return `<td>${r && r.twr != null ? fn(r) : '--'}</td>`;
   }).join('');
   const md = d => d.slice(5);
-  document.getElementById('perf-risk-body').innerHTML = `
+  perfEl(view, 'risk-body').innerHTML = `
     <tr><td title="期間內從最高點到之後最低點的最大跌幅">最大回撤 ⓘ</td>${cells(r => r.max_drawdown ? `<span class="negative">${fmtPct(r.max_drawdown)}</span>` : '0%')}</tr>
     <tr><td>回撤期間</td>${cells(r => !r.dd_peak ? '--' :
       `${md(r.dd_peak)} → ${md(r.dd_trough)}<span class="cell-sub">${r.dd_recovered ? `${md(r.dd_recovered)} 回到高點` : '尚未回到高點'}</span>`)}</tr>
@@ -3419,6 +3451,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initTapTips();
   applyPrivacyUI();
   initTabs();
+  initPerfCards();
   initExpenseDefaults();
   renderAISites();
 
