@@ -67,7 +67,7 @@
     </div>
     <button type="button" class="privacy-toggle nav-privacy" onclick="togglePrivacy()" aria-label="顯示/隱藏金額" aria-pressed="false"><svg class="eye-open" aria-hidden="true"><use href="#i-eye"/></svg><svg class="eye-closed" aria-hidden="true"><use href="#i-eye-off"/></svg></button>
     <button type="button" id="sync-pill" class="sync-pill" data-tour="sync" onclick="onSyncPillClick()" title="雲端同步狀態">
-      <span class="sync-dot"></span><span id="sync-pill-text">本機</span>
+      <svg aria-hidden="true"><use id="sync-icon" href="#i-cloud-off"/></svg><span id="sync-count" class="sync-count"></span><span id="sync-pill-text" class="sync-text">本機</span>
     </button>
   </nav>
 

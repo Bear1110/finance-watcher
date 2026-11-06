@@ -1408,47 +1408,41 @@ select option {
    Sync status pill (top nav)
    ============================================================ */
 .sync-pill {
-  margin-left: 0.75rem;
+  margin-left: 0.5rem;
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.3rem 0.75rem;
-  border: 1px solid var(--border-color);
-  border-radius: 999px;
-  background: var(--bg-card);
+  gap: 0.3rem;
+  padding: 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
   color: var(--text-secondary);
   font-family: var(--font);
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   white-space: nowrap;
   cursor: pointer;
-  transition: border-color var(--transition), color var(--transition);
+  transition: color var(--transition), background var(--transition);
 }
-.sync-pill:hover { border-color: var(--accent); color: var(--text-primary); }
-
-.sync-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--text-muted);
-  flex-shrink: 0;
-}
-.sync-pill[data-status="synced"] .sync-dot { background: var(--green); }
-.sync-pill[data-status="pending"] .sync-dot,
-.sync-pill[data-status="expired"] .sync-dot { background: var(--yellow); }
+.sync-pill:hover { background: var(--accent-subtle); }
+.sync-pill svg { width: 22px; height: 22px; flex-shrink: 0; }
+.sync-count { font-weight: 700; font-variant-numeric: tabular-nums; }
+.sync-count:empty { display: none; }
+.sync-pill[data-status="synced"] { color: var(--green); }
+.sync-pill[data-status="pending"],
+.sync-pill[data-status="syncing"] { color: var(--accent); }
 .sync-pill[data-status="expired"] { color: var(--yellow); }
-.sync-pill[data-status="error"] .sync-dot { background: var(--red); }
 .sync-pill[data-status="error"] { color: var(--red); }
-.sync-pill[data-status="syncing"] .sync-dot {
-  background: var(--accent);
-  animation: syncPulse 1s ease-in-out infinite;
-}
-@keyframes syncPulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.35; transform: scale(0.75); }
-}
+.sync-pill[data-status="syncing"] svg { animation: syncPulse 1.2s ease-in-out infinite; }
+@keyframes syncPulse { 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) {
-  .sync-pill[data-status="syncing"] .sync-dot { animation: none; }
+  .sync-pill[data-status="syncing"] svg { animation: none; }
+}
+/* Wide screens: the words (they already carry the count); phones: icon + count, words in the tooltip */
+.sync-text { display: none; }
+@media (min-width: 600px) {
+  .sync-text { display: inline; }
+  .sync-count { display: none; }
 }
 
 /* ============================================================

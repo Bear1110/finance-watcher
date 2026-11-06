@@ -120,15 +120,20 @@ const STATUS_TEXT = {
   synced: '已同步', pending: '待同步', error: '同步失敗', idle: '本機',
 };
 
+const SYNC_ICON = { synced: 'cloud-check', pending: 'cloud-up', syncing: 'cloud-sync' }; // the rest: cloud-off
+
 function renderCloudStatus() {
   const st = sync.state;
   const pill = document.getElementById('sync-pill');
   if (pill) {
     pill.dataset.status = st.status;
-    const n = db.pendingCount();
-    document.getElementById('sync-pill-text').textContent =
-      STATUS_TEXT[st.status] + (n && st.status !== 'syncing' && st.status !== 'local' ? ` · ${n}` : '');
-    pill.title = st.error ? `同步失敗：${st.error}` : '雲端同步狀態';
+    const n = st.status !== 'syncing' && st.status !== 'local' ? db.pendingCount() : 0;
+    const text = STATUS_TEXT[st.status] + (n ? ` · ${n}` : '');
+    document.getElementById('sync-icon').setAttribute('href', `#i-${SYNC_ICON[st.status] || 'cloud-off'}`);
+    document.getElementById('sync-count').textContent = n || '';
+    document.getElementById('sync-pill-text').textContent = text; // phones show only the icon and count
+    pill.title = st.error ? `同步失敗：${st.error}` : text;
+    pill.setAttribute('aria-label', pill.title);
   }
   const acct = document.getElementById('cloud-account');
   if (!acct) return;
