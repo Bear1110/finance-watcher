@@ -5,6 +5,7 @@ import { route } from './router.js';
 import { storedUSDTWDRate, toTWD } from './util.js';
 import { listSnapshots, afterSnapshot, tradeCash, carriedCash } from './assets.js';
 import { listHoldings } from './stocks.js';
+import { liabilitiesTotal } from './liabilities.js';
 
 /**
  * Net worth change from base to end, split into 股價 (stock value change − net buys: cash turned
@@ -46,13 +47,13 @@ export function yearlyGrowth(snaps, live, opts) {
 
 route('GET', '/api/overview', async () => {
   const rate = storedUSDTWDRate();
-  const snaps = listSnapshots().map((s) => ({ ...s, total: s.total_asset }));
+  const snaps = listSnapshots().map((s) => ({ ...s, total: s.net_worth }));
   const cash = carriedCash();
   const stocks = await listHoldings();
   const live = {
     date: db.today(),
     stock_value_twd: stocks.total_value_twd,
-    total: cash ? cash.twd + cash.usd * rate + stocks.total_value_twd : null,
+    total: cash ? cash.twd + cash.usd * rate + stocks.total_value_twd - liabilitiesTotal() : null,
   };
   const opts = {
     trades: db.where('stock_transactions', (t) => t.account_id == null),

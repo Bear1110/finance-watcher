@@ -2171,3 +2171,12 @@ body[data-tab="expenses"] .fab { display: flex; }
 .pf-target input { width: 5.5em; }
 .pf-rebalance p { margin: 0 0 0.4rem; }
 .pf-rebalance-list { margin: 0 0 0.5rem; padding-left: 1.2rem; line-height: 1.7; }
+
+/* --- Settings › 財務目標 / 負債 --- */
+.settings-input { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--text-secondary); }
+.settings-input input { width: 8em; }
+.liab-hint { margin: 0 0 4px; }
+.liab-actions { display: flex; align-items: center; gap: 0.5rem; }
+.liab-balance { font-weight: 600; font-variant-numeric: tabular-nums; margin-right: 0.25rem; }
+.liab-form { display: flex; flex-wrap: wrap; gap: 0.5rem; padding-top: 12px; border-top: 1px solid var(--border-color); }
+.liab-form input[type=text], .liab-form input[type=number] { flex: 1 1 8em; }

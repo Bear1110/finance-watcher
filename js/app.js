@@ -749,8 +749,8 @@ function snapshotRowHtml(a, prev) {
   return `<details class="snap-row">
     <summary>
       <span class="snap-date">${shortDate(a.date)}</span>
-      <span class="snap-total">${fmtTWD(a.total_asset)}</span>
-      <span class="snap-delta">${prev ? changeHtml(a.total_asset, prev.total_asset, true) : ''}</span>
+      <span class="snap-total">${fmtTWD(a.net_worth)}</span>
+      <span class="snap-delta">${prev ? changeHtml(a.net_worth, prev.net_worth, true) : ''}</span>
     </summary>
     <div class="snap-detail">
       <dl>
@@ -759,7 +759,7 @@ function snapshotRowHtml(a, prev) {
         <div><dt>台股市值</dt><dd>${fmtTWD(a.stock_tw_value)}</dd></div>
         <div><dt>美股市值</dt><dd>${fmtTWD(a.stock_us_value)}</dd></div>
         <div><dt>匯率</dt><dd>${fmtNum(a.usd_twd_rate, 2)}</dd></div>
-        ${prev ? `<div><dt>較上一筆</dt><dd>${changeHtml(a.total_asset, prev.total_asset)}</dd></div>` : ''}
+        ${prev ? `<div><dt>較上一筆</dt><dd>${changeHtml(a.net_worth, prev.net_worth)}</dd></div>` : ''}
       </dl>
       ${a.note ? `<p class="snap-note">${escapeHtml(a.note)}</p>` : ''}
       <div class="snap-actions">
@@ -786,8 +786,8 @@ function renderSnapshots(assets) {
   const days = daysSince(latest.date);
   latestEl.innerHTML = `
     <div class="snap-latest-meta">最新 ${latest.date} · ${days <= 0 ? '今天' : `${days} 天前`}</div>
-    <div class="snap-latest-total">${fmtTWD(latest.total_asset)}</div>
-    ${prev ? `<div class="snap-latest-delta">較上一筆（${prev.date}）${changeHtml(latest.total_asset, prev.total_asset)}</div>` : ''}`;
+    <div class="snap-latest-total">${fmtTWD(latest.net_worth)}</div>
+    ${prev ? `<div class="snap-latest-delta">較上一筆（${prev.date}）${changeHtml(latest.net_worth, prev.net_worth)}</div>` : ''}`;
   syncSnapshotToggle();
 
   // assets are newest first, so the previous snapshot of assets[i] is assets[i + 1]
@@ -804,11 +804,11 @@ function renderSnapshots(assets) {
   history.innerHTML = yearList.map((y, yi) => {
     const last = yearEnd.get(y);
     const prevYear = yearEnd.get(yearList[yi + 1]);
-    const yoy = prevYear ? changeHtml(last.total_asset, prevYear.total_asset, true) : '';
+    const yoy = prevYear ? changeHtml(last.net_worth, prevYear.net_worth, true) : '';
     return `<details class="snap-year"${yi === 0 || y === thisYear ? ' open' : ''}>
       <summary>
         <span class="snap-year-label">${y}</span>
-        <span class="snap-year-meta">${years.get(y).length} 筆 · ${y === thisYear ? '最新' : '年末'} ${fmtTWD(last.total_asset)}${yoy ? ` · 年增 ${yoy}` : ''}</span>
+        <span class="snap-year-meta">${years.get(y).length} 筆 · ${y === thisYear ? '最新' : '年末'} ${fmtTWD(last.net_worth)}${yoy ? ` · 年增 ${yoy}` : ''}</span>
       </summary>
       ${years.get(y).join('')}
     </details>`;
@@ -3363,6 +3363,9 @@ async function loadSettings() {
       document.getElementById('settings-version').textContent = 'v' + (ver.version || '?');
     } catch (_) {}
 
+    loadGoalSettings();
+    loadLiabilities();
+
     // Font size buttons
     const saved = localStorage.getItem('fontSize') || 'm';
     document.querySelectorAll('.font-btn').forEach(b => {
@@ -3370,6 +3373,89 @@ async function loadSettings() {
     });
   } catch (err) {
     // Settings may not exist yet
+  }
+}
+
+// ============================================================
+// SECTION: Settings › 財務目標 / 負債
+// ============================================================
+
+async function loadGoalSettings() {
+  const [s, ov] = await Promise.all([api('/api/settings'), api('/api/overview').catch(() => null)]);
+  document.getElementById('goal-monthly-expense').value = s.monthly_expense || '';
+  document.getElementById('goal-withdraw-rate').value = s.withdraw_rate || '';
+  const est = ov && ov.fire && ov.fire.recorded_monthly_expense;
+  document.getElementById('goal-monthly-expense').placeholder = est ? `依收支估 ${Math.round(est)}` : '例如 50000';
+}
+
+async function saveGoalSetting(key, value) {
+  try {
+    await api('/api/settings', { method: 'PUT', body: JSON.stringify({ [key]: value === '' ? '' : String(Number(value)) }) });
+    showToast('已儲存', 'success');
+  } catch (err) {
+    showToast('儲存失敗: ' + err.message, 'error');
+  }
+}
+
+let _liabilities = [];
+async function loadLiabilities() {
+  _liabilities = await api('/api/liabilities').catch(() => []);
+  const el = document.getElementById('liab-list');
+  el.innerHTML = _liabilities.length ? _liabilities.map(l => `
+    <div class="settings-row">
+      <div><strong>${escapeHtml(l.name)}</strong><p class="form-hint">更新於 ${l.updated || '--'}</p></div>
+      <div class="liab-actions">
+        <span class="liab-balance">${fmtTWD(l.balance)}</span>
+        ${rowBtn('edit', `editLiability(${l.id})`)}
+        ${rowBtn('delete', `deleteLiability(${l.id})`)}
+      </div>
+    </div>`).join('') : '';
+  resetLiabilityForm();
+}
+
+function resetLiabilityForm() {
+  const f = document.getElementById('liab-form');
+  f.reset();
+  f.liab_id.value = '';
+  f.querySelector('[type=submit]').textContent = '新增';
+  document.getElementById('liab-cancel').hidden = true;
+}
+
+function editLiability(id) {
+  const l = _liabilities.find(x => x.id === id);
+  if (!l) return;
+  const f = document.getElementById('liab-form');
+  f.liab_id.value = l.id;
+  f.liab_name.value = l.name;
+  f.liab_balance.value = l.balance;
+  f.querySelector('[type=submit]').textContent = '更新';
+  document.getElementById('liab-cancel').hidden = false;
+  f.liab_balance.focus();
+}
+
+async function submitLiability(e) {
+  e.preventDefault();
+  const f = e.target;
+  const id = f.liab_id.value;
+  try {
+    await api(id ? `/api/liabilities/${id}` : '/api/liabilities', {
+      method: id ? 'PUT' : 'POST',
+      body: JSON.stringify({ name: f.liab_name.value, balance: Number(f.liab_balance.value) }),
+    });
+    showToast(id ? '負債已更新' : '負債已新增', 'success');
+    loadLiabilities();
+  } catch (err) {
+    showToast('儲存失敗: ' + err.message, 'error');
+  }
+}
+
+async function deleteLiability(id) {
+  if (!confirm('確定要刪除這筆負債嗎？')) return;
+  try {
+    await api(`/api/liabilities/${id}`, { method: 'DELETE' });
+    loadLiabilities();
+  } catch (err) {
+    showToast('刪除失敗: ' + err.message, 'error');
   }
 }
 

@@ -43,3 +43,19 @@ test('carriedCash: later own trades and dividends move cash, per currency', () =
     twd: 1_000_000 + movedTwd, usd: 5000 - 1001 + 7,
   });
 });
+
+test('snapshots: liabilities recorded at creation, kept on edit, subtracted in net_worth', async () => {
+  const { handle } = await import('../js/server/router.js');
+  await import('../js/server/liabilities.js');
+  db._reset({ settings: [{ id: 1, key: 'usd_twd_rate', value: '30' }] });
+  await handle('/api/liabilities', { method: 'POST', body: JSON.stringify({ name: '房貸', balance: 3_000_000 }) });
+  const make = { date: '2026-11-01', cash_twd: 1_000_000, cash_usd: 0, stock_tw_value: 4_000_000, stock_us_value: 0, stock_value_twd: 4_000_000, usd_twd_rate: 30 };
+  const { id } = await handle('/api/assets', { method: 'POST', body: JSON.stringify(make) });
+  let [s] = await handle('/api/assets');
+  assert.equal(s.liabilities, 3_000_000);
+  assert.equal(s.net_worth, 2_000_000);
+  await handle(`/api/assets/${id}`, { method: 'PUT', body: JSON.stringify({ ...make, note: 'x' }) });
+  [s] = await handle('/api/assets');
+  assert.equal(s.liabilities, 3_000_000);
+  await assert.rejects(handle('/api/liabilities', { method: 'POST', body: JSON.stringify({ name: '', balance: 1 }) }), /請填名稱/);
+});

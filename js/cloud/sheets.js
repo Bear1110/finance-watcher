@@ -25,6 +25,7 @@ export const SHEET_IDS = {
   managed_snapshots: 10,
   managed_cash_movements: 11,
   // 12: llm_conversations, retired (never reuse the id)
+  liabilities: 13,
 };
 export const QUOTES_SHEET_ID = 99;
 // Ids of retired tables: their tabs may still be in the user's sheet as an archive, so a new

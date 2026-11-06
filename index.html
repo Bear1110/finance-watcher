@@ -963,6 +963,31 @@
         <span class="settings-link-chevron" aria-hidden="true">›</span>
       </button>
 
+      <div class="card">
+        <div class="card-header"><h3><span class="i" data-icon="trending"></span>財務目標</h3></div>
+        <div class="settings-row">
+          <div><strong>每月生活費</strong><p class="form-hint" id="goal-expense-hint">用來算總覽的「財務自由進度」與「現金可撐幾個月」。留空就用收支紀錄估算。</p></div>
+          <label class="settings-input">NT$ <input type="number" id="goal-monthly-expense" class="input-sm" min="0" step="1000" onchange="saveGoalSetting('monthly_expense', this.value)"></label>
+        </div>
+        <div class="settings-row">
+          <div><strong>提領率</strong><p class="form-hint">每年從資產領出多少當生活費。4% 是常見的經驗值（資產 = 年支出 × 25），想保守一點可以填 3～3.5。</p></div>
+          <label class="settings-input"><input type="number" id="goal-withdraw-rate" class="input-sm" min="1" max="10" step="0.1" placeholder="4" onchange="saveGoalSetting('withdraw_rate', this.value)"> %</label>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3><span class="i" data-icon="wallet"></span>負債</h3></div>
+        <p class="form-hint liab-hint">房貸、信貸、車貸等。填剩餘本金，偶爾更新一次就好；淨資產會扣掉，之後記的快照也會一起記下當時的負債。</p>
+        <div id="liab-list"></div>
+        <form id="liab-form" class="liab-form" onsubmit="submitLiability(event)">
+          <input type="hidden" name="liab_id">
+          <input type="text" name="liab_name" class="input-sm" placeholder="名稱，例如 房貸" required>
+          <input type="number" name="liab_balance" class="input-sm" placeholder="剩餘本金 NT$" min="0" step="any" required>
+          <button type="submit" class="btn btn-primary btn-sm">新增</button>
+          <button type="button" class="btn btn-outline btn-sm" id="liab-cancel" onclick="resetLiabilityForm()" hidden>取消</button>
+        </form>
+      </div>
+
       <div class="card" data-tour="cloud">
         <div class="card-header"><h3><span class="i" data-icon="cloud"></span>帳號與同步</h3></div>
         <div id="cloud-account" class="text-muted">--</div>
