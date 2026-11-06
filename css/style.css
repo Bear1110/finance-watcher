@@ -924,27 +924,7 @@ select option {
   border: 1px solid var(--border-color);
 }
 
-/* --- Portfolio Analysis Tab --- */
-.section-title {
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: var(--text-heading);
-  margin: 28px 0 16px 0;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.section-title:first-child {
-  margin-top: 0;
-}
-
-.chart-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  margin-bottom: 8px;
-}
-
+/* --- Chart cards --- */
 .chart-card {
   background: var(--bg-card);
   border-radius: 12px;
@@ -985,23 +965,6 @@ select option {
   border-radius: 50%;
   display: inline-block;
   flex-shrink: 0;
-}
-
-.risk-warn {
-  color: var(--yellow);
-  font-weight: 600;
-}
-
-.risk-danger {
-  color: var(--red);
-  font-weight: 600;
-}
-
-
-@media (max-width: 768px) {
-  .chart-row {
-    grid-template-columns: 1fr;
-  }
 }
 
 .realized-stats .stat-label,
@@ -1584,7 +1547,6 @@ body { overflow-x: clip; }
   .summary-value { font-size: 1.2rem; overflow-wrap: anywhere; }
 
   /* --- Charts: one per row, fixed heights (every chart sets maintainAspectRatio: false) --- */
-  .chart-row,
   .dash-charts,
   .grid-2 { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .chart-card { padding: 12px; min-width: 0; }
@@ -2162,9 +2124,11 @@ body[data-tab="expenses"] .fab { display: flex; }
   .snap-detail dl { grid-template-columns: 1fr 1fr; }
 }
 
-/* --- 組合分析: weights, concentration, TW/US rebalance --- */
-.pf-mkt-tw { --mkt: var(--accent); }
+/* --- 組合分析: weights, concentration, TW/US rebalance (TW/US colors match the trend chart) --- */
+.pf-mkt-tw { --mkt: var(--green); }
 .pf-mkt-us { --mkt: var(--yellow); }
+.risk-warn { color: var(--yellow); font-weight: 600; }
+.risk-danger { color: var(--red); font-weight: 600; }
 .pf-hint { margin: 0 0 12px 0; }
 
 .pf-row { padding: 0.65rem 0; border-top: 1px solid var(--border-color); }
@@ -2180,14 +2144,8 @@ body[data-tab="expenses"] .fab { display: flex; }
 }
 .pf-flag { font-size: 0.75rem; }
 .pf-weight { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; }
-.pf-bar {
-  position: relative;
-  height: 8px;
-  margin: 0.4rem 0 0.35rem;
-  border-radius: 4px;
-  background: var(--bg-secondary);
-}
-.pf-bar-fill { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--mkt); opacity: 0.85; }
+.pf-bar { position: relative; margin: 0.4rem 0 0.35rem; }
+.pf-bar .cat-track span { background: var(--mkt); }
 .pf-bar-cost {
   position: absolute;
   top: -3px;
@@ -2199,7 +2157,7 @@ body[data-tab="expenses"] .fab { display: flex; }
 }
 .pf-row-sub { font-size: 0.8rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 
-.pf-split-bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; }
+.pf-split-bar { height: 12px; border-radius: 6px; margin-top: 0; }
 .pf-split-bar span { background: var(--mkt); }
 .pf-split-legend {
   display: flex;

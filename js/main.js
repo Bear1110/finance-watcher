@@ -12,6 +12,7 @@ import { BACKUP_FORMAT } from './server/settings.js';
 // Route registration happens on import.
 import './server/assets.js';
 import './server/stocks.js';
+import './server/portfolio.js';
 import './server/export.js';
 import './server/twr.js';
 import './server/performance.js';

@@ -75,8 +75,8 @@ function localDate(d) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-// Dividends received per symbol in its own currency: all-time and trailing 12 months.
-route('GET', '/api/dividends/by-symbol', () => {
+/** Dividends received per symbol in its own currency: all-time and trailing 12 months. */
+export function dividendsBySymbol() {
   const c = new Date();
   c.setFullYear(c.getFullYear() - 1);
   const cutoff = localDate(c);
@@ -88,9 +88,10 @@ route('GET', '/api/dividends/by-symbol', () => {
     if (d.date >= cutoff) it.ttm += d.amount;
     groups.set(k, it);
   }
-  const items = [...groups.values()].sort((a, b) => cmp(a.symbol, b.symbol) || cmp(a.currency, b.currency));
-  return { items, usd_twd_rate: storedUSDTWDRate() };
-});
+  return [...groups.values()].sort((a, b) => cmp(a.symbol, b.symbol) || cmp(a.currency, b.currency));
+}
+
+route('GET', '/api/dividends/by-symbol', () => ({ items: dividendsBySymbol(), usd_twd_rate: storedUSDTWDRate() }));
 
 /**
  * Estimated withholding on one payout: US uses the configured withholding rate,

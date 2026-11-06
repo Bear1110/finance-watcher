@@ -1538,155 +1538,113 @@ async function loadTransactions() {
 // SECTION: Portfolio Analysis
 // ============================================================
 
-let _portfolio = null; // { tw, us } stock values (TWD) for re-running the rebalance on a new target
+const MKT = { TW: { cls: 'tw', short: '台', label: '台股' }, US: { cls: 'us', short: '美', label: '美股' } };
+const CONCENTRATION = { warn: ['偏高', 'risk-warn'], danger: ['高度集中', 'risk-danger'] };
 
-/** Concentration label by market-value weight (%). */
-const concentration = (pct) => (pct >= 40 ? ['高度集中', 'risk-danger'] : pct >= 25 ? ['偏高', 'risk-warn'] : null);
-
+/** 組合分析: numbers come from /api/stocks/portfolio (js/server/portfolio.js); this only renders. */
 async function loadPortfolioAnalysis() {
   try {
-    const [stockData, cash, dividends, settings] = await Promise.all([
-      api('/api/stocks'),
-      api('/api/assets/cash').catch(() => null),
-      api('/api/dividends').catch(() => []),
-      api('/api/settings').catch(() => ({})),
-    ]);
-    const holdings = (stockData && stockData.holdings) || [];
-    const rate = Number(settings.usd_twd_rate) || 32;
-    const totalValue = holdings.reduce((s, h) => s + (h.market_value_twd || 0), 0);
-    const totalCost = holdings.reduce((s, h) => s + (h.cost_twd || 0), 0);
-    if (!holdings.length || !(totalValue > 0)) {
+    const p = await api('/api/stocks/portfolio');
+    if (!p) {
       document.getElementById('pf-weights').innerHTML = '<div class="empty-state">尚無持股（或還沒抓到報價）</div>';
       return;
     }
-
-    // Trailing 12 months of dividends, per symbol, in TWD
-    const since = new Date();
-    since.setFullYear(since.getFullYear() - 1);
-    const sinceStr = since.toISOString().slice(0, 10);
-    const divBySymbol = {};
-    let divTotal = 0;
-    for (const d of (Array.isArray(dividends) ? dividends : [])) {
-      if (d.date < sinceStr) continue;
-      const v = toTWD(d.amount || 0, d.currency, rate);
-      divBySymbol[d.symbol] = (divBySymbol[d.symbol] || 0) + v;
-      divTotal += v;
-    }
-
-    const rows = holdings.map(h => ({
-      symbol: h.symbol,
-      market: h.market,
-      weight: h.market_value_twd / totalValue * 100,
-      costWeight: totalCost > 0 ? h.cost_twd / totalCost * 100 : 0,
-      pl: h.unrealized_pl_twd || 0,
-      plPct: h.pl_percent,
-      yield: h.cost_twd > 0 && divBySymbol[h.symbol] ? divBySymbol[h.symbol] / h.cost_twd * 100 : null,
-    })).sort((a, b) => b.weight - a.weight);
-
-    // Concentration
-    const top3 = rows.slice(0, 3).reduce((s, r) => s + r.weight, 0);
-    const effective = 1 / rows.reduce((s, r) => s + (r.weight / 100) ** 2, 0);
-    const topLabel = concentration(rows[0].weight);
-    const topEl = document.getElementById('pf-top');
-    topEl.textContent = `${rows[0].weight.toFixed(1)}%`;
-    topEl.className = 'stat-value ' + (topLabel ? topLabel[1] : '');
-    document.getElementById('pf-top-sub').innerHTML = `${escapeHtml(rows[0].symbol)}${rows.length > 3 ? ` · 前 3 大 ${top3.toFixed(1)}%` : ''}`;
-    document.getElementById('pf-effective').textContent = `${effective.toFixed(1)} 檔`;
-    document.getElementById('pf-effective-sub').textContent = `實際持有 ${rows.length} 檔；越小越集中`;
-
-    // USD exposure: US stocks + carried-forward USD cash, against net worth
-    const usStock = holdings.filter(h => h.currency === 'USD').reduce((s, h) => s + h.market_value_twd, 0);
-    const usdCash = cash ? Math.max(0, cash.usd) * rate : 0;
-    const netWorth = totalValue + (cash ? cash.twd + cash.usd * rate : 0);
-    const usdTotal = usStock + usdCash;
-    document.getElementById('pf-usd').textContent = netWorth > 0 ? `${(usdTotal / netWorth * 100).toFixed(1)}%` : '--';
-    document.getElementById('pf-usd-sub').innerHTML =
-      `美股 ${fmtTWD(usStock)}${cash ? ` ＋ 美金現金 ${fmtTWD(usdCash)}` : '（尚無快照，只算股票）'}<br>台幣升值 1% ≈ ${fmtPL(-usdTotal / 100)}`;
-
-    // Dividends
-    document.getElementById('pf-div').textContent = fmtTWD(divTotal);
-    document.getElementById('pf-div-sub').textContent = divTotal > 0
-      ? `月均 ${fmtTWD(divTotal / 12)} · 殖利率 ${totalCost > 0 ? (divTotal / totalCost * 100).toFixed(2) : '--'}%`
-      : '近 12 個月沒有股利紀錄';
-
-    // Weights: bar = weight now, tick = weight at cost; bars scale to the heaviest so small ones stay visible
-    const scale = Math.max(...rows.map(r => Math.max(r.weight, r.costWeight)));
-    document.getElementById('pf-weights').innerHTML = rows.map(r => {
-      const label = concentration(r.weight);
-      const drift = r.weight - r.costWeight;
-      const sub = [
-        `成本時 ${r.costWeight.toFixed(1)}%${Math.abs(drift) >= 0.1 ? ` <span class="${plClass(drift)}">${drift > 0 ? '↑' : '↓'}${Math.abs(drift).toFixed(1)}</span>` : ''}`,
-        `損益 <span class="${plClass(r.pl)}">${fmtPL(r.pl)}${r.plPct ? ` (${fmtPct(r.plPct)})` : ''}</span>`,
-        r.yield != null ? `殖利率 ${r.yield.toFixed(2)}%` : '',
-      ].filter(Boolean).join(' · ');
-      return `<div class="pf-row">
-        <div class="pf-row-head">
-          <span class="pf-sym">${escapeHtml(r.symbol)}</span>
-          <span class="pf-mkt pf-mkt-${r.market === 'TW' ? 'tw' : 'us'}">${r.market === 'TW' ? '台' : '美'}</span>
-          ${label ? `<span class="pf-flag ${label[1]}">${label[0]}</span>` : ''}
-          <span class="pf-weight">${r.weight.toFixed(1)}%</span>
-        </div>
-        <div class="pf-bar" aria-hidden="true">
-          <span class="pf-bar-fill pf-mkt-${r.market === 'TW' ? 'tw' : 'us'}" style="width:${r.weight / scale * 100}%"></span>
-          <span class="pf-bar-cost" style="left:${r.costWeight / scale * 100}%"></span>
-        </div>
-        <div class="pf-row-sub">${sub}</div>
-      </div>`;
-    }).join('');
-
-    // TW / US split + rebalance
-    _portfolio = { tw: totalValue - usStock, us: usStock };
-    document.getElementById('pf-target-tw').value = settings.rebalance_target_tw || '';
-    renderRebalance(settings.rebalance_target_tw);
+    renderPortfolioStats(p);
+    renderPortfolioWeights(p.rows);
+    renderRebalance(p);
   } catch (err) {
     showToast('載入投資組合分析失敗: ' + err.message, 'error');
   }
 }
 
-/** TW/US split bar and how to reach the target TW share: by buying only, or by switching. */
-function renderRebalance(targetStr) {
-  if (!_portfolio) return;
-  const { tw, us } = _portfolio;
-  const total = tw + us;
-  const twPct = tw / total * 100;
+function renderPortfolioStats(p) {
+  const top = p.rows[0];
+  const set = (id, text, sub, cls = '') => {
+    const el = document.getElementById(id);
+    el.textContent = text;
+    el.className = 'stat-value ' + cls;
+    document.getElementById(id + '-sub').innerHTML = sub;
+  };
+  set('pf-top', `${top.weight.toFixed(1)}%`,
+    `${escapeHtml(top.symbol)}${p.rows.length > 3 ? ` · 前 3 大 ${p.top3.toFixed(1)}%` : ''}`,
+    top.level ? CONCENTRATION[top.level][1] : '');
+  set('pf-effective', `${p.effective.toFixed(1)} 檔`, `實際持有 ${p.rows.length} 檔；越小越集中`);
+  const usdTotal = p.usd.stock + (p.usd.cash || 0);
+  set('pf-usd', p.usd.pct == null ? '--' : `${p.usd.pct.toFixed(1)}%`,
+    `美股 ${fmtTWD(p.usd.stock)}${p.usd.cash == null ? '（尚無快照，只算股票）' : ` ＋ 美金現金 ${fmtTWD(p.usd.cash)}`}<br>台幣升值 1% ≈ ${fmtPL(-usdTotal / 100)}`);
+  const d = p.dividends;
+  set('pf-div', fmtTWD(d.ttm), d.ttm > 0 ? `月均 ${fmtTWD(d.ttm / 12)} · 殖利率 ${fmtYield(d.yield_cost)}` : '近 12 個月沒有股利紀錄');
+}
+
+/** Bar = weight now, tick = weight at cost; bars scale to the heaviest so small ones stay visible. */
+function renderPortfolioWeights(rows) {
+  const scale = Math.max(...rows.map(r => Math.max(r.weight, r.cost_weight)));
+  document.getElementById('pf-weights').innerHTML = rows.map(r => {
+    const mkt = MKT[r.market] || MKT.US;
+    const flag = CONCENTRATION[r.level];
+    const drift = r.weight - r.cost_weight;
+    const sub = [
+      `成本時 ${r.cost_weight.toFixed(1)}%${Math.abs(drift) >= 0.1 ? ` <span class="${plClass(drift)}">${drift > 0 ? '↑' : '↓'}${Math.abs(drift).toFixed(1)}</span>` : ''}`,
+      `損益 <span class="${plClass(r.pl)}">${fmtPL(r.pl)}${r.pl_percent ? ` (${fmtPct(r.pl_percent)})` : ''}</span>`,
+      r.yield_cost != null ? `殖利率 ${fmtYield(r.yield_cost)}` : '',
+    ].filter(Boolean).join(' · ');
+    return `<div class="pf-row pf-mkt-${mkt.cls}">
+      <div class="pf-row-head">
+        <span class="pf-sym">${escapeHtml(r.symbol)}</span>
+        <span class="pf-mkt">${mkt.short}</span>
+        ${flag ? `<span class="pf-flag ${flag[1]}">${flag[0]}</span>` : ''}
+        <span class="pf-weight">${r.weight.toFixed(1)}%</span>
+      </div>
+      <div class="pf-bar" aria-hidden="true">
+        <span class="source-bar cat-track"><span style="width:${r.weight / scale * 100}%"></span></span>
+        <span class="pf-bar-cost" style="left:${r.cost_weight / scale * 100}%"></span>
+      </div>
+      <div class="pf-row-sub">${sub}</div>
+    </div>`;
+  }).join('');
+}
+
+/** TW/US split bar and how to reach the target TW share. */
+function renderRebalance(p) {
+  const { tw, us } = p.split;
+  const twPct = tw / (tw + us) * 100;
   document.getElementById('pf-split').innerHTML = `
-    <div class="pf-split-bar" aria-hidden="true">
+    <div class="source-bar pf-split-bar" aria-hidden="true">
       <span class="pf-mkt-tw" style="width:${twPct}%"></span><span class="pf-mkt-us" style="width:${100 - twPct}%"></span>
     </div>
     <div class="pf-split-legend">
       <span>台股 ${twPct.toFixed(1)}% · ${fmtTWD(tw)}</span><span>美股 ${(100 - twPct).toFixed(1)}% · ${fmtTWD(us)}</span>
     </div>`;
+  _savedRebalanceTarget = p.target_tw == null ? '' : String(p.target_tw);
+  document.getElementById('pf-target-tw').value = _savedRebalanceTarget;
 
+  const r = p.rebalance;
   const out = document.getElementById('pf-rebalance');
-  const target = targetStr === '' || targetStr == null ? NaN : Number(targetStr);
-  if (!(target >= 0 && target <= 100)) {
+  if (!r) {
     out.innerHTML = '<p class="form-hint">填一個目標比例（例如台股 60%），算出要怎麼買才會回到目標。</p>';
-    return;
+  } else if (r.in_range) {
+    out.innerHTML = `<p>目前已在目標（台股 ${r.target}%／美股 ${100 - r.target}%）的 1% 以內，不用動。</p>`;
+  } else {
+    const under = MKT[r.under].label;
+    const over = MKT[r.under === 'TW' ? 'US' : 'TW'].label;
+    out.innerHTML = `
+      <p>目標 台股 ${r.target}%／美股 ${100 - r.target}%，目前${under}偏低：</p>
+      <ul class="pf-rebalance-list">
+        <li><strong>只用買的：</strong>${under}再買 ${r.buy_only == null ? '--（目標 100% 只能靠賣出）' : fmtTWD(r.buy_only)}</li>
+        <li><strong>用換的：</strong>賣出${over} ${fmtTWD(r.switch)}，換成${under}</li>
+      </ul>
+      <p class="form-hint">只看股票市值，不含現金；手續費、稅與匯差另計。</p>`;
   }
-  const f = target / 100;
-  const gap = f * total - tw; // > 0: TW is under target
-  if (Math.abs(gap) < total * 0.01) {
-    out.innerHTML = `<p>目前已在目標（台股 ${target}%／美股 ${100 - target}%）的 1% 以內，不用動。</p>`;
-    return;
-  }
-  const [under, over, underVal, underF] = gap > 0 ? ['台股', '美股', tw, f] : ['美股', '台股', us, 1 - f];
-  // Buy X of the under side: (underVal + X) / (total + X) = underF
-  const buyOnly = underF < 1 ? (underF * total - underVal) / (1 - underF) : Infinity;
-  out.innerHTML = `
-    <p>目標 台股 ${target}%／美股 ${100 - target}%，目前${under}偏低：</p>
-    <ul class="pf-rebalance-list">
-      <li><strong>只用買的：</strong>${under}再買 ${Number.isFinite(buyOnly) ? fmtTWD(buyOnly) : '--（目標 100% 只能靠賣出）'}</li>
-      <li><strong>用換的：</strong>賣出${over} ${fmtTWD(Math.abs(gap))}，換成${under}</li>
-    </ul>
-    <p class="form-hint">只看股票市值，不含現金；手續費、稅與匯差另計。</p>`;
 }
 
+let _savedRebalanceTarget = null;
 async function saveRebalanceTarget(v) {
-  const n = v === '' ? '' : Math.min(100, Math.max(0, Number(v)));
-  document.getElementById('pf-target-tw').value = n;
-  renderRebalance(n);
+  const n = v === '' ? '' : String(Math.min(100, Math.max(0, Number(v))));
+  if (n === _savedRebalanceTarget) return; // spinner clicks fire change per step
+  _savedRebalanceTarget = n;
   try {
-    await api('/api/settings', { method: 'PUT', body: JSON.stringify({ rebalance_target_tw: String(n) }) });
+    await api('/api/settings', { method: 'PUT', body: JSON.stringify({ rebalance_target_tw: n }) });
+    loadPortfolioAnalysis(); // quotes are cached, so this only recomputes
   } catch (err) {
     showToast('儲存目標比例失敗: ' + err.message, 'error');
   }

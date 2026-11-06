@@ -595,7 +595,7 @@
 
       <!-- 組合分析 Sub-tab -->
       <div id="subtab-portfolio" class="subtab-content">
-        <div class="dash-stats pf-stats">
+        <div class="dash-stats">
           <div class="stat-card">
             <div class="stat-label" title="市值最大的一檔佔全部股票市值的比例。&#10;超過 25% 偏高、超過 40% 高度集中。">最大持股 ⓘ</div>
             <div class="stat-value" id="pf-top">--</div>
@@ -623,14 +623,14 @@
             <h3>持股權重</h3>
           </div>
           <p class="form-hint pf-hint">依市值排序。長條是現在的權重，細線是用成本算的權重：長條超過細線代表漲得比其他檔多、變重了。</p>
-          <div id="pf-weights" class="pf-weights"><div class="empty-state">載入中...</div></div>
+          <div id="pf-weights"><div class="empty-state">載入中...</div></div>
         </div>
 
         <div class="card">
           <div class="card-header">
             <h3>台美配置與再平衡</h3>
           </div>
-          <div id="pf-split" class="pf-split"></div>
+          <div id="pf-split"></div>
           <label class="pf-target">目標台股比例
             <input type="number" id="pf-target-tw" class="input-sm" min="0" max="100" step="5" placeholder="例如 60" onchange="saveRebalanceTarget(this.value)">%
           </label>

@@ -59,7 +59,8 @@ export async function portfolioValues() {
   return [tw, us, tw + us];
 }
 
-async function listHoldings() {
+/** Self holdings at live prices (TWD totals included). */
+export async function listHoldings() {
   const holdings = activeHoldings();
   const quotes = await fetchQuotes(holdings.map((h) => h.symbol));
   const rate = storedUSDTWDRate();
