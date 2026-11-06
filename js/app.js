@@ -209,7 +209,6 @@ const ICONS = {
   alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4M12 17h.01"/>',
   refresh: '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
-  minus: '<path d="M5 12h14"/>',
   eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
   'eye-off': '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>',
   pencil: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>',
@@ -239,8 +238,6 @@ const ROW_ACTIONS = {
   edit: ['pencil', 'btn-outline', '編輯'],
   delete: ['trash', 'btn-danger', '刪除'],
   view: ['list', 'btn-outline', '明細'],
-  buy: ['plus', 'btn-buy', '買入'],
-  sell: ['minus', 'btn-sell', '賣出'],
 };
 const rowBtn = (kind, onclick, label = ROW_ACTIONS[kind][2]) => {
   const [icon, cls] = ROW_ACTIONS[kind];
@@ -981,21 +978,33 @@ function dayChangeCell(chg, mv, cur, strong) {
     `<span class="cell-sub">${prev > 0 ? fmtPct(chg / prev * 100) : '--'}</span></td>`;
 }
 
+
+/**
+ * The stock's page on Google Finance. Listed Taiwan stocks are CODE:TPE; Google has no
+ * 上櫃 (.TWO) quotes, and a US quote needs the exchange (from the Yahoo quote), so those
+ * fall back to a Google search, which shows the price card.
+ */
+function quoteURL(s) {
+  const code = s.symbol.replace(/\.TWO?$/, '');
+  if (s.symbol.endsWith('.TW')) return `https://www.google.com/finance/quote/${encodeURIComponent(code)}:TPE`;
+  if (s.market === 'US' && s.exchange) return `https://www.google.com/finance/quote/${encodeURIComponent(code)}:${s.exchange}`;
+  return `https://www.google.com/search?q=${encodeURIComponent(`${code} 股價`)}`;
+}
+
 function renderHoldingRow(s) {
   const cur = s.currency;
   const costNative = (s.avg_cost || 0) * (s.shares || 0);
   const dm = divMetrics(s.unrealized_pl || 0, costNative, s.market_value || 0, _divBySymbol[s.symbol]);
   return `
     <tr>
-      <td class="c-sym"><strong>${s.symbol || '--'}</strong></td>
+      <td class="c-sym"><a class="sym-link" href="${quoteURL(s)}" target="_blank" rel="noopener" title="在 Google 財經查看"><strong>${s.symbol || '--'}</strong></a></td>
       <td class="c-sh">${fmt(s.shares)}<span class="cell-sub">均價 ${fmtPrice(s.avg_cost, cur)}</span></td>
       <td class="c-cost">${fmtCur(costNative, cur)}</td>
       <td class="c-px">${fmtPrice(s.current_price, cur)}${s.current_price ? `<span class="cell-sub ${plClass(s.day_change_pct)}" title="較前一交易日收盤">${fmtPct(s.day_change_pct)}</span>` : ''}</td>
       <td class="c-mv">${fmtCur(s.market_value, cur)}</td>
       ${plCell(s.unrealized_pl, s.pl_percent, cur)}${divCells(dm, cur)}
       <td class="c-act action-buttons">
-        ${rowBtn('buy', `openTradeModal('BUY', '${s.symbol}', '${s.market}', '${s.currency}', ${s.shares}, ${s.current_price || 0})`)}
-        ${rowBtn('sell', `openTradeModal('SELL', '${s.symbol}', '${s.market}', '${s.currency}', ${s.shares}, ${s.current_price || 0})`)}
+        ${['BUY', 'SELL'].map(side => `<button type="button" class="btn ${side === 'BUY' ? 'btn-buy' : 'btn-sell'} btn-sm" onclick="openTradeModal('${side}', '${s.symbol}', '${s.market}', '${s.currency}', ${s.shares}, ${s.current_price || 0})">${side === 'BUY' ? '買' : '賣'}</button>`).join('')}
         ${rowBtn('delete', `deleteHolding(${s.id})`, '刪除持倉')}
       </td>
     </tr>

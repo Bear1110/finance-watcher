@@ -84,6 +84,7 @@ async function listHoldings() {
     const q = quotes[h.symbol];
     if (q) {
       d.current_price = q.price;
+      d.exchange = q.exchange;
       d.day_change_twd = toTWD(q.change * h.shares, h.currency, rate);
       d.day_change_pct = q.change_percent;
       d.market_value = q.price * h.shares;

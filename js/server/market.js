@@ -76,10 +76,16 @@ function cached(symbol) {
   return q;
 }
 
-function makeQuote(symbol, price, prevClose, currency, name) {
+// Yahoo exchange code -> Google Finance's, for the quote page link (Taiwan ones are derived from the symbol)
+const GOOGLE_EXCHANGE = {
+  NMS: 'NASDAQ', NGM: 'NASDAQ', NCM: 'NASDAQ', NAS: 'NASDAQ',
+  NYQ: 'NYSE', PCX: 'NYSEARCA', ASE: 'NYSEAMERICAN', BTS: 'BATS',
+};
+
+function makeQuote(symbol, price, prevClose, currency, name, exchange) {
   const q = {
     symbol, price, change: 0, change_percent: 0,
-    currency: currency || '', name: name || '',
+    currency: currency || '', name: name || '', exchange: GOOGLE_EXCHANGE[exchange] || '',
     fetched_at: new Date().toISOString(),
   };
   if (prevClose > 0) {
@@ -95,7 +101,7 @@ async function fetchQuoteYahoo(symbol) {
   const res = yr.chart?.result?.[0];
   if (!res) throw new Error(`no results for ${symbol}`);
   const m = res.meta;
-  return makeQuote(symbol, m.regularMarketPrice, m.chartPreviousClose, m.currency, m.shortName);
+  return makeQuote(symbol, m.regularMarketPrice, m.chartPreviousClose, m.currency, m.shortName, m.exchangeName);
 }
 
 export async function fetchQuote(symbol) {

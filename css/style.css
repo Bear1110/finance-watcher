@@ -1990,6 +1990,9 @@ body[data-tab="expenses"] .fab { display: flex; }
 .holdings-table.as-cards td:empty { display: none; }
 .holdings-table.as-cards td.empty-state { grid-column: 1 / -1; }
 .holdings-table.as-cards td::before { display: block; font-size: 0.72rem; font-weight: 400; color: var(--text-secondary); }
+/* Symbol links to its Google Finance page: looks like the plain symbol, underline on hover */
+.sym-link { color: inherit; }
+.sym-link:hover { color: var(--accent); text-decoration: underline; }
 .holdings-table.as-cards .c-sym { grid-area: sym; font-size: 1.05rem; }
 .holdings-table.as-cards .c-act { grid-area: act; justify-content: flex-end; }
 .holdings-table.as-cards .c-mv { grid-area: mv; }
