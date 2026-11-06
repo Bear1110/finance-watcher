@@ -404,320 +404,276 @@ document.addEventListener('click', (e) => {
 // SECTION: Dashboard
 // ============================================================
 
-let assetTrendChart = null;
 let _cachedAssets = [];
-let _carriedCash = null; // /api/assets/cash: the latest snapshot's cash carried forward; prefills a new snapshot
+let _carriedCash = null; // carried-forward cash (assets.js carriedCash); prefills a new snapshot
+let _overview = null; // /api/overview
+let _netWorthChart = null;
+let _nwYears = 3; // net worth chart window, 0 = all
+let _investPeriod = 'YTD';
 
+/** Net worth parts in the hero's bar */
+const COMP_PARTS = [
+  { key: 'cash_twd', label: '台幣現金', color: '#4e8cff' },
+  { key: 'cash_usd', label: '美金現金', color: '#a78bfa' },
+  { key: 'tw', label: '台股', color: '#34d399' },
+  { key: 'us', label: '美股', color: '#fbbf24' },
+];
+const ALERT_ACTIONS = {
+  snapshot: ['新增快照', 'openSnapshotModal()'],
+  portfolio: ['看組合分析', "goToTab('stocks', 'portfolio')"],
+  expenses: ['去記帳', "goToTab('expenses')"],
+  settings: ['去設定', "goToTab('settings')"],
+};
+
+/** 總覽: the numbers come from /api/overview (js/server/overview.js); this renders them. */
 async function loadDashboard() {
   try {
-    const [assets, cash, stocks, transactions, xirr, overview] = await Promise.all([
+    const [ov, assets, transactions] = await Promise.all([
+      api('/api/overview'),
       api('/api/assets').catch(() => []),
-      api('/api/assets/cash').catch(() => null),
-      api('/api/stocks').catch(() => ({ holdings: [], total_value_twd: 0 })),
       api('/api/transactions').catch(() => []),
-      api('/api/stocks/xirr').catch(() => ({})),
-      api('/api/overview').catch(() => ({ years: [] })),
     ]);
-
-    const assetList = Array.isArray(assets) ? assets : [];
-    const stockData = (stocks && stocks.holdings) ? stocks : { holdings: [], total_value_twd: 0 };
-    const txList = Array.isArray(transactions) ? transactions : [];
-
-    _cachedAssets = assetList;
-
-    // Current live values - split TW/US
-    const holdings = stockData.holdings || [];
-    const twHoldings = holdings.filter(h => h.market === 'TW');
-    const usHoldings = holdings.filter(h => h.market === 'US');
-    const twStockValue = twHoldings.reduce((s, h) => s + (h.market_value_twd || 0), 0);
-    const usStockValue = usHoldings.reduce((s, h) => s + (h.market_value_twd || 0), 0);
-    const currentStockValue = stockData.total_value_twd || 0;
-
-    // Latest snapshot for cash info
-    const latest = assetList.length > 0 ? assetList[0] : null;
-    const rate = (latest && latest.usd_twd_rate) || 32;
-
-    // Cash = latest snapshot carried forward by later trades and dividends (see assets.js carriedCash)
-    _carriedCash = latest ? cash : null;
-    const cashTwd = _carriedCash ? _carriedCash.twd : 0;
-    const cashUsd = _carriedCash ? _carriedCash.usd : 0;
-    const liveNetWorth = latest ? cashTwd + cashUsd * rate + currentStockValue : null;
-
-    const netDate = document.getElementById('dash-net-date');
-    netDate.title = '';
-    if (latest) {
-      document.getElementById('dash-net-worth').textContent = fmtTWD(liveNetWorth);
-      const c = _carriedCash || { trades: 0, dividends: 0 };
-      const counted = [c.trades && `${c.trades} 筆交易`, c.dividends && `${c.dividends} 筆股利`].filter(Boolean);
-      netDate.textContent = `現金：${latest.date} 快照${counted.length ? `＋之後 ${counted.join('、')}` : ''} / 股票為即時市值`;
-      if (counted.length) netDate.title = `台幣 ${fmtPL(c.moved_twd)}、美金 ${fmtPLCur(c.moved_usd, 'USD')}（收支不算，下次記快照時對齊）`;
-      document.getElementById('dash-growth').innerHTML =
-        `較 ${shortDate(latest.date)} 快照 ${changeHtml(liveNetWorth, latest.total_asset)}`;
-    } else {
-      document.getElementById('dash-net-worth').textContent = '--';
-      netDate.textContent = '尚無快照，請新增';
-      document.getElementById('dash-growth').innerHTML = '';
-    }
-
-    renderDashChangeStats({ twHoldings, usHoldings, stockValue: currentStockValue, xirr, year: overview.years.find(y => y.current) });
-    loadPerformance(); // separate request: the first run fetches price history
-    loadDataCheckBadge();
-
-    // Asset composition donut - split TW/US stocks
-    if (latest) {
-      const cashUsdTwd = cashUsd * rate;
-      const ctx = document.getElementById('chart-asset-composition');
-      if (window._assetCompChart) window._assetCompChart.destroy();
-      const compLabels = ['台幣現金', '美金現金(換算TWD)', '台股市值', '美股市值'];
-      const compData = [cashTwd, cashUsdTwd, twStockValue, usStockValue].map(v => Math.max(0, v)); // carried-forward cash can dip below 0
-      const compColors = ['#4e8cff', '#fbbf24', '#34d399', '#f87171'];
-      const compTotal = compData.reduce((a, b) => a + b, 0);
-      window._assetCompChart = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-          labels: compLabels,
-          datasets: [{ data: compData, backgroundColor: compColors, borderWidth: 0, hoverOffset: 6 }]
-        },
-        options: {
-          responsive: true, maintainAspectRatio: false, cutout: '55%',
-          plugins: {
-            legend: { display: false },
-            tooltip: { callbacks: { label: c => { const pct = compTotal > 0 ? ((c.parsed/compTotal)*100).toFixed(1) : 0; return `${c.label}: ${fmtTWD(c.parsed)} (${pct}%)`; } } }
-          }
-        }
-      });
-      document.getElementById('legend-asset-composition').innerHTML = compLabels.map((l, i) => {
-        const pct = compTotal > 0 ? ((compData[i]/compTotal)*100).toFixed(1) : 0;
-        return `<span class="legend-item"><span class="legend-dot" style="background:${compColors[i]}"></span>${l}: ${fmtTWD(compData[i])} (${pct}%)</span>`;
-      }).join('');
-    }
-
-    // Net worth trend from snapshots
-    window._trendAssets = [...assetList].reverse(); // chronological
-    reRenderTrendChart();
-
-    // Recent transactions
-    const recentTx = txList.slice(0, 5);
-    const txBody = document.getElementById('dash-tx-body');
-    if (recentTx.length === 0) {
-      txBody.innerHTML = '<tr><td colspan="5" class="empty-state">尚無交易紀錄</td></tr>';
-    } else {
-      txBody.innerHTML = recentTx.map(t => `
-        <tr>
-          <td>${t.date || '--'}</td>
-          <td>${t.symbol || '--'}</td>
-          <td><span class="${t.action === 'BUY' ? 'tag-buy' : 'tag-sell'}">${t.action === 'BUY' ? '買' : '賣'}</span></td>
-          <td>${fmt(t.shares)}</td>
-          <td>${fmtNum(t.price, 2)}</td>
-        </tr>
-      `).join('');
-    }
-
-    // Snapshots table
-    renderSnapshots(assetList);
-
+    _overview = ov;
+    _cachedAssets = assets;
+    _carriedCash = ov.cash;
+    renderHero(ov);
+    renderFire(ov.fire);
+    renderMonth(ov.month, ov.fire);
+    renderGrowthYears(ov.years);
+    renderSnapshots(assets);
+    renderRecentTx(transactions);
+    renderAlerts(ov.alerts);
+    api('/api/data-check').then(d => {
+      const warns = (d.checks || []).filter(c => c.level === 'warn').length;
+      if (warns) renderAlerts([...ov.alerts, { level: 'warn', text: `資料檢查有 ${warns} 項提醒`, action: 'settings' }]);
+    }).catch(() => {});
+    loadPerformance();
+    renderNetWorthChart(); // snapshots now; daily once the performance series arrives
+    getPerf().then(() => { renderNetWorthChart(); renderInvest(); }).catch(err => renderInvest(err));
   } catch (err) {
     showToast('載入總覽資料失敗: ' + err.message, 'error');
   }
 }
 
-let _trendChartType = 'bar';
-
-function setTrendChartType(type) {
-  _trendChartType = type;
-  document.querySelectorAll('#trend-type .chart-type-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.type === type);
-  });
-  reRenderTrendChart();
+function renderAlerts(alerts) {
+  const el = document.getElementById('dash-alerts');
+  el.hidden = !alerts.length;
+  el.innerHTML = alerts.map(a => {
+    const [label, onclick] = ALERT_ACTIONS[a.action] || [];
+    return `<div class="dash-alert dash-alert-${a.level}">
+      <span class="dash-alert-icon" aria-hidden="true">${a.level === 'warn' ? '⚠' : 'ℹ'}</span>
+      <span class="dash-alert-text">${escapeHtml(a.text)}</span>
+      ${onclick ? `<button type="button" class="btn btn-outline btn-sm" onclick="${onclick}">${label}</button>` : ''}
+    </div>`;
+  }).join('');
 }
 
-function reRenderTrendChart() {
-  const assets = window._trendAssets || [];
-  const mode = document.getElementById('trend-granularity')?.value || 'all';
-  if (mode === 'daily') {
-    renderDailyTrendChart(assets);
+/** Net worth, this year's change by source, what it is made of, today's move. */
+function renderHero(ov) {
+  const $ = id => document.getElementById(id);
+  const year = ov.years.find(y => y.current);
+  if (ov.net_worth == null) {
+    $('dash-net-worth').textContent = '--';
+    ['dash-year', 'dash-year-parts', 'dash-comp-bar', 'dash-comp-legend'].forEach(id => { $(id).innerHTML = ''; });
+    $('dash-net-date').textContent = '尚無快照，請新增';
     return;
   }
-  let filtered;
+  $('dash-net-worth').textContent = fmtTWD(ov.net_worth);
+  $('dash-year').innerHTML = year && year.start > 0 ? `今年 ${changeHtml(year.start + year.change, year.start)}` : '';
+  $('dash-year-parts').innerHTML = year ? growthPartsText(year) : '';
 
-  switch (mode) {
-    case 'last10':
-      filtered = assets.slice(-10);
-      break;
-    case 'last20':
-      filtered = assets.slice(-20);
-      break;
-    case 'monthly':
-      filtered = pickLastPerGroup(assets, a => a.date?.slice(0, 7)); // YYYY-MM
-      break;
-    case 'quarterly':
-      filtered = pickLastPerGroup(assets, a => {
-        const m = parseInt(a.date?.slice(5, 7) || '1');
-        const q = Math.ceil(m / 3);
-        return a.date?.slice(0, 4) + '-Q' + q;
-      });
-      break;
-    case 'yearly':
-      filtered = pickLastPerGroup(assets, a => a.date?.slice(0, 4)); // YYYY
-      break;
-    default:
-      filtered = assets;
+  const parts = COMP_PARTS.map(p => ({ ...p, v: Math.max(0, ov.parts[p.key]) })).filter(p => p.v > 0);
+  const total = parts.reduce((sum, p) => sum + p.v, 0);
+  $('dash-comp-bar').innerHTML = parts.map(p => `<span style="width:${p.v / total * 100}%;background:${p.color}" title="${p.label} ${fmtTWD(p.v)}"></span>`).join('');
+  $('dash-comp-legend').innerHTML = parts.map(p =>
+    `<span><span class="legend-dot" style="background:${p.color}"></span>${p.label} ${(p.v / total * 100).toFixed(0)}%</span>`).join('') +
+    (ov.parts.liabilities > 0 ? `<span>負債 −${fmt(ov.parts.liabilities)}</span>` : '');
+
+  const c = ov.cash;
+  const counted = [c.trades && `${c.trades} 筆交易`, c.dividends && `${c.dividends} 筆股利`].filter(Boolean);
+  const d = ov.day;
+  const sub = $('dash-net-date');
+  sub.innerHTML = [
+    d ? `今日 <span class="${plClass(d.pl)}">${fmtPL(d.pl)}${d.prev_value > 0 ? ` (${fmtPct(d.pl / d.prev_value * 100)})` : ''}</span>` : '',
+    `現金：${c.date} 快照${counted.length ? `＋之後 ${counted.join('、')}` : ''}`,
+  ].filter(Boolean).join(' · ');
+  sub.title = (d ? `今日：台股 ${fmtPL(d.tw)}、美股 ${fmtPL(d.us)}（最近一個交易日，不含匯率）\n` : '') +
+    (counted.length ? `現金調整：台幣 ${fmtPL(c.moved_twd)}、美金 ${fmtPLCur(c.moved_usd, 'USD')}（收支不算，下次記快照時對齊）` : '');
+}
+
+function renderFire(f) {
+  const el = document.getElementById('dash-fire');
+  const bar = document.getElementById('dash-fire-bar');
+  const sub = document.getElementById('dash-fire-sub');
+  if (!f.monthly_expense || f.progress == null) {
+    el.textContent = '--';
+    bar.innerHTML = '';
+    sub.innerHTML = !f.monthly_expense
+      ? '<a href="#" onclick="goToTab(\'settings\');return false">到設定填每月生活費</a>，看離財務自由還有多遠'
+      : '需要先記一筆資產快照';
+    return;
   }
+  el.textContent = `${f.progress.toFixed(1)}%`;
+  bar.innerHTML = `<span style="width:${Math.min(100, Math.max(0, f.progress))}%;background:var(--accent)"></span>`;
+  sub.innerHTML = `目標 ${fmtTWD(f.target)}（每月 ${fmtTWD(f.monthly_expense)}${f.source === 'records' ? '，依收支估算' : ''}）` +
+    `<br>股利已能支付 ${f.dividend_cover.toFixed(0)}% 的生活費`;
+}
 
-  renderAssetTrendChart(filtered);
+/** This month so far: spending vs the same days last month, income, top categories, cash runway. */
+function renderMonth(m, f) {
+  document.getElementById('dash-month-range').textContent = `${shortDate(m.from)}–${shortDate(m.to)}`;
+  const cashLine = f.cash_months != null
+    ? `<p class="month-foot">現金可撐 <strong>${Math.max(0, f.cash_months).toFixed(1)}</strong> 個月生活費（每月 ${fmtTWD(f.monthly_expense)}${f.source === 'records' ? '，依收支紀錄估算' : ''}）</p>`
+    : '';
+  const body = document.getElementById('dash-month-body');
+  if (!m.count) {
+    body.innerHTML = '<p class="form-hint">這個月還沒有收支紀錄。</p>' + cashLine;
+    return;
+  }
+  const vs = m.prev_expense > 0 ? (m.expense - m.prev_expense) / m.prev_expense * 100 : null;
+  const net = m.income - m.expense;
+  const max = m.top.length ? m.top[0].amount : 0;
+  body.innerHTML = `
+    <div class="month-grid">
+      <div><span>支出</span><strong>${fmtTWD(m.expense)}</strong>
+        <small title="上月同期：${m.prev_from}～${m.prev_to}">${vs == null ? '上月同期沒有紀錄' : `比上月同期 <span class="${plClass(-vs)}">${fmtPct(vs)}</span>`}</small></div>
+      <div><span>收入</span><strong>${fmtTWD(m.income)}</strong>
+        <small>結餘 <span class="${plClass(net)}">${fmtPL(net)}</span>${m.income > 0 ? ` · 儲蓄率 ${(net / m.income * 100).toFixed(0)}%` : ''}</small></div>
+    </div>
+    ${m.top.length ? `<div class="month-top">${m.top.map(t => `<div class="month-cat">
+      <span>${escapeHtml(t.category)}</span>
+      <span class="source-bar cat-track"><span style="width:${t.amount / max * 100}%"></span></span>
+      <span class="month-amt">${fmtTWD(t.amount)}</span></div>`).join('')}</div>` : ''}
+    ${cashLine}`;
+}
+
+function renderGrowthYears(years) {
+  document.getElementById('nw-years').innerHTML = years.length ? years.map(y => `<div class="nw-year">
+      <div class="nw-year-head">
+        <strong${y.partial ? ` title="從 ${y.from} 第一筆快照開始算"` : ''}>${y.year}${y.current ? '（至今）' : ''}${y.partial ? '*' : ''}</strong>
+        <span>${y.start > 0 ? changeHtml(y.start + y.change, y.start) : fmtPL(y.change)}</span>
+      </div>
+      ${growthBarHtml(y)}
+      <div class="nw-year-parts">${growthPartsText(y)}</div>
+    </div>`).join('')
+    : '<p class="form-hint">要有兩個時間點的快照（或一筆快照加上今天）才算得出成長。</p>';
+}
+
+function renderRecentTx(txList) {
+  const body = document.getElementById('dash-tx-body');
+  body.innerHTML = txList.length ? txList.slice(0, 5).map(t => `
+    <tr>
+      <td>${t.date || '--'}</td>
+      <td>${escapeHtml(t.symbol || '--')}</td>
+      <td><span class="${t.action === 'BUY' ? 'tag-buy' : 'tag-sell'}">${t.action === 'BUY' ? '買' : '賣'}</span></td>
+      <td>${fmt(t.shares)}</td>
+      <td>${fmtNum(t.price, 2)}</td>
+    </tr>`).join('') : '<tr><td colspan="5" class="empty-state">尚無交易紀錄</td></tr>';
+}
+
+function setNetWorthPeriod(years) {
+  _nwYears = years;
+  document.querySelectorAll('#nw-periods .chart-type-btn').forEach(b => b.classList.toggle('active', Number(b.dataset.years) === years));
+  renderNetWorthChart();
 }
 
 /**
- * Net worth per weekday: stock values rebuilt by /api/stocks/performance (from
- * the performance start date), cash from the latest snapshot on or before each
- * day. Before the performance data arrives it draws nothing; loadPerformance
- * re-renders it.
+ * Net worth line: per weekday when the performance series is there (stock values rebuilt from
+ * price history, cash and liabilities from the snapshot on or before each day), else per snapshot.
+ * The last point is today's net worth from the hero.
  */
-/** The four net-worth parts, shared by the snapshot and daily trend charts (tw/us colors also used by 市值與損益走勢) */
-const ASSET_SERIES = [
-  { key: 'cashTWD', label: '台幣現金', color: '#4e8cff' },
-  { key: 'cashUSD', label: '美金現金(TWD)', color: '#fbbf24' },
-  { key: 'tw', label: '台股市值', color: '#34d399' },
-  { key: 'us', label: '美股市值', color: '#f87171' },
-];
-
-function renderDailyTrendChart(assets) {
-  const ctx = document.getElementById('chart-asset-trend');
-  if (assetTrendChart) assetTrendChart.destroy();
-  assetTrendChart = null;
+function renderNetWorthChart() {
+  const assets = [..._cachedAssets].reverse(); // chronological
   const s = _perfData && _perfData.series;
-  if (!s || !s.dates) return;
+  let points = [];
+  if (s && s.dates && s.dates.length && assets.length) {
+    let j = -1;
+    for (const i of weekdayIndexes(s.dates, 0)) {
+      while (j + 1 < assets.length && assets[j + 1].date <= s.dates[i]) j++;
+      if (j < 0) continue; // before the first snapshot there is no cash figure
+      const a = assets[j];
+      points.push([s.dates[i], (a.cash_twd || 0) + toTWD(a.cash_usd || 0, 'USD', s.fx[i]) + s.value.TW[i] + s.value.US[i] - (a.liabilities || 0)]);
+    }
+  } else {
+    points = assets.map(a => [a.date, a.net_worth]);
+  }
+  const today = _overview && _overview.today;
+  if (today && _overview.net_worth != null) {
+    if (points.length && points[points.length - 1][0] === today) points.pop();
+    points.push([today, _overview.net_worth]);
+  }
+  if (_nwYears && today) {
+    const from = `${Number(today.slice(0, 4)) - _nwYears}${today.slice(4)}`;
+    points = points.filter(p => p[0] >= from);
+  }
 
-  const idx = weekdayIndexes(s.dates, 0);
-  let j = -1;
-  const snaps = idx.map(i => {
-    while (j + 1 < assets.length && assets[j + 1].date <= s.dates[i]) j++;
-    return j >= 0 ? assets[j] : null;
-  });
-  const daily = {
-    cashTWD: k => snaps[k] ? snaps[k].cash_twd || 0 : 0,
-    cashUSD: k => snaps[k] ? toTWD(snaps[k].cash_usd || 0, 'USD', s.fx[idx[k]]) : 0,
-    tw: k => s.value.TW[idx[k]],
-    us: k => s.value.US[idx[k]],
-  };
-  const parts = ASSET_SERIES.map(a => [a.label, a.color, daily[a.key]]);
-  const labels = idx.map(i => s.dates[i]);
-  const axis = { ticks: { ...CHART_AXIS.ticks, maxTicksLimit: 8, maxRotation: 0 }, grid: CHART_AXIS.grid };
-  const isLine = _trendChartType === 'line';
-  const datasets = isLine
-    ? [{
-        label: '總資產', data: idx.map((_, k) => parts.reduce((sum, p) => sum + p[2](k), 0)),
-        borderColor: '#4e8cff', backgroundColor: 'rgba(78, 140, 255, 0.08)', fill: true,
-        borderWidth: 2, pointRadius: 0, pointHitRadius: 8, tension: 0,
-      }]
-    : parts.map(([label, color, val], n) => ({
-        label, data: idx.map((_, k) => val(k)), borderColor: color, backgroundColor: color + '99',
-        fill: n === 0 ? 'origin' : '-1', borderWidth: 1, pointRadius: 0, pointHitRadius: 8, tension: 0,
-      }));
-
-  assetTrendChart = new Chart(ctx, {
+  if (_netWorthChart) _netWorthChart.destroy();
+  _netWorthChart = null;
+  if (points.length < 2) return;
+  _netWorthChart = new Chart(document.getElementById('chart-asset-trend'), {
     type: 'line',
-    data: { labels, datasets },
+    data: {
+      labels: points.map(p => p[0]),
+      datasets: [{
+        label: '淨資產', data: points.map(p => p[1]), borderColor: '#4e8cff', backgroundColor: 'rgba(78, 140, 255, 0.08)',
+        fill: true, borderWidth: 2, pointRadius: s ? 0 : 3, pointHitRadius: 8, tension: 0,
+      }],
+    },
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: !isLine, position: 'top', labels: { color: '#8a9ab5', usePointStyle: true, pointStyle: 'rect', font: { size: 11 } } },
-        tooltip: {
-          callbacks: {
-            label: c => `${c.dataset.label}: ${fmtTWD(c.parsed.y)}`,
-            footer: items => isLine ? '' : `總資產: ${fmtTWD(items.reduce((sum, i) => sum + i.parsed.y, 0))}`,
-          },
-        },
-      },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `淨資產: ${fmtTWD(c.parsed.y)}` } } },
       scales: {
-        x: axis,
-        y: { ...axis, stacked: !isLine, ticks: { ...axis.ticks, callback: v => fmt(v) } },
+        x: { ticks: { ...CHART_AXIS.ticks, maxTicksLimit: 6, maxRotation: 0, callback(v) { return this.getLabelForValue(v).slice(0, 7); } }, grid: { display: false } },
+        y: { ticks: { ...CHART_AXIS.ticks, callback: v => fmt(v) }, grid: CHART_AXIS.grid },
       },
     },
   });
 }
 
-function pickLastPerGroup(arr, keyFn) {
-  const map = new Map();
-  for (const item of arr) {
-    const key = keyFn(item);
-    map.set(key, item); // last one wins (arr is chronological)
-  }
-  return Array.from(map.values());
+const INVEST_PERIODS = [['YTD', '今年'], ['1Y', '1 年'], ['ALL', '全部（年化）']];
+
+function setInvestPeriod(key) {
+  _investPeriod = key;
+  renderInvest();
 }
 
-function renderAssetTrendChart(assets) {
-  const ctx = document.getElementById('chart-asset-trend');
-  if (assetTrendChart) assetTrendChart.destroy();
-
-  if (!assets || assets.length === 0) return;
-
-  const labels = assets.map(a => a.date || '');
-  const isLine = _trendChartType === 'line';
-
-  let datasets, options;
-
-  if (isLine) {
-    // Clean line chart - just total asset
-    datasets = [{
-      label: '總資產',
-      data: assets.map(a => a.total_asset || 0),
-      borderColor: '#4e8cff',
-      backgroundColor: 'rgba(78, 140, 255, 0.08)',
-      fill: true,
-      tension: 0.35,
-      pointRadius: 4,
-      pointHoverRadius: 6,
-      pointBackgroundColor: '#4e8cff',
-      borderWidth: 2,
-    }];
-    options = {
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: c => `總資產: ${fmtTWD(c.parsed.y)}` } }
-      },
-      scales: {
-        x: { ticks: { color: '#5c6f8a', font: { size: 11 } }, grid: { color: 'rgba(42,58,78,0.4)' } },
-        y: { ticks: { color: '#5c6f8a', font: { size: 11 }, callback: v => fmt(v) }, grid: { color: 'rgba(42,58,78,0.4)' } }
-      }
-    };
-  } else {
-    // Stacked bar chart with breakdown
-    const snap = {
-      cashTWD: a => a.cash_twd || 0,
-      cashUSD: a => (a.cash_usd || 0) * (a.usd_twd_rate || 32),
-      tw: a => a.stock_tw_value || 0,
-      us: a => a.stock_us_value || 0,
-    };
-    datasets = ASSET_SERIES.map(s => ({
-      label: s.label, data: assets.map(snap[s.key]), backgroundColor: s.color, borderRadius: 2, stack: 'stack',
-    }));
-    options = {
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { display: true, position: 'top', labels: { color: '#8a9ab5', usePointStyle: true, pointStyle: 'rect', font: { size: 11 } } },
-        tooltip: {
-          mode: 'index',
-          callbacks: {
-            label: c => `${c.dataset.label}: ${fmtTWD(c.parsed.y)}`,
-            footer: items => { const total = items.reduce((s, i) => s + i.parsed.y, 0); return `總資產: ${fmtTWD(total)}`; }
-          }
-        }
-      },
-      scales: {
-        x: { stacked: true, ticks: { color: '#5c6f8a', font: { size: 11 } }, grid: { color: 'rgba(42,58,78,0.4)' } },
-        y: { stacked: true, ticks: { color: '#5c6f8a', font: { size: 11 }, callback: v => fmt(v) }, grid: { color: 'rgba(42,58,78,0.4)' } }
-      }
-    };
+/**
+ * Stock return (TWR) vs a benchmark mixed like the portfolio: 0050 for the TW share, S&P 500
+ * for the US share. 全部 compares annualized returns.
+ */
+function renderInvest(err) {
+  const el = document.getElementById('dash-invest');
+  const sub = document.getElementById('dash-invest-sub');
+  const chips = document.getElementById('dash-invest-periods');
+  const p = !err && _perfData && (_perfData.periods || []).find(x => x.key === _investPeriod);
+  const mine = p && p.markets.ALL;
+  if (!mine || mine.twr == null) {
+    el.textContent = '--';
+    el.className = 'stat-value';
+    chips.innerHTML = '';
+    sub.textContent = err && err.status === 503 ? err.message : err ? '無法計算績效' : '還沒有股票交易';
+    return;
   }
-
-  assetTrendChart = new Chart(ctx, {
-    type: isLine ? 'line' : 'bar',
-    data: { labels, datasets },
-    options,
-  });
+  chips.innerHTML = INVEST_PERIODS.map(([k, label]) =>
+    `<button type="button" class="chart-type-btn${k === _investPeriod ? ' active' : ''}" onclick="setInvestPeriod('${k}')">${label}</button>`).join('');
+  const annual = _investPeriod === 'ALL' && p.days >= 365;
+  const yr = v => (v == null ? null : annual ? ((1 + v / 100) ** (365 / p.days) - 1) * 100 : v);
+  const mineV = annual ? mine.annualized ?? yr(mine.twr) : mine.twr;
+  const tw = yr(p.bench['0050.TW']);
+  const us = yr(p.bench.SPY);
+  const { tw: twVal = 0, us: usVal = 0 } = (_overview && _overview.parts) || {};
+  const wTW = twVal + usVal > 0 ? twVal / (twVal + usVal) : 0.5;
+  const blend = tw != null && us != null ? tw * wTW + us * (1 - wTW) : tw ?? us;
+  el.textContent = fmtPct(mineV);
+  el.className = 'stat-value ' + plClass(mineV);
+  if (blend == null) {
+    sub.textContent = '大盤資料不足';
+    return;
+  }
+  const diff = mineV - blend;
+  sub.innerHTML = `<strong class="${plClass(diff)}">${diff >= 0 ? '贏' : '輸'}大盤 ${Math.abs(diff).toFixed(1)} 個百分點</strong>` +
+    `<br>大盤 ${fmtPct(blend)} = 0050 ${tw == null ? '--' : fmtPct(tw)} × ${(wTW * 100).toFixed(0)}% ＋ S&amp;P 500 ${us == null ? '--' : fmtPct(us)} × ${((1 - wTW) * 100).toFixed(0)}%`;
 }
 
 /** A growthBetween result (js/server/overview.js) as colored parts: 股價 / 股利 / 儲蓄. */
@@ -727,6 +683,16 @@ function growthParts(g) {
     { label: '股利', v: g.dividends, color: 'var(--yellow)' },
     { label: '儲蓄', v: g.savings, color: 'var(--accent)' },
   ];
+}
+
+const growthPartsText = (g) => growthParts(g).map(p => `${p.label} <span class="${plClass(p.v)}">${fmtPL(p.v)}</span>`).join(' · ');
+
+/** Each part's share of the year's movement (absolute values, so a loss still shows). */
+function growthBarHtml(g) {
+  const parts = growthParts(g);
+  const total = parts.reduce((sum, p) => sum + Math.abs(p.v), 0);
+  return `<div class="source-bar" aria-hidden="true">${total > 0
+    ? parts.map(p => `<span style="width:${Math.abs(p.v) / total * 100}%;background:${p.color}"></span>`).join('') : ''}</div>`;
 }
 
 /** Whole days from a YYYY-MM-DD date to today (local time). */
@@ -826,51 +792,6 @@ function toggleSnapshotHistory() {
   const history = document.getElementById('snapshot-history');
   history.hidden = !history.hidden;
   syncSnapshotToggle();
-}
-
-/** Dashboard change cards: today's P&L, YTD, YTD change sources, XIRR. Formulas are in each label's tooltip in index.html. */
-function renderDashChangeStats({ twHoldings, usHoldings, stockValue, xirr, year }) {
-  const setPL = (id, n, text) => {
-    const el = document.getElementById(id);
-    el.className = 'stat-value ' + plClass(n);
-    el.textContent = text;
-  };
-  const setSub = (id, html) => { document.getElementById(id).innerHTML = html; };
-
-  // 1. Today's P&L
-  const sumDay = list => list.reduce((s, h) => s + (h.day_change_twd || 0), 0);
-  const twDay = sumDay(twHoldings);
-  const usDay = sumDay(usHoldings);
-  const dayPL = twDay + usDay;
-  const prevValue = stockValue - dayPL;
-  if (twHoldings.length || usHoldings.length) {
-    setPL('dash-day-pl', dayPL, `${fmtPL(dayPL)}${prevValue > 0 ? ` (${fmtPct(dayPL / prevValue * 100)})` : ''}`);
-    setSub('dash-day-pl-sub', `台股 <span class="${plClass(twDay)}">${fmtPL(twDay)}</span> · 美股 <span class="${plClass(usDay)}">${fmtPL(usDay)}</span>`);
-  }
-
-  // 2–3. This year (from /api/overview: base snapshot → today), split by source
-  if (!year || !(year.start > 0)) {
-    setSub('dash-ytd-sub', '需要至少一筆今年以前或今年的快照');
-  } else {
-    setPL('dash-ytd', year.change, `${fmtPL(year.change)} (${fmtPct(year.change / year.start * 100)})`);
-    setSub('dash-ytd-sub', `基準 ${year.from} · ${fmtTWD(year.start)}`);
-    setPL('dash-source', year.change, fmtPL(year.change));
-    const parts = growthParts(year);
-    const total = parts.reduce((s, p) => s + Math.abs(p.v), 0);
-    document.getElementById('dash-source-bar').innerHTML = total > 0
-      ? parts.map(p => `<span style="width:${Math.abs(p.v) / total * 100}%;background:${p.color}"></span>`).join('')
-      : '';
-    setSub('dash-source-sub', parts.map(p =>
-      `<span><span class="legend-dot src-dot" style="background:${p.color}"></span>${p.label} ${fmtPL(p.v)}</span>`).join('<br>'));
-    document.getElementById('dash-source').title = `${year.from} → ${year.to}`;
-  }
-
-  // 4. XIRR (cumulative since first trade)
-  const all = xirr.ALL;
-  if (all && all.xirr != null) {
-    setPL('dash-xirr', all.xirr, fmtPct(all.xirr));
-    setSub('dash-xirr-sub', `台股 ${xirrHtml(xirr.TW)} · 美股 ${xirrHtml(xirr.US)}<br>自 ${(all.first_date || '').slice(0, 7)} 起・年化`);
-  }
 }
 
 // ============================================================
@@ -1889,7 +1810,6 @@ async function loadPerformance() {
   document.getElementById('perf-note').textContent = notes.join(' · ');
   renderPerfChart(_perfPeriod);
   renderHeatmap(_heatmapSeg);
-  if (document.getElementById('trend-granularity')?.value === 'daily') reRenderTrendChart();
 }
 
 /** Return rows per market, plus the selected benchmark's row */
@@ -1997,9 +1917,8 @@ async function loadHoldingsTrend() {
 }
 
 const TREND_SEG_LABEL = { ALL: '合計', TW: '台股', US: '美股' };
-const assetColor = (key) => ASSET_SERIES.find(a => a.key === key).color;
 /** Series colors: 市值 per market (as on the dashboard), 未實現 / 已實現 as the CVD-checked blue / orange pair */
-const trendColor = (key) => ({ ALL: '#4e8cff', TW: assetColor('tw'), US: assetColor('us') }[key] || seriesColor(key));
+const trendColor = (key) => ({ ALL: '#4e8cff', TW: '#34d399', US: '#fbbf24' }[key] || seriesColor(key));
 const trendPick = (name) => document.querySelector(`[data-trend="${name}"] .active`)?.dataset.v;
 const unrealPct = (pl, cost) => (cost > 0 ? fmtPct(pl / cost * 100) : '--');
 let _trendPeriod = '1Y';
@@ -2668,7 +2587,7 @@ async function submitExpense(e) {
     } else {
       closeModal('modal-expense');
     }
-    loadExpenses();
+    onTabActivated(document.body.dataset.tab || 'expenses'); // also opened from the dashboard
   } catch (err) {
     showToast('儲存失敗: ' + err.message, 'error');
   }

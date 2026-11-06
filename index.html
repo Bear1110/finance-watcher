@@ -76,38 +76,43 @@
 
     <!-- ==================== DASHBOARD TAB ==================== -->
     <section id="tab-dashboard" class="tab-content active">
-      <!-- Net worth hero -->
+      <!-- Things worth acting on (only when there are any) -->
+      <div id="dash-alerts" class="dash-alerts" hidden></div>
+
+      <!-- Net worth hero: how much, how this year went, what it is made of -->
       <div class="hero-card" data-tour="net-worth">
         <button type="button" class="btn btn-outline btn-sm hero-ai" onclick="goToTab('llm')"><span class="i" data-icon="sparkles"></span>AI 分析</button>
         <div class="hero-label">淨資產 <button type="button" class="privacy-toggle hero-privacy" onclick="togglePrivacy()" aria-label="顯示/隱藏金額" aria-pressed="false"><svg class="eye-open" aria-hidden="true"><use href="#i-eye"/></svg><svg class="eye-closed" aria-hidden="true"><use href="#i-eye-off"/></svg></button></div>
         <div class="hero-value" id="dash-net-worth">--</div>
+        <div class="hero-year" id="dash-year" title="年初基準快照（1/1 當天或之前最後一筆）→ 現在。&#10;股價漲跌 = 股票市值變化 − 期間淨買入（現金換成股票不算賺）&#10;股利 = 期間入帳的股利&#10;儲蓄 = 剩下的部分：存下來的錢，加上美金現金匯差等（反推，所以收支沒記齊也不影響）"></div>
+        <div class="hero-year-parts" id="dash-year-parts"></div>
+        <div class="source-bar hero-comp" id="dash-comp-bar" aria-hidden="true"></div>
+        <div class="hero-comp-legend" id="dash-comp-legend"></div>
         <div class="hero-sub" id="dash-net-date">--</div>
-        <div class="hero-growth" id="dash-growth"></div>
       </div>
 
-      <!-- Change stats row: hover a label for how each number is computed -->
-      <div class="dash-stats" data-tour="dash-stats">
+      <div class="dash-stats dash-stats-2" data-tour="dash-stats">
         <div class="stat-card">
-          <div class="stat-label" title="持股數 × (現價 − 前一交易日收盤) × 現行匯率，全部加總。&#10;台美股各算最近一個交易日（台灣白天看到的美股是昨晚的漲跌），不含匯率變動。">今日損益 ⓘ</div>
-          <div class="stat-value" id="dash-day-pl">--</div>
-          <div class="stat-sub" id="dash-day-pl-sub"></div>
+          <div class="stat-label" title="淨資產 ÷（每月生活費 × 12 ÷ 提領率）。&#10;提領率 4% 代表資產是年支出的 25 倍時，每年領 4% 就夠生活。&#10;生活費與提領率可在設定頁調整。">財務自由進度 ⓘ</div>
+          <div class="stat-value" id="dash-fire">--</div>
+          <div class="source-bar" id="dash-fire-bar"></div>
+          <div class="stat-sub" id="dash-fire-sub"></div>
         </div>
         <div class="stat-card">
-          <div class="stat-label" title="現在淨資產（同上方大字：最新快照現金加計之後的股票買賣與股利 + 即時股票市值）− 年初基準。&#10;年初基準 = 1/1 當天或之前最後一筆快照。">今年以來 ⓘ</div>
-          <div class="stat-value" id="dash-ytd">--</div>
-          <div class="stat-sub" id="dash-ytd-sub"></div>
+          <div class="stat-label" title="你股票部位的時間加權報酬（不受買賣時點影響），對照「照你的台美比例買 0050 和 S&amp;P 500」的報酬。&#10;詳細的各期間報酬在 股票 › 持倉總覽。">投資成績 vs 大盤 ⓘ</div>
+          <div class="stat-value" id="dash-invest">--</div>
+          <div class="stat-sub" id="dash-invest-sub">計算中…</div>
+          <div class="chart-type-toggle dash-invest-periods" id="dash-invest-periods"></div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label" title="今年淨資產的變化（年初基準快照 → 現在）拆成三塊：&#10;股價漲跌 = 股票市值變化 − 期間淨買入（現金換成股票不算賺）&#10;股利 = 股利表期間入帳&#10;儲蓄 = 剩下的部分：存下來的錢，加上美金現金匯差等&#10;儲蓄用反推的，所以收支沒記齊也不影響。">今年變化來源 ⓘ</div>
-          <div class="stat-value" id="dash-source">--</div>
-          <div class="source-bar" id="dash-source-bar"></div>
-          <div class="stat-sub" id="dash-source-sub"></div>
+      </div>
+
+      <!-- This month's spending -->
+      <div class="card" id="dash-month">
+        <div class="card-header">
+          <h3>本月收支 <small class="text-muted" id="dash-month-range"></small></h3>
+          <button type="button" class="btn btn-primary btn-sm" onclick="openExpenseModal()"><span class="i" data-icon="plus"></span>記一筆</button>
         </div>
-        <div class="stat-card">
-          <div class="stat-label" title="買入為現金流出，賣出與股利為流入，今天的持股市值為最後一筆流入；求出讓折現總和為 0 的年利率。&#10;範圍為第一筆交易至今的累計（非今年），外幣以現行匯率換算。">年化報酬 XIRR ⓘ</div>
-          <div class="stat-value" id="dash-xirr">--</div>
-          <div class="stat-sub" id="dash-xirr-sub"></div>
-        </div>
+        <div id="dash-month-body"></div>
       </div>
 
       <!-- Time-weighted return by period -->
@@ -151,36 +156,27 @@
         </div>
       </div>
 
-      <!-- Charts row -->
-      <div class="dash-charts">
-        <!-- Asset composition donut -->
-        <div class="chart-card">
-          <h3 class="chart-title">資產組成</h3>
-          <div class="chart-container-md"><canvas id="chart-asset-composition"></canvas></div>
-          <div id="legend-asset-composition" class="chart-legend"></div>
+      <!-- Net worth over time + yearly growth + snapshots -->
+      <div class="card" data-tour="snapshots">
+        <div class="card-header">
+          <h3>淨資產走勢與快照</h3>
+          <button class="btn btn-primary btn-sm" onclick="openSnapshotModal()">+ 新增快照</button>
         </div>
-        <!-- Net worth trend -->
-        <div class="chart-card">
-          <div class="chart-head" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <h3 class="chart-title" style="margin-bottom:0">淨資產趨勢</h3>
-            <div class="chart-controls">
-              <div class="chart-type-toggle" id="trend-type">
-                <button class="chart-type-btn active" data-type="bar" onclick="setTrendChartType('bar')">柱狀</button>
-                <button class="chart-type-btn" data-type="line" onclick="setTrendChartType('line')">折線</button>
-              </div>
-              <select id="trend-granularity" onchange="reRenderTrendChart()" class="input-sm">
-                <option value="all">全部</option>
-                <option value="last10">最近 10 筆</option>
-                <option value="last20">最近 20 筆</option>
-                <option value="monthly">每月最後一筆</option>
-                <option value="quarterly">每季最後一筆</option>
-                <option value="yearly">每年最後一筆</option>
-                <option value="daily">每日（股票市值自動重建）</option>
-              </select>
-            </div>
-          </div>
-          <div class="chart-container-md"><canvas id="chart-asset-trend"></canvas></div>
+        <div class="chart-type-toggle nw-periods" id="nw-periods">
+          <button type="button" class="chart-type-btn" data-years="1" onclick="setNetWorthPeriod(1)">1 年</button>
+          <button type="button" class="chart-type-btn active" data-years="3" onclick="setNetWorthPeriod(3)">3 年</button>
+          <button type="button" class="chart-type-btn" data-years="0" onclick="setNetWorthPeriod(0)">全部</button>
         </div>
+        <div class="chart-container-md"><canvas id="chart-asset-trend"></canvas></div>
+
+        <h4 class="nw-subtitle" title="每年的淨資產變化拆成股價漲跌、股利、儲蓄（算法同上方「今年」）。看得出錢是存出來的還是投資賺來的。">年度成長 ⓘ</h4>
+        <div id="nw-years" class="nw-years"></div>
+
+        <h4 class="nw-subtitle">資產快照</h4>
+        <p class="form-hint snap-hint">填實際現金餘額，股票市值自動擷取。快照之後的股票買賣與股利會自動推算進現金，不用每次交易都記。</p>
+        <div id="snapshot-latest" class="snap-latest"><div class="empty-state">載入中...</div></div>
+        <button type="button" id="snapshot-toggle" class="btn btn-outline btn-sm snap-toggle" onclick="toggleSnapshotHistory()" aria-controls="snapshot-history" aria-expanded="false" hidden>全部紀錄</button>
+        <div id="snapshot-history" class="snap-history" hidden></div>
       </div>
 
       <!-- Recent transactions -->
@@ -206,17 +202,6 @@
         </div>
       </div>
 
-      <!-- Snapshot management -->
-      <div class="card" data-tour="snapshots">
-        <div class="card-header">
-          <h3>資產快照</h3>
-          <button class="btn btn-primary btn-sm" onclick="openSnapshotModal()">+ 新增快照</button>
-        </div>
-        <p class="form-hint snap-hint">填實際現金餘額，股票市值自動擷取。快照之後的股票買賣與股利會自動推算進現金，不用每次交易都記。</p>
-        <div id="snapshot-latest" class="snap-latest"><div class="empty-state">載入中...</div></div>
-        <button type="button" id="snapshot-toggle" class="btn btn-outline btn-sm snap-toggle" onclick="toggleSnapshotHistory()" aria-controls="snapshot-history" aria-expanded="false" hidden>全部紀錄</button>
-        <div id="snapshot-history" class="snap-history" hidden></div>
-      </div>
     </section>
 
     <!-- ==================== STOCKS TAB ==================== -->

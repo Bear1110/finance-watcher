@@ -924,21 +924,7 @@ select option {
   border: 1px solid var(--border-color);
 }
 
-/* --- Chart cards --- */
-.chart-card {
-  background: var(--bg-card);
-  border-radius: 12px;
-  padding: 20px;
-  border: 1px solid var(--border-color);
-}
-
-.chart-title {
-  font-size: 0.95rem;
-  font-weight: 500;
-  color: var(--text-secondary);
-  margin-bottom: 16px;
-}
-
+/* --- Charts --- */
 .chart-container-md {
   position: relative;
   height: 220px;
@@ -1011,12 +997,6 @@ select option {
   color: var(--text-muted);
 }
 
-.hero-growth {
-  margin-top: 8px;
-  font-size: 1rem;
-  font-weight: 600;
-}
-
 .dash-stats {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -1082,20 +1062,6 @@ select option {
 .source-bar span { display: block; height: 100%; }
 
 
-.src-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  margin-right: 4px;
-}
-
-.dash-charts {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  margin-bottom: 24px;
-}
-
 .snapshot-mode-toggle {
   display: flex;
   gap: 8px;
@@ -1135,9 +1101,6 @@ select option {
 @media (max-width: 900px) {
   .dash-stats {
     grid-template-columns: repeat(2, 1fr);
-  }
-  .dash-charts {
-    grid-template-columns: 1fr;
   }
 }
 
@@ -1546,9 +1509,7 @@ body { overflow-x: clip; }
   .summary-value { font-size: 1.2rem; overflow-wrap: anywhere; }
 
   /* --- Charts: one per row, fixed heights (every chart sets maintainAspectRatio: false) --- */
-  .dash-charts,
   .grid-2 { grid-template-columns: minmax(0, 1fr); gap: 12px; }
-  .chart-card { padding: 12px; min-width: 0; }
   .chart-container, .chart-container-md { height: 220px; }
   .chart-container-sm { height: 200px; }
 
@@ -2180,3 +2141,62 @@ body[data-tab="expenses"] .fab { display: flex; }
 .liab-balance { font-weight: 600; font-variant-numeric: tabular-nums; margin-right: 0.25rem; }
 .liab-form { display: flex; flex-wrap: wrap; gap: 0.5rem; padding-top: 12px; border-top: 1px solid var(--border-color); }
 .liab-form input[type=text], .liab-form input[type=number] { flex: 1 1 8em; }
+
+/* --- 總覽 --- */
+.dash-alerts { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.dash-alert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  font-size: 0.9rem;
+}
+.dash-alert-warn { border-color: rgba(251, 191, 36, 0.45); background: var(--yellow-bg); }
+.dash-alert-icon { flex: none; }
+.dash-alert-warn .dash-alert-icon { color: var(--yellow); }
+.dash-alert-text { flex: 1; min-width: 0; }
+.dash-alert .btn { flex: none; }
+
+.hero-year { margin-top: 6px; font-size: 1.05rem; font-weight: 600; color: var(--text-secondary); }
+.hero-year-parts { margin-top: 4px; font-size: 0.85rem; color: var(--text-secondary); }
+.hero-comp { max-width: 520px; height: 8px; margin: 18px auto 8px; border-radius: 4px; }
+.hero-comp-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 14px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+.hero-comp-legend .legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+
+.dash-stats-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.dash-invest-periods { margin-top: 10px; width: fit-content; }
+
+.month-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.month-grid > div { display: flex; flex-direction: column; gap: 2px; }
+.month-grid span:first-child { color: var(--text-muted); font-size: 0.8rem; }
+.month-grid strong { font-size: 1.25rem; color: var(--text-heading); font-variant-numeric: tabular-nums; }
+.month-grid small { color: var(--text-secondary); font-size: 0.8rem; }
+.month-top { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.month-cat { display: grid; grid-template-columns: 5em minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 0.85rem; }
+.month-cat > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.month-amt { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.month-foot { margin: 14px 0 0; padding-top: 10px; border-top: 1px solid var(--border-color); font-size: 0.85rem; color: var(--text-secondary); }
+
+.nw-periods { width: fit-content; margin-bottom: 10px; }
+.nw-subtitle { margin: 20px 0 10px; font-size: 0.95rem; font-weight: 600; color: var(--text-heading); }
+.nw-year { padding: 10px 0; border-top: 1px solid var(--border-color); }
+.nw-year:first-child { border-top: none; padding-top: 0; }
+.nw-year-head { display: flex; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
+.nw-year .source-bar { margin-top: 6px; }
+.nw-year-parts { margin-top: 6px; font-size: 0.8rem; color: var(--text-secondary); }
+
+@media (max-width: 599px) {
+  .dash-stats-2 { grid-template-columns: minmax(0, 1fr); }
+  .dash-alert { flex-wrap: wrap; }
+}
