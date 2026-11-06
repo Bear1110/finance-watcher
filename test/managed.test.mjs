@@ -52,17 +52,27 @@ beforeEach(() => {
 test('BUY/SELL adjust cash and SELL realizes FIFO P&L', async () => {
   await post('/api/managed/accounts/1/transactions', { symbol: 'NVDA', market: 'US', action: 'BUY', shares: 10, price: 100, fee: 1, date: '2026-01-01' });
   await post('/api/managed/accounts/1/transactions', { symbol: 'NVDA', market: 'US', action: 'BUY', shares: 10, price: 120, fee: 1, date: '2026-02-01' });
-  // Sells 15: 10 @100 + 5 @120 → (130-100)*10 + (130-120)*5 - 2 = 348
+  // Same FIFO rule as the main ledger: a lot's cost includes its buy fee (100.1, 120.1).
+  // Sells 15: 1950 - 2 - (10 × 100.1 + 5 × 120.1) = 346.5
   const sell = await post('/api/managed/accounts/1/transactions', { symbol: 'NVDA', market: 'US', action: 'SELL', shares: 15, price: 130, fee: 2, date: '2026-03-01' });
-  assert.equal(sell.realized_pl, 348);
+  assert.equal(sell.realized_pl, 346.5);
   assert.equal(sell.account_id, 1);
 
   const acc = db.get('managed_accounts', 1);
   assert.equal(acc.cash_usd, 10000 - 1001 - 1201 + (1950 - 2));
 
-  // Second SELL starts after the lots the first one used: 5 left @120
+  // Second SELL starts after the lots the first one used: 5 left @120.1
   const sell2 = await post('/api/managed/accounts/1/transactions', { symbol: 'NVDA', market: 'US', action: 'SELL', shares: 5, price: 110, fee: 0, date: '2026-04-01' });
-  assert.equal(sell2.realized_pl, -50);
+  assert.equal(sell2.realized_pl, -50.5);
+});
+
+test('deleting a BUY re-prices the later SELLs that used its lot', async () => {
+  const b1 = await post('/api/managed/accounts/1/transactions', { symbol: 'NVDA', market: 'US', action: 'BUY', shares: 10, price: 100, date: '2026-01-01' });
+  await post('/api/managed/accounts/1/transactions', { symbol: 'NVDA', market: 'US', action: 'BUY', shares: 10, price: 120, date: '2026-02-01' });
+  const sell = await post('/api/managed/accounts/1/transactions', { symbol: 'NVDA', market: 'US', action: 'SELL', shares: 5, price: 130, date: '2026-03-01' });
+  assert.equal(sell.realized_pl, 150); // from the 100 lot
+  await handle(`/api/managed/transactions/${b1.id}`, { method: 'DELETE' });
+  assert.equal(db.get('stock_transactions', sell.id).realized_pl, 50); // now from the 120 lot
 });
 
 test('holdings keep the cost of the unsold lots and price them in TWD', async () => {

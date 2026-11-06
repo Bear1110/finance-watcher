@@ -5,7 +5,8 @@
 import * as db from './db.js';
 import { route } from './router.js';
 import { fetchQuotes } from './market.js';
-import { HttpError, badRequest, body, cmp, refreshAndPersistRate, round2, storedUSDTWDRate, toTWD, realizedTWD } from './util.js';
+import { HttpError, badRequest, body, cmp, refreshAndPersistRate, round2, round4, storedUSDTWDRate, toTWD, realizedTWD } from './util.js';
+import { lotFromBuy, takeLots, lotsTotal } from './lots.js';
 
 // USD/TWD rate: stored rate, 32 when missing or 0.
 function parseID(s) {
@@ -67,38 +68,37 @@ async function deleteAccount(req) {
 // ---------------------------------------------------------------- holdings
 
 /**
- * Current holdings derived from this account's transactions. FIFO: the total
- * sold shares are consumed from the oldest BUY lots; what remains is the cost.
+ * Replay an account's trades per symbol, oldest first, with the main ledger's FIFO rule (lots.js:
+ * a lot's cost includes its buy fee). Writes each SELL's realized_pl when it changed, so a
+ * backdated or deleted trade fixes the later sells too. Returns { symbol: { lots, market, currency } }.
  */
-export async function computeHoldings(accountID) {
+export function replayAccount(accountID) {
   const txns = db.where('stock_transactions', (t) => t.account_id === accountID)
-    .sort((a, b) => cmp(a.symbol, b.symbol) || cmp(a.date, b.date) || a.id - b.id);
-
+    .sort((a, b) => cmp(a.date, b.date) || a.id - b.id);
   const bySymbol = new Map();
   for (const t of txns) {
     let st = bySymbol.get(t.symbol);
-    if (!st) { st = { buys: [], totalSold: 0 }; bySymbol.set(t.symbol, st); }
-    // Keep market/currency from the most recent record
-    st.market = t.market;
+    if (!st) { st = { lots: [] }; bySymbol.set(t.symbol, st); }
+    st.market = t.market; // the most recent record's
     st.currency = t.currency;
-    if (t.action === 'BUY') st.buys.push({ shares: t.shares, price: t.price });
-    else st.totalSold += t.shares;
-  }
-
-  const pendings = [];
-  for (const [sym, st] of bySymbol) {
-    let remaining = st.totalSold;
-    let totalShares = 0;
-    let totalCost = 0;
-    for (const b of st.buys) {
-      let rem = b.shares;
-      if (remaining > 0) {
-        if (remaining >= rem) { remaining -= rem; rem = 0; } else { rem -= remaining; remaining = 0; }
-      }
-      if (rem > 0) { totalShares += rem; totalCost += rem * b.price; }
+    if (t.action === 'BUY') {
+      if (t.shares > 0) st.lots.push(lotFromBuy({ ...t, fee: t.fee || 0 }));
+      continue;
     }
-    if (totalShares <= 0) continue;
-    pendings.push({ sym, market: st.market, currency: st.currency, shares: totalShares, costBasis: totalCost });
+    const { cost, left } = takeLots(st.lots, t.shares);
+    if (left >= t.shares - 1e-9) continue; // no lot covers it: keep the stored realized_pl
+    const pl = round4((t.shares - left) * t.price - cost - (t.fee || 0) - (t.tax || 0));
+    if (Math.abs(pl - (t.realized_pl || 0)) > 1e-6) db.update('stock_transactions', t.id, { realized_pl: pl });
+  }
+  return bySymbol;
+}
+
+/** Current holdings of a managed account at live prices. */
+export async function computeHoldings(accountID) {
+  const pendings = [];
+  for (const [sym, st] of replayAccount(accountID)) {
+    const { shares, cost } = lotsTotal(st.lots);
+    if (shares > 1e-9) pendings.push({ sym, market: st.market, currency: st.currency, shares, costBasis: cost });
   }
 
   const quotes = await fetchQuotes(pendings.map((p) => p.sym));
@@ -271,8 +271,8 @@ function deleteSnapshot(req) {
 
 /**
  * Record a BUY/SELL for the managed account. Adjusts the account's cash
- * (BUY deducts shares*price+fee, SELL adds shares*price-fee); a SELL's
- * realized P&L is FIFO over this account's BUYs.
+ * (BUY deducts shares*price+fee, SELL adds shares*price-fee); realized P&L
+ * comes from replayAccount (same FIFO rule as the main ledger).
  */
 async function recordTransaction(req) {
   const id = parseID(req.params.id);
@@ -286,45 +286,17 @@ async function recordTransaction(req) {
   const price = Number(txn.price) || 0;
   const fee = Number(txn.fee) || 0;
 
-  let realizedPL = 0;
-  if (txn.action === 'SELL') {
-    const lots = db.where('stock_transactions', (t) => t.symbol === txn.symbol && t.action === 'BUY' && t.account_id === id)
-      .sort((a, b) => cmp(a.date, b.date) || a.id - b.id)
-      .map((t) => ({ shares: t.shares, price: t.price }));
-    let remaining = db.where('stock_transactions', (t) => t.symbol === txn.symbol && t.action === 'SELL' && t.account_id === id)
-      .reduce((s, t) => s + t.shares, 0);
-
-    // Skip lots already consumed by earlier SELLs
-    for (const l of lots) {
-      if (remaining <= 0) break;
-      const c = Math.min(remaining, l.shares);
-      l.shares -= c;
-      remaining -= c;
-    }
-    let sellRemaining = shares;
-    for (const l of lots) {
-      if (sellRemaining <= 0) break;
-      if (l.shares <= 0) continue;
-      const consumed = Math.min(l.shares, sellRemaining);
-      realizedPL += (price - l.price) * consumed;
-      sellRemaining -= consumed;
-    }
-    if (sellRemaining > 0) {
-      console.warn(`managed FIFO underflow for account ${id}, ${txn.symbol}, ${sellRemaining.toFixed(2)} shares unaccounted`);
-    }
-    realizedPL -= fee;
-  }
-
   return db.transaction(async () => {
     const row = db.insert('stock_transactions', {
       symbol: txn.symbol, market: txn.market, action: txn.action, shares, price, fee,
-      currency: txn.currency, date: txn.date, realized_pl: realizedPL, note: txn.note, account_id: id,
+      currency: txn.currency, date: txn.date, realized_pl: 0, note: txn.note, account_id: id,
     });
     const gross = shares * price;
     adjustCash(id, txn.currency, txn.action === 'BUY' ? -(gross + fee) : gross - fee);
+    replayAccount(id); // the SELL's realized_pl (and any later one a backdated trade moves)
     return {
       id: row.id, symbol: txn.symbol, market: txn.market || '', action: txn.action, shares, price, fee,
-      tax: Number(txn.tax) || 0, currency: txn.currency, date: txn.date, realized_pl: realizedPL,
+      tax: Number(txn.tax) || 0, currency: txn.currency, date: txn.date, realized_pl: db.get('stock_transactions', row.id).realized_pl,
       note: txn.note || '', created_at: txn.created_at || '', account_id: id,
     };
   });
@@ -340,6 +312,7 @@ async function deleteTransaction(req) {
     // BUY: refund what was deducted; SELL: remove what was added
     adjustCash(t.account_id, t.currency, t.action === 'BUY' ? gross + t.fee : -(gross - t.fee));
     db.remove('stock_transactions', id);
+    replayAccount(t.account_id); // later sells of that symbol may have used this lot
   });
   return { status: 'deleted' };
 }
