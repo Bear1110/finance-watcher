@@ -255,7 +255,7 @@ export class PerfResult {
     // Annualize over days with capital at work, so a market that started later
     // isn't diluted by the years before its first trade.
     const span = ps.active[last] - ps.active[b];
-    if (span > 366) s.annualized = round2((Math.pow(1 + ret, 365 / span) - 1) * 100);
+    s.annualized = annualizePct(ret * 100, span);
 
     const [dd, peak, trough] = drawdown(ps.growth, b, last);
     s.max_drawdown = round2(dd * 100);
@@ -398,4 +398,21 @@ export function fmtNum(v) {
     out += intPart[i];
   }
   return (neg ? '-' : '') + out + frac;
+}
+
+/** A cumulative % return over `days` as a yearly rate; null for a year or less (too noisy). */
+export function annualizePct(pct, days) {
+  return pct == null || !(days > 366) ? null : round2((Math.pow(1 + pct / 100, 365 / days) - 1) * 100);
+}
+
+/**
+ * Benchmark mixed like the portfolio: `tw` for the TW share, `us` for the rest (either may be
+ * null: the other one alone). Returns { weight_tw, ret, annualized, parts } or null.
+ */
+export function blendBenchmarks(parts, weightTW, days) {
+  const [tw, us] = parts;
+  const mix = tw.ret != null && us.ret != null ? tw.ret * weightTW + us.ret * (1 - weightTW) : tw.ret ?? us.ret;
+  if (mix == null) return null;
+  const out = (p) => ({ ...p, annualized: annualizePct(p.ret, days) });
+  return { weight_tw: weightTW, ret: round2(mix), annualized: annualizePct(mix, days), parts: parts.map(out) };
 }

@@ -105,6 +105,9 @@ export const goRound = (v) => (v < 0 ? -Math.round(-v) : Math.round(v));
 export const round4 = (v) => goRound(v * 1e4) / 1e4;
 export const round2 = (v) => goRound(v * 100) / 100;
 
+/** Whole days between two YYYY-MM-DD dates. */
+export const daysBetween = (from, to) => Math.round((Date.parse(to) - Date.parse(from)) / 86400000);
+
 /** Compare helpers for ORDER BY */
 export const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 

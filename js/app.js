@@ -406,8 +406,7 @@ document.addEventListener('click', (e) => {
 // ============================================================
 
 let _cachedAssets = [];
-let _carriedCash = null; // carried-forward cash (assets.js carriedCash); prefills a new snapshot
-let _overview = null; // /api/overview
+let _overview = null; // /api/overview; its carried-forward cash also prefills a new snapshot
 let _netWorthChart = null;
 let _nwYears = 3; // net worth chart window, 0 = all
 let _investPeriod = 'YTD';
@@ -419,12 +418,6 @@ const COMP_PARTS = [
   { key: 'tw', label: '台股', color: '#34d399' },
   { key: 'us', label: '美股', color: '#fbbf24' },
 ];
-const ALERT_ACTIONS = {
-  snapshot: ['新增快照', 'openSnapshotModal()'],
-  portfolio: ['看組合分析', "goToTab('stocks', 'portfolio')"],
-  expenses: ['去記帳', "goToTab('expenses')"],
-  settings: ['去設定', "goToTab('settings')"],
-};
 
 /** 總覽: the numbers come from /api/overview (js/server/overview.js); this renders them. */
 async function loadDashboard() {
@@ -432,22 +425,19 @@ async function loadDashboard() {
     const [ov, assets, transactions] = await Promise.all([
       api('/api/overview'),
       api('/api/assets').catch(() => []),
-      api('/api/transactions').catch(() => []),
+      api('/api/transactions?limit=5').catch(() => []),
     ]);
     _overview = ov;
     _cachedAssets = assets;
-    _carriedCash = ov.cash;
     renderHero(ov);
     renderFire(ov.fire);
     renderMonth(ov.month, ov.fire);
     renderGrowthYears(ov.years);
     renderSnapshots(assets);
     renderRecentTx(transactions);
+    // The data check is slower (price history): its warnings join once it is done
     renderAlerts(ov.alerts);
-    api('/api/data-check').then(d => {
-      const warns = (d.checks || []).filter(c => c.level === 'warn').length;
-      if (warns) renderAlerts([...ov.alerts, { level: 'warn', text: `資料檢查有 ${warns} 項提醒`, action: 'settings' }]);
-    }).catch(() => {});
+    getDataCheck().then(d => renderAlerts([...ov.alerts, ...dataCheckWarnings(d).map(c => ({ level: 'warn', text: c.title, action: c.action }))])).catch(() => {});
     renderNetWorthChart(); // snapshots now; daily once the performance series arrives
     getPerf().then(() => { renderNetWorthChart(); renderInvest(); }).catch(err => renderInvest(err));
   } catch (err) {
@@ -459,11 +449,11 @@ function renderAlerts(alerts) {
   const el = document.getElementById('dash-alerts');
   el.hidden = !alerts.length;
   el.innerHTML = alerts.map(a => {
-    const [label, onclick] = ALERT_ACTIONS[a.action] || [];
+    const action = CHECK_ACTIONS[a.action];
     return `<div class="dash-alert dash-alert-${a.level}">
-      <span class="dash-alert-icon" aria-hidden="true">${a.level === 'warn' ? '⚠' : 'ℹ'}</span>
+      <span class="dash-alert-icon" aria-hidden="true">${CHECK_ICONS[a.level]}</span>
       <span class="dash-alert-text">${escapeHtml(a.text)}</span>
-      ${onclick ? `<button type="button" class="btn btn-outline btn-sm" onclick="${onclick}">${label}</button>` : ''}
+      ${action ? `<button type="button" class="btn btn-outline btn-sm" onclick="CHECK_ACTIONS['${a.action}'][1]()">${action[0]}</button>` : ''}
     </div>`;
   }).join('');
 }
@@ -484,10 +474,10 @@ function renderHero(ov) {
 
   const parts = COMP_PARTS.map(p => ({ ...p, v: Math.max(0, ov.parts[p.key]) })).filter(p => p.v > 0);
   const total = parts.reduce((sum, p) => sum + p.v, 0);
-  $('dash-comp-bar').innerHTML = parts.map(p => `<span style="width:${p.v / total * 100}%;background:${p.color}" title="${p.label} ${fmtTWD(p.v)}"></span>`).join('');
+  $('dash-comp-bar').innerHTML = segmentsHtml(parts);
   $('dash-comp-legend').innerHTML = parts.map(p =>
-    `<span><span class="legend-dot" style="background:${p.color}"></span>${p.label} ${(p.v / total * 100).toFixed(0)}%</span>`).join('') +
-    (ov.parts.liabilities > 0 ? `<span>負債 −${fmt(ov.parts.liabilities)}</span>` : '');
+    `<span class="legend-item"><span class="legend-dot" style="background:${p.color}"></span>${p.label} ${(p.v / total * 100).toFixed(0)}%</span>`).join('') +
+    (ov.parts.liabilities > 0 ? `<span class="legend-item">負債 −${fmt(ov.parts.liabilities)}</span>` : '');
 
   const c = ov.cash;
   const counted = [c.trades && `${c.trades} 筆交易`, c.dividends && `${c.dividends} 筆股利`].filter(Boolean);
@@ -500,6 +490,9 @@ function renderHero(ov) {
   sub.title = (d ? `今日：台股 ${fmtPL(d.tw)}、美股 ${fmtPL(d.us)}（最近一個交易日，不含匯率）\n` : '') +
     (counted.length ? `現金調整：台幣 ${fmtPL(c.moved_twd)}、美金 ${fmtPLCur(c.moved_usd, 'USD')}（收支不算，下次記快照時對齊）` : '');
 }
+
+/** "每月 NT$ 44,333，依收支估算" — where the monthly spending figure came from. */
+const monthlyExpenseNote = (f) => `每月 ${fmtTWD(f.monthly_expense)}${f.source === 'records' ? '，依收支紀錄估算' : ''}`;
 
 function renderFire(f) {
   const el = document.getElementById('dash-fire');
@@ -515,7 +508,7 @@ function renderFire(f) {
   }
   el.textContent = `${f.progress.toFixed(1)}%`;
   bar.innerHTML = `<span style="width:${Math.min(100, Math.max(0, f.progress))}%;background:var(--accent)"></span>`;
-  sub.innerHTML = `目標 ${fmtTWD(f.target)}（每月 ${fmtTWD(f.monthly_expense)}${f.source === 'records' ? '，依收支估算' : ''}）` +
+  sub.innerHTML = `目標 ${fmtTWD(f.target)}（${monthlyExpenseNote(f)}）` +
     `<br>股利已能支付 ${f.dividend_cover.toFixed(0)}% 的生活費`;
 }
 
@@ -523,7 +516,7 @@ function renderFire(f) {
 function renderMonth(m, f) {
   document.getElementById('dash-month-range').textContent = `${shortDate(m.from)}–${shortDate(m.to)}`;
   const cashLine = f.cash_months != null
-    ? `<p class="month-foot">現金可撐 <strong>${Math.max(0, f.cash_months).toFixed(1)}</strong> 個月生活費（每月 ${fmtTWD(f.monthly_expense)}${f.source === 'records' ? '，依收支紀錄估算' : ''}）</p>`
+    ? `<p class="month-foot">現金可撐 <strong>${Math.max(0, f.cash_months).toFixed(1)}</strong> 個月生活費（${monthlyExpenseNote(f)}）</p>`
     : '';
   const body = document.getElementById('dash-month-body');
   if (!m.count) {
@@ -541,9 +534,9 @@ function renderMonth(m, f) {
         <small>結餘 <span class="${plClass(net)}">${fmtPL(net)}</span>${m.income > 0 ? ` · 儲蓄率 ${(net / m.income * 100).toFixed(0)}%` : ''}</small></div>
     </div>
     ${m.top.length ? `<div class="month-top">${m.top.map(t => `<div class="month-cat">
-      <span>${escapeHtml(t.category)}</span>
+      <span class="cat-name">${escapeHtml(t.category)}</span>
       <span class="source-bar cat-track"><span style="width:${t.amount / max * 100}%"></span></span>
-      <span class="month-amt">${fmtTWD(t.amount)}</span></div>`).join('')}</div>` : ''}
+      <span class="cat-amt">${fmtTWD(t.amount)}</span></div>`).join('')}</div>` : ''}
     ${cashLine}`;
 }
 
@@ -578,25 +571,14 @@ function setNetWorthPeriod(years) {
 }
 
 /**
- * Net worth line: per weekday when the performance series is there (stock values rebuilt from
- * price history, cash and liabilities from the snapshot on or before each day), else per snapshot.
- * The last point is today's net worth from the hero.
+ * Net worth line: per weekday from the performance series (assets.js netWorthSeries), else per
+ * snapshot. The last point is today's net worth from the hero.
  */
 function renderNetWorthChart() {
-  const assets = [..._cachedAssets].reverse(); // chronological
   const s = _perfData && _perfData.series;
-  let points = [];
-  if (s && s.dates && s.dates.length && assets.length) {
-    let j = -1;
-    for (const i of weekdayIndexes(s.dates, 0)) {
-      while (j + 1 < assets.length && assets[j + 1].date <= s.dates[i]) j++;
-      if (j < 0) continue; // before the first snapshot there is no cash figure
-      const a = assets[j];
-      points.push([s.dates[i], (a.cash_twd || 0) + toTWD(a.cash_usd || 0, 'USD', s.fx[i]) + s.value.TW[i] + s.value.US[i] - (a.liabilities || 0)]);
-    }
-  } else {
-    points = assets.map(a => [a.date, a.net_worth]);
-  }
+  let points = s && s.net_worth
+    ? weekdayIndexes(s.dates, 0).filter(i => s.net_worth[i] != null).map(i => [s.dates[i], s.net_worth[i]])
+    : [..._cachedAssets].reverse().map(a => [a.date, a.net_worth]);
   const today = _overview && _overview.today;
   if (today && _overview.net_worth != null) {
     if (points.length && points[points.length - 1][0] === today) points.pop();
@@ -638,10 +620,7 @@ function setInvestPeriod(key) {
   renderInvest();
 }
 
-/**
- * Stock return (TWR) vs a benchmark mixed like the portfolio: 0050 for the TW share, S&P 500
- * for the US share. 全部 compares annualized returns.
- */
+/** Stock return (TWR) vs the benchmark mixed like the portfolio (twr.js blendBenchmarks). 全部 compares yearly rates. */
 function renderInvest(err) {
   const el = document.getElementById('dash-invest');
   const sub = document.getElementById('dash-invest-sub');
@@ -657,23 +636,20 @@ function renderInvest(err) {
   }
   chips.innerHTML = INVEST_PERIODS.map(([k, label]) =>
     `<button type="button" class="chart-type-btn${k === _investPeriod ? ' active' : ''}" onclick="setInvestPeriod('${k}')">${label}</button>`).join('');
-  const annual = _investPeriod === 'ALL' && p.days >= 365;
-  const yr = v => (v == null ? null : annual ? ((1 + v / 100) ** (365 / p.days) - 1) * 100 : v);
-  const mineV = annual ? mine.annualized ?? yr(mine.twr) : mine.twr;
-  const tw = yr(p.bench['0050.TW']);
-  const us = yr(p.bench.SPY);
-  const { tw: twVal = 0, us: usVal = 0 } = (_overview && _overview.parts) || {};
-  const wTW = twVal + usVal > 0 ? twVal / (twVal + usVal) : 0.5;
-  const blend = tw != null && us != null ? tw * wTW + us * (1 - wTW) : tw ?? us;
+  const yearly = _investPeriod === 'ALL' && mine.annualized != null;
+  const pick = r => (yearly ? r.annualized : r.ret ?? r.twr);
+  const mineV = pick(mine);
   el.textContent = fmtPct(mineV);
   el.className = 'stat-value ' + plClass(mineV);
-  if (blend == null) {
+  const b = p.blend;
+  if (!b || pick(b) == null) {
     sub.textContent = '大盤資料不足';
     return;
   }
-  const diff = mineV - blend;
+  const diff = mineV - pick(b);
+  const weights = [b.weight_tw, 1 - b.weight_tw];
   sub.innerHTML = `<strong class="${plClass(diff)}">${diff >= 0 ? '贏' : '輸'}大盤 ${Math.abs(diff).toFixed(1)} 個百分點</strong>` +
-    `<br>大盤 ${fmtPct(blend)} = 0050 ${tw == null ? '--' : fmtPct(tw)} × ${(wTW * 100).toFixed(0)}% ＋ S&amp;P 500 ${us == null ? '--' : fmtPct(us)} × ${((1 - wTW) * 100).toFixed(0)}%`;
+    `<br>大盤 ${fmtPct(pick(b))} = ` + b.parts.map((x, i) => `${escapeHtml(x.label)} ${x.ret == null ? '--' : fmtPct(pick(x))} × ${(weights[i] * 100).toFixed(0)}%`).join(' ＋ ');
 }
 
 /** A growthBetween result (js/server/overview.js) as colored parts: 股價 / 股利 / 儲蓄. */
@@ -687,13 +663,16 @@ function growthParts(g) {
 
 const growthPartsText = (g) => growthParts(g).map(p => `${p.label} <span class="${plClass(p.v)}">${fmtPL(p.v)}</span>`).join(' · ');
 
-/** Each part's share of the year's movement (absolute values, so a loss still shows). */
-function growthBarHtml(g) {
-  const parts = growthParts(g);
+/** Proportional colored segments for a .source-bar, by |v| (so a loss still shows). */
+function segmentsHtml(parts) {
   const total = parts.reduce((sum, p) => sum + Math.abs(p.v), 0);
-  return `<div class="source-bar" aria-hidden="true">${total > 0
-    ? parts.map(p => `<span style="width:${Math.abs(p.v) / total * 100}%;background:${p.color}"></span>`).join('') : ''}</div>`;
+  return total > 0
+    ? parts.map(p => `<span style="width:${Math.abs(p.v) / total * 100}%;background:${p.color}" title="${p.label} ${fmtPL(p.v)}"></span>`).join('')
+    : '';
 }
+
+/** Each part's share of the year's movement. */
+const growthBarHtml = (g) => `<div class="source-bar" aria-hidden="true">${segmentsHtml(growthParts(g))}</div>`;
 
 /** Whole days from a YYYY-MM-DD date to today (local time). */
 function daysSince(d) {
@@ -820,13 +799,13 @@ function openSnapshotModal() {
   form.reset();
   form.querySelector('[name="id"]').value = '';
   form.querySelector('[name="date"]').value = todayStr();
-  if (_carriedCash) { // the user corrects it to the real balance
-    form.querySelector('[name="cash_twd"]').value = Math.max(0, Math.round(_carriedCash.twd));
-    form.querySelector('[name="cash_usd"]').value = Math.max(0, Math.round(_carriedCash.usd * 100) / 100);
+  if (_overview?.cash) { // the user corrects it to the real balance
+    form.querySelector('[name="cash_twd"]').value = Math.max(0, Math.round(_overview?.cash.twd));
+    form.querySelector('[name="cash_usd"]').value = Math.max(0, Math.round(_overview?.cash.usd * 100) / 100);
   }
   document.getElementById('snapshot-modal-title').textContent = '新增資產快照';
   setSnapshotMode('auto');
-  document.getElementById('snapshot-cash-hint').hidden = !_carriedCash;
+  document.getElementById('snapshot-cash-hint').hidden = !_overview?.cash;
   openModal('modal-snapshot');
 }
 
@@ -1917,8 +1896,9 @@ async function loadHoldingsTrend() {
 }
 
 const TREND_SEG_LABEL = { ALL: '合計', TW: '台股', US: '美股' };
-/** Series colors: 市值 per market (as on the dashboard), 未實現 / 已實現 as the CVD-checked blue / orange pair */
-const trendColor = (key) => ({ ALL: '#4e8cff', TW: '#34d399', US: '#fbbf24' }[key] || seriesColor(key));
+const compColor = (key) => COMP_PARTS.find(p => p.key === key).color;
+/** Series colors: 市值 per market (as in the 總覽 composition bar), 未實現 / 已實現 as the CVD-checked blue / orange pair */
+const trendColor = (key) => ({ ALL: '#4e8cff', TW: compColor('tw'), US: compColor('us') }[key] || seriesColor(key));
 const trendPick = (name) => document.querySelector(`[data-trend="${name}"] .active`)?.dataset.v;
 const unrealPct = (pl, cost) => (cost > 0 ? fmtPct(pl / cost * 100) : '--');
 let _trendPeriod = '1Y';
@@ -2043,15 +2023,24 @@ function renderHeatmap(seg) {
 // SECTION: Data health check
 // ============================================================
 
+/** /api/data-check (price history, Yahoo dividends: slow), shared until data changes (invalidateDataCheck). */
+let _dataCheckPromise = null;
+function getDataCheck() {
+  _dataCheckPromise ||= api('/api/data-check').catch(err => { _dataCheckPromise = null; throw err; });
+  return _dataCheckPromise;
+}
+function invalidateDataCheck() { _dataCheckPromise = null; }
+const dataCheckWarnings = (d) => (d.checks || []).filter(c => c.level === 'warn');
+
 /** Warning count next to the performance note, linking to the settings page */
 async function loadDataCheckBadge() {
   const badge = document.getElementById('perf-check-badge');
   if (!badge) return;
   let d;
   try {
-    d = await api('/api/data-check');
+    d = await getDataCheck();
   } catch (_) { return; }
-  const warns = (d.checks || []).filter(c => c.level === 'warn').length;
+  const warns = dataCheckWarnings(d).length;
   badge.innerHTML = warns ? ` · <a href="#" onclick="goToTab('settings');return false">⚠ 資料檢查 ${warns} 項提醒</a>` : '';
 }
 
@@ -2066,7 +2055,11 @@ const CHECK_ACTIONS = {
   start_date: ['設定起算日', () => document.getElementById('perf-start-date').focus()],
   transactions: ['到交易紀錄', () => goToTab('stocks', 'transactions')],
   dividends: ['到股利', () => goToTab('stocks', 'dividends')],
-  assets: ['到總覽', () => goToTab('dashboard')],
+  assets: ['新增快照', () => openSnapshotModal()],
+  snapshot: ['新增快照', () => openSnapshotModal()],
+  portfolio: ['看組合分析', () => goToTab('stocks', 'portfolio')],
+  expenses: ['去記帳', () => goToTab('expenses')],
+  settings: ['去設定', () => goToTab('settings')],
 };
 
 async function loadDataCheck() {
@@ -2075,7 +2068,8 @@ async function loadDataCheck() {
   list.innerHTML = '<p class="text-muted">檢查中…</p>';
   let d;
   try {
-    d = await api('/api/data-check');
+    invalidateDataCheck(); // the settings page always rechecks
+    d = await getDataCheck();
   } catch (err) {
     list.innerHTML = `<p class="negative">檢查失敗：${err.message}</p>`;
     return;
@@ -3300,10 +3294,10 @@ async function loadSettings() {
 // ============================================================
 
 async function loadGoalSettings() {
-  const [s, ov] = await Promise.all([api('/api/settings'), api('/api/overview').catch(() => null)]);
+  const s = await api('/api/settings');
   document.getElementById('goal-monthly-expense').value = s.monthly_expense || '';
   document.getElementById('goal-withdraw-rate').value = s.withdraw_rate || '';
-  const est = ov && ov.fire && ov.fire.recorded_monthly_expense;
+  const est = _overview && _overview.fire.recorded_monthly_expense; // from the dashboard, if it was opened
   document.getElementById('goal-monthly-expense').placeholder = est ? `依收支估 ${Math.round(est)}` : '例如 50000';
 }
 

@@ -157,7 +157,8 @@ function listTransactions(req) {
     && (!from || t.date >= from)
     && (!to || t.date <= to));
   txns.sort((a, b) => cmp(b.date, a.date) || cmp(b.created_at, a.created_at));
-  return txns.map(txnJSON);
+  const limit = Number(q.get('limit')) || txns.length;
+  return txns.slice(0, limit).map(txnJSON);
 }
 
 /** Read and normalize a transaction body (400 on failure). */

@@ -142,7 +142,9 @@ export function generateFinancialPrompt(data) {
       if (latest.cash_usd > 0) sb += `- 美金現金: US$ ${f(latest.cash_usd, 0)} (匯率 ${f(latest.usd_twd_rate, 2)})\n`;
       sb += `- 台股市值: NT$ ${f(latest.stock_tw_value, 0)}\n`;
       sb += `- 美股市值: NT$ ${f(latest.stock_us_value, 0)}\n`;
-      sb += `- **總資產: NT$ ${f(latest.total_asset, 0)}**\n\n`;
+      sb += `- **總資產: NT$ ${f(latest.total_asset, 0)}**\n`;
+      if (latest.liabilities > 0) sb += `- 負債: NT$ ${f(latest.liabilities, 0)}\n- **淨資產: NT$ ${f(latest.total_asset - latest.liabilities, 0)}**\n`;
+      sb += '\n';
 
       const total = latest.total_asset;
       if (total > 0) {

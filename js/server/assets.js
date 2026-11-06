@@ -44,6 +44,25 @@ export function listSnapshots() {
 export const afterSnapshot = (r, snap) => r.date > snap.date
   || (r.date === snap.date && !!r.created_at && !!snap.created_at && r.created_at > snap.created_at);
 
+/** Net worth in TWD: the one formula every page uses. */
+export const netWorthOf = ({ cashTWD, cashUSD, rate, stocks, liabilities }) => cashTWD + cashUSD * rate + stocks - liabilities;
+
+/**
+ * Daily net worth aligned to the performance series' dates: rebuilt stock values, with cash and
+ * liabilities from the snapshot on or before each day (null before the first snapshot).
+ * snaps: chronological.
+ */
+export function netWorthSeries({ dates, value, fx }, snaps) {
+  let j = -1;
+  return dates.map((d, i) => {
+    while (j + 1 < snaps.length && snaps[j + 1].date <= d) j++;
+    if (j < 0) return null;
+    const s = snaps[j];
+    return Math.round(netWorthOf({ cashTWD: s.cash_twd || 0, cashUSD: s.cash_usd || 0, rate: fx[i],
+      stocks: value.TW[i] + value.US[i], liabilities: s.liabilities || 0 }));
+  });
+}
+
 /** Cash a trade moves, in its own currency: a buy pays price + fee, a sell gets price − fee − tax. */
 export const tradeCash = (t) => (t.action === 'BUY'
   ? -(t.shares * t.price + (t.fee || 0))
@@ -55,8 +74,7 @@ export const tradeCash = (t) => (t.action === 'BUY'
  * (net of withholding). So buying stock after a snapshot moves money instead of adding it.
  * Returns null without snapshots; amounts in native currency.
  */
-export function carriedCash() {
-  const [snap] = listSnapshots();
+export function carriedCash(snap = listSnapshots()[0]) {
   if (!snap) return null;
   const out = { date: snap.date, twd: snap.cash_twd || 0, usd: snap.cash_usd || 0, trades: 0, dividends: 0, moved_twd: 0, moved_usd: 0 };
   const add = (currency, n) => { out[currency === 'USD' ? 'moved_usd' : 'moved_twd'] += n; };
@@ -90,7 +108,6 @@ async function update(req) {
 }
 
 route('GET', '/api/assets', listSnapshots);
-route('GET', '/api/assets/cash', carriedCash);
 route('POST', '/api/assets', create);
 route('PUT', '/api/assets/{id}', update);
 route('DELETE', '/api/assets/{id}', (req) => { db.remove('asset_snapshots', req.params.id); return { status: 'deleted' }; });

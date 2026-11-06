@@ -85,18 +85,19 @@ test('fireStats: setting wins over records, 4% default, dividends and cash cover
     { monthly_expense: null, source: null, recorded_monthly_expense: null, withdraw_rate: 4 });
 });
 
-test('buildAlerts: stale snapshot, concentration, low cash, stale 收支 and liabilities', () => {
+test('buildAlerts: no snapshot, concentration, low cash, stale 收支 and liabilities', () => {
   const a = buildAlerts({
     today: '2026-11-06',
-    latestSnapshot: { date: '2026-08-01' },
-    topHolding: { symbol: '0050.TW', weight: 42 },
+    latestSnapshot: null,
+    topHolding: { symbol: '0050.TW', weight: 42, level: 'danger' },
     fire: { cash_months: 2.1 },
     month: { last_record: '2026-10-01' },
     liabilities: [{ name: '房貸', updated: '2026-01-01' }, { name: '車貸', updated: '2026-10-01' }],
   });
   assert.deepEqual(a.map((x) => x.action), ['snapshot', 'portfolio', 'settings', 'expenses', 'settings']);
-  assert.match(a[0].text, /97 天前/);
+  assert.match(a[1].text, /0050\.TW 佔股票 42%/);
   assert.match(a[4].text, /房貸/);
-  assert.deepEqual(buildAlerts({ today: '2026-11-06', latestSnapshot: { date: '2026-11-01' }, topHolding: { weight: 30 }, fire: {}, month: { last_record: '' }, liabilities: [] }), []);
-  assert.equal(buildAlerts({ today: '2026-11-06', latestSnapshot: null, fire: {}, month: {}, liabilities: [] })[0].action, 'snapshot');
+  // a stale snapshot is left to the data check
+  assert.deepEqual(buildAlerts({ today: '2026-11-06', latestSnapshot: { date: '2026-01-01' }, topHolding: { weight: 30, level: 'warn' },
+    fire: {}, month: { last_record: '' }, liabilities: [] }), []);
 });

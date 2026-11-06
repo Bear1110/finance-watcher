@@ -2,13 +2,12 @@
 
 import * as db from './db.js';
 import { route } from './router.js';
-import { storedUSDTWDRate, toTWD } from './util.js';
-import { listSnapshots, afterSnapshot, tradeCash, carriedCash } from './assets.js';
+import { storedUSDTWDRate, toTWD, daysBetween } from './util.js';
+import { listSnapshots, afterSnapshot, tradeCash, carriedCash, netWorthOf } from './assets.js';
 import { listHoldings } from './stocks.js';
 import { liabilitiesTotal } from './liabilities.js';
 import { expenseTWD } from './expenses.js';
-import { dividendsBySymbol } from './dividends.js';
-import { concentrationLevel } from './portfolio.js';
+import { portfolioStats, ttmDividendsTWD } from './portfolio.js';
 
 /**
  * Net worth change from base to end, split into 股價 (stock value change − net buys: cash turned
@@ -51,8 +50,6 @@ export function yearlyGrowth(snaps, live, opts) {
 const pad = (n) => String(n).padStart(2, '0');
 const ymd = (y, m, d) => `${y}-${pad(m)}-${pad(d)}`;
 const daysInMonth = (y, m) => new Date(y, m, 0).getDate(); // m is 1-based
-/** Whole days between two YYYY-MM-DD dates. */
-export const daysBetween = (from, to) => Math.round((Date.parse(to) - Date.parse(from)) / 86400000);
 
 /**
  * This month so far vs the same days of last month, plus the top expense categories.
@@ -119,16 +116,16 @@ export function fireStats({ netWorth, cashTWD, setting, recorded, withdrawRate, 
   };
 }
 
-/** Things worth acting on, most important first. Each: { level: 'warn'|'info', text, action }. */
+/**
+ * Things worth acting on, most important first. Each: { level: 'warn'|'info', text, action }.
+ * A stale snapshot is the data check's job (/api/data-check); the dashboard shows its warnings too.
+ */
 export function buildAlerts({ today, latestSnapshot, topHolding, fire, month, liabilities }) {
   const out = [];
   if (!latestSnapshot) {
     out.push({ level: 'info', text: '還沒有資產快照：記一筆現金餘額，才算得出淨資產', action: 'snapshot' });
-  } else {
-    const days = daysBetween(latestSnapshot.date, today);
-    if (days > 60) out.push({ level: 'warn', text: `最新快照是 ${days} 天前，現金數字可能不準`, action: 'snapshot' });
   }
-  if (topHolding && concentrationLevel(topHolding.weight) === 'danger') {
+  if (topHolding && topHolding.level === 'danger') {
     out.push({ level: 'warn', text: `${topHolding.symbol} 佔股票 ${topHolding.weight.toFixed(0)}%，高度集中`, action: 'portfolio' });
   }
   if (fire.cash_months != null && fire.cash_months < 3) {
@@ -149,53 +146,39 @@ route('GET', '/api/overview', async () => {
   const rate = storedUSDTWDRate();
   const today = db.today();
   const snaps = listSnapshots().map((s) => ({ ...s, total: s.net_worth }));
-  const cash = carriedCash();
+  const cash = carriedCash(snaps[0]);
   const stocks = await listHoldings();
   const debt = liabilitiesTotal();
-  const cashUSD = cash ? cash.usd * rate : 0;
-  const netWorth = cash ? cash.twd + cashUSD + stocks.total_value_twd - debt : null;
-  const live = { date: today, stock_value_twd: stocks.total_value_twd, total: netWorth };
-  const opts = {
-    trades: db.where('stock_transactions', (t) => t.account_id == null),
-    dividends: db.all('dividends'),
-    rate,
-  };
-
-  const holdings = stocks.holdings;
-  const value = (mkt) => holdings.filter((h) => h.market === mkt).reduce((s, h) => s + h.market_value_twd, 0);
-  const dayPL = (mkt) => holdings.filter((h) => !mkt || h.market === mkt).reduce((s, h) => s + h.day_change_twd, 0);
-  const top = [...holdings].sort((a, b) => b.market_value_twd - a.market_value_twd)[0];
+  const netWorth = cash ? netWorthOf({ cashTWD: cash.twd, cashUSD: cash.usd, rate, stocks: stocks.total_value_twd, liabilities: debt }) : null;
+  const ttmTWD = ttmDividendsTWD(rate);
+  const pf = portfolioStats({ holdings: stocks.holdings, ttmTWD, cash, rate, targetPct: null, liabilities: debt });
 
   const expenses = db.all('expenses').map((e) => ({ ...e, amount_twd: expenseTWD(e) }));
   const month = monthSummary(expenses, today);
-  const ttm = dividendsBySymbol().reduce((s, d) => s + toTWD(d.ttm, d.currency, rate), 0);
   const fire = fireStats({
     netWorth,
-    cashTWD: cash ? cash.twd + cashUSD : null,
+    cashTWD: cash ? cash.twd + cash.usd * rate : null,
     setting: Number(db.getSetting('monthly_expense')) || 0,
     recorded: avgMonthlyExpense(expenses, today, 12),
     withdrawRate: Number(db.getSetting('withdraw_rate')) || 0,
-    dividendsTTM: ttm,
+    dividendsTTM: pf ? pf.dividends.ttm : 0,
   });
-  const liabilities = db.all('liabilities');
+  const dayPL = (mkt) => stocks.holdings.filter((h) => !mkt || h.market === mkt).reduce((s, h) => s + h.day_change_twd, 0);
+  const pl = dayPL();
 
   return {
     today,
     net_worth: netWorth,
     cash,
-    latest_snapshot: snaps[0] ? { date: snaps[0].date } : null,
-    parts: { cash_twd: cash ? cash.twd : 0, cash_usd: cashUSD, tw: value('TW'), us: value('US'), liabilities: debt },
-    day: holdings.length ? { pl: dayPL(), tw: dayPL('TW'), us: dayPL('US'), prev_value: stocks.total_value_twd - dayPL() } : null,
-    years: cash ? yearlyGrowth(snaps, live, opts) : [],
+    parts: { cash_twd: cash ? cash.twd : 0, cash_usd: cash ? cash.usd * rate : 0, tw: pf ? pf.split.tw : 0, us: pf ? pf.split.us : 0, liabilities: debt },
+    day: stocks.holdings.length ? { pl, tw: dayPL('TW'), us: dayPL('US'), prev_value: stocks.total_value_twd - pl } : null,
+    years: cash ? yearlyGrowth(snaps, { date: today, stock_value_twd: stocks.total_value_twd, total: netWorth }, {
+      trades: db.where('stock_transactions', (t) => t.account_id == null),
+      dividends: db.all('dividends'),
+      rate,
+    }) : [],
     month,
     fire,
-    alerts: buildAlerts({
-      today,
-      latestSnapshot: snaps[0],
-      topHolding: top && stocks.total_value_twd > 0 ? { symbol: top.symbol, weight: top.market_value_twd / stocks.total_value_twd * 100 } : null,
-      fire,
-      month,
-      liabilities,
-    }),
+    alerts: buildAlerts({ today, latestSnapshot: snaps[0], topHolding: pf && pf.rows[0], fire, month, liabilities: db.all('liabilities') }),
   };
 });

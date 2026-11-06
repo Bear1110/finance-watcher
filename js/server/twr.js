@@ -8,8 +8,9 @@ import { isHistorySell, sellCostBasis, settingString, storedUSDTWDRate, cmp, rou
 import { fetchDailyCloses, fetchQuotes, hasProxy, MarketUnavailableError, USDTWD_SYMBOL } from './market.js';
 import { queryDividends } from './dividends.js';
 import {
-  computePerformance, perfSegments, benchValues, benchReturn, addDays, addDate, isDateOnly, goRound,
+  computePerformance, perfSegments, benchValues, benchReturn, addDays, addDate, isDateOnly, goRound, blendBenchmarks,
 } from './twr_calc.js';
+import { listSnapshots, netWorthSeries } from './assets.js';
 
 // How long cached daily closes are trusted before the last week is refetched
 // (the latest bar may have been an intraday price).
@@ -22,8 +23,9 @@ export const PERF_START_KEY = 'perf_start_date';
 // Offered as comparison lines, priced with dividend-adjusted closes so they are
 // total returns like the portfolio's TWR.
 export const perfBenchmarks = [
-  { symbol: '0050.TW', label: '台灣50 (0050)', currency: 'TWD' },
-  { symbol: 'SPY', label: 'S&P 500 (SPY)', currency: 'USD' },
+  // blend: the benchmark for that market's share in the 總覽 comparison
+  { symbol: '0050.TW', label: '台灣50 (0050)', short: '0050', currency: 'TWD', blend: 'TW' },
+  { symbol: 'SPY', label: 'S&P 500 (SPY)', short: 'S&P 500', currency: 'USD', blend: 'US' },
   { symbol: 'QQQ', label: 'Nasdaq 100 (QQQ)', currency: 'USD' },
 ];
 
@@ -235,6 +237,10 @@ async function performance() {
     { key: 'ALL', label: '全部', start: '' },
   ];
   const last = res.days.length - 1;
+  // TW share of today's stock value, for the benchmark mixed like the portfolio
+  const [twNow, usNow] = [res.series.TW.value[last], res.series.US.value[last]];
+  const weightTW = twNow + usNow > 0 ? twNow / (twNow + usNow) : 0.5;
+  const blendParts = ['TW', 'US'].map((m) => perfBenchmarks.find((x) => x.blend === m));
   const periods = periodDefs.map((p) => {
     const b = Math.max(res.baseIndex(p.start), o);
     const pp = {
@@ -244,6 +250,7 @@ async function performance() {
     };
     for (const seg of perfSegments) pp.markets[seg] = res.stats(seg, b);
     for (const [sym, v] of Object.entries(bench)) pp.bench[sym] = benchReturn(v, b);
+    pp.blend = blendBenchmarks(blendParts.map((x) => ({ label: x.short, ret: pp.bench[x.symbol] })), weightTW, pp.days);
     return pp;
   });
 
@@ -279,6 +286,7 @@ async function performance() {
   series.realized = realized;
   series.bench = benchOut;
   series.fx = res.fx.slice(o).map(round4);
+  series.net_worth = netWorthSeries(series, [...listSnapshots()].reverse());
 
   const monthly = {};
   for (const seg of perfSegments) monthly[seg] = res.monthlyReturns(seg, o);

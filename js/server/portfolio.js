@@ -5,7 +5,8 @@ import * as db from './db.js';
 import { route } from './router.js';
 import { storedUSDTWDRate, toTWD } from './util.js';
 import { listHoldings } from './stocks.js';
-import { carriedCash } from './assets.js';
+import { carriedCash, netWorthOf } from './assets.js';
+import { liabilitiesTotal } from './liabilities.js';
 import { dividendsBySymbol } from './dividends.js';
 
 /** Concentration by market-value weight (%): '' | 'warn' (≥ 25) | 'danger' (≥ 40). */
@@ -31,9 +32,9 @@ export function rebalance(tw, us, targetPct) {
 
 /**
  * holdings: as /api/stocks returns them; ttmTWD: { symbol: trailing-12-month dividends in TWD };
- * cash: carriedCash() or null; rate: USD/TWD. TW/US split is by market, USD exposure by currency.
+ * cash: carriedCash() or null; rate: USD/TWD; liabilities: TWD total. TW/US split is by market, USD exposure by currency.
  */
-export function portfolioStats({ holdings, ttmTWD, cash, rate, targetPct }) {
+export function portfolioStats({ holdings, ttmTWD, cash, rate, targetPct, liabilities = 0 }) {
   const totalValue = holdings.reduce((s, h) => s + h.market_value_twd, 0);
   if (!(totalValue > 0)) return null;
   const totalCost = holdings.reduce((s, h) => s + h.cost_twd, 0);
@@ -57,7 +58,7 @@ export function portfolioStats({ holdings, ttmTWD, cash, rate, targetPct }) {
   const tw = sumBy((h) => h.market === 'TW');
   const usdStock = sumBy((h) => h.currency === 'USD');
   const usdCash = cash ? cash.usd * rate : 0;
-  const netWorth = totalValue + (cash ? cash.twd : 0) + usdCash;
+  const netWorth = netWorthOf({ cashTWD: cash ? cash.twd : 0, cashUSD: cash ? cash.usd : 0, rate, stocks: totalValue, liabilities });
   const ttm = Object.values(ttmTWD).reduce((s, v) => s + v, 0);
 
   return {
@@ -72,12 +73,18 @@ export function portfolioStats({ holdings, ttmTWD, cash, rate, targetPct }) {
   };
 }
 
+/** Trailing-12-month dividends per symbol, in TWD. */
+export function ttmDividendsTWD(rate) {
+  const out = {};
+  for (const d of dividendsBySymbol()) {
+    if (d.ttm) out[d.symbol] = (out[d.symbol] || 0) + toTWD(d.ttm, d.currency, rate);
+  }
+  return out;
+}
+
 route('GET', '/api/stocks/portfolio', async () => {
   const rate = storedUSDTWDRate();
-  const ttmTWD = {};
-  for (const d of dividendsBySymbol()) {
-    if (d.ttm) ttmTWD[d.symbol] = (ttmTWD[d.symbol] || 0) + toTWD(d.ttm, d.currency, rate);
-  }
+  const ttmTWD = ttmDividendsTWD(rate);
   const target = db.getSetting('rebalance_target_tw');
   return portfolioStats({
     holdings: (await listHoldings()).holdings,
@@ -85,5 +92,6 @@ route('GET', '/api/stocks/portfolio', async () => {
     cash: carriedCash(),
     rate,
     targetPct: target === '' || target == null ? null : Number(target),
+    liabilities: liabilitiesTotal(),
   });
 });

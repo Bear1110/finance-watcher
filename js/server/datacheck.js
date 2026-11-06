@@ -4,7 +4,7 @@
 
 import * as db from './db.js';
 import { route } from './router.js';
-import { isSelfHistorySell, cmp } from './util.js';
+import { isSelfHistorySell, cmp, daysBetween } from './util.js';
 import { hasProxy } from './market.js';
 import { loadPerfTxns, perfOrigin, loadPriceHistory } from './twr.js';
 import { fmtNum, isDateOnly } from './twr_calc.js';
@@ -148,7 +148,7 @@ async function check() {
   let lastSnap = '';
   for (const s of db.all('asset_snapshots')) if (s.date > lastSnap) lastSnap = s.date;
   if (isDateOnly(lastSnap)) {
-    const days = Math.trunc((Date.now() - Date.parse(lastSnap + 'T00:00:00Z')) / 86400000);
+    const days = daysBetween(lastSnap, db.today());
     if (days > 35) {
       checks.push({ level: 'warn', title: `最新資產快照是 ${days} 天前（${lastSnap}）`,
         detail: '總覽的現金與淨資產用的是最新快照的現金數字，可能已經過時。', action: 'assets' });

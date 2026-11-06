@@ -1370,7 +1370,6 @@ select option {
 
 /* Never let one wide element scroll the whole page sideways. */
 body { overflow-x: clip; }
-.chart-head { flex-wrap: wrap; gap: 8px; }
 
 /* Phones: bottom tab bar, full-screen forms, tables scroll with a sticky first column */
 @media (max-width: 599px) {
@@ -2163,16 +2162,7 @@ body[data-tab="expenses"] .fab { display: flex; }
 .hero-year { margin-top: 6px; font-size: 1.05rem; font-weight: 600; color: var(--text-secondary); }
 .hero-year-parts { margin-top: 4px; font-size: 0.85rem; color: var(--text-secondary); }
 .hero-comp { max-width: 520px; height: 8px; margin: 18px auto 8px; border-radius: 4px; }
-.hero-comp-legend {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 4px 14px;
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-  margin-bottom: 10px;
-}
-.hero-comp-legend .legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+.hero-comp-legend { justify-content: center; gap: 4px 12px; margin: 0 0 10px; font-size: 0.8rem; }
 
 .dash-stats-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .dash-invest-periods { margin-top: 10px; width: fit-content; }
@@ -2184,8 +2174,7 @@ body[data-tab="expenses"] .fab { display: flex; }
 .month-grid small { color: var(--text-secondary); font-size: 0.8rem; }
 .month-top { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
 .month-cat { display: grid; grid-template-columns: 5em minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 0.85rem; }
-.month-cat > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.month-amt { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.month-cat .cat-amt { color: var(--text-secondary); }
 .month-foot { margin: 14px 0 0; padding-top: 10px; border-top: 1px solid var(--border-color); font-size: 0.85rem; color: var(--text-secondary); }
 
 .nw-periods { width: fit-content; margin-bottom: 10px; }
