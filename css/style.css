@@ -1738,7 +1738,6 @@ body[data-tab="expenses"] .fab { display: flex; }
 .fab [data-icon] { width: 26px; height: 26px; }
 
 /* 總覽 hero: entry to the AI page (no nav tab of its own) */
-.hero-ai { position: absolute; top: 12px; right: 12px; }
 
 /* --- 新手導覽 (js/tour.js) --- */
 .tour-shade { position: fixed; inset: 0; z-index: 3500; }

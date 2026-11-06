@@ -191,7 +191,7 @@ export function perfOrigin(txns) {
  * market, with drawdown, volatility, a monthly heatmap, the daily series for
  * the chart, and benchmark returns.
  */
-async function performance() {
+export async function performance() {
   const txns = loadPerfTxns();
   const divs = loadPerfDivs();
   const { setting: startSetting, origin } = perfOrigin(txns);

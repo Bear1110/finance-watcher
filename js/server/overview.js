@@ -137,7 +137,8 @@ export function buildAlerts({ today, latestSnapshot, topHolding, spending, month
   return out;
 }
 
-route('GET', '/api/overview', async () => {
+/** Everything 總覽 shows, for the current data (live quotes). */
+export async function overviewData() {
   const rate = storedUSDTWDRate();
   const today = db.today();
   const includeOther = includeOtherAssets();
@@ -174,4 +175,6 @@ route('GET', '/api/overview', async () => {
     spending,
     alerts: buildAlerts({ today, latestSnapshot: snaps[0], topHolding: pf && pf.rows[0], spending, month, otherAssets: includeOther ? db.all('other_assets') : [] }),
   };
-});
+}
+
+route('GET', '/api/overview', overviewData);

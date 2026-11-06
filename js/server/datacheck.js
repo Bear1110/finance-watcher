@@ -21,7 +21,7 @@ function capItems(items) {
   return [...items.slice(0, MAX_CHECK_ITEMS), `…還有 ${items.length - MAX_CHECK_ITEMS} 筆`];
 }
 
-async function check() {
+export async function check() {
   const txns = loadPerfTxns();
   const { setting: startSetting, origin } = perfOrigin(txns);
   const checks = [];

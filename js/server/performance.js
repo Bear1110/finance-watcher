@@ -47,7 +47,7 @@ export function xirr(flows, d0) {
  * terminal inflow (imported-history SELLs included, see loadPerfTxns).
  * Foreign amounts use today's rate, so it is an approximation.
  */
-async function xirrHandler() {
+export async function xirrHandler() {
   const rate = storedUSDTWDRate();
   const sets = { ALL: { flows: [], first: 0 }, TW: { flows: [], first: 0 }, US: { flows: [], first: 0 } };
   const addTo = (s, t, amt) => {

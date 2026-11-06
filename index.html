@@ -59,14 +59,14 @@
       <img src="icons/logo-64.png" alt="" width="32" height="32">
       <span>Finance Watcher</span>
     </div>
-    <div class="nav-tabs" data-tour="nav">
-      <button class="tab-btn active" data-tab="dashboard" data-tour="nav-dashboard"><span class="tab-icon" data-icon="grid"></span><span class="tab-label">總覽</span></button>
-      <button class="tab-btn" data-tab="stocks" data-tour="nav-stocks"><span class="tab-icon" data-icon="trending"></span><span class="tab-label">股票</span></button>
-      <button class="tab-btn" data-tab="expenses" data-tour="nav-expenses"><span class="tab-icon" data-icon="wallet"></span><span class="tab-label">收支</span></button>
-      <button class="tab-btn" data-tab="settings" data-tour="nav-settings"><span class="tab-icon" data-icon="gear"></span><span class="tab-label">設定</span></button>
+    <div class="nav-tabs">
+      <button class="tab-btn active" data-tab="dashboard"><span class="tab-icon" data-icon="grid"></span><span class="tab-label">總覽</span></button>
+      <button class="tab-btn" data-tab="stocks"><span class="tab-icon" data-icon="trending"></span><span class="tab-label">股票</span></button>
+      <button class="tab-btn" data-tab="expenses"><span class="tab-icon" data-icon="wallet"></span><span class="tab-label">收支</span></button>
+      <button class="tab-btn" data-tab="settings"><span class="tab-icon" data-icon="gear"></span><span class="tab-label">設定</span></button>
     </div>
     <button type="button" class="privacy-toggle nav-privacy" onclick="togglePrivacy()" aria-label="顯示/隱藏金額" aria-pressed="false"><svg class="eye-open" aria-hidden="true"><use href="#i-eye"/></svg><svg class="eye-closed" aria-hidden="true"><use href="#i-eye-off"/></svg></button>
-    <button type="button" id="sync-pill" class="sync-pill" data-tour="sync" onclick="onSyncPillClick()" title="雲端同步狀態">
+    <button type="button" id="sync-pill" class="sync-pill" onclick="onSyncPillClick()" title="雲端同步狀態">
       <svg aria-hidden="true"><use id="sync-icon" href="#i-cloud-off"/></svg><span id="sync-count" class="sync-count"></span><span id="sync-pill-text" class="sync-text">本機</span>
     </button>
   </nav>
@@ -81,7 +81,6 @@
 
       <!-- Net worth hero: how much, how this year went, what it is made of -->
       <div class="hero-card" data-tour="net-worth">
-        <button type="button" class="btn btn-outline btn-sm hero-ai" onclick="goToTab('llm')"><span class="i" data-icon="sparkles"></span>AI 分析</button>
         <div class="hero-label">淨資產 <button type="button" class="privacy-toggle hero-privacy" onclick="togglePrivacy()" aria-label="顯示/隱藏金額" aria-pressed="false"><svg class="eye-open" aria-hidden="true"><use href="#i-eye"/></svg><svg class="eye-closed" aria-hidden="true"><use href="#i-eye-off"/></svg></button></div>
         <div class="hero-value" id="dash-net-worth">--</div>
         <div class="hero-year" id="dash-year"></div>
@@ -92,7 +91,7 @@
       </div>
 
       <!-- Investment return: the 績效 card without the risk table (built by perfCardHtml) -->
-      <div id="perf-dash" data-tour="dash-stats"></div>
+      <div id="perf-dash"></div>
 
       <!-- This month's spending -->
       <div class="card" id="dash-month">
@@ -664,7 +663,7 @@
           <h3>收支明細</h3>
           <div class="header-actions">
             <button type="button" id="exp-cat-chip" class="filter-chip" style="display:none" onclick="setCategoryFilter(null)" title="清除分類篩選"></button>
-            <button class="btn btn-outline btn-sm" onclick="openAIImport('expenses')" data-tour="ai-import"><span class="i" data-icon="sparkles"></span>AI 匯入</button>
+            <button class="btn btn-outline btn-sm" onclick="openAIImport('expenses')"><span class="i" data-icon="sparkles"></span>AI 匯入</button>
           </div>
         </div>
         <div class="exp-search">
@@ -869,10 +868,10 @@
         </div>
         <p class="form-hint" style="margin:0 0 12px">勾選你想要提供給 AI 的資料範圍，再產生 Prompt</p>
         <div class="llm-checkboxes">
-          <label class="llm-check"><input type="checkbox" id="llm-inc-assets" checked> 資產總覽（現金、配置比例、成長趨勢）</label>
-          <label class="llm-check"><input type="checkbox" id="llm-inc-portfolio" checked> 投資組合（持股明細、即時報價、未實現損益）</label>
+          <label class="llm-check"><input type="checkbox" id="llm-inc-assets" checked> 資產總覽（淨資產、配置比例、每年成長來自股價／股利／存入）</label>
+          <label class="llm-check"><input type="checkbox" id="llm-inc-portfolio" checked> 投資組合（持股、集中度、股利、報酬率與大盤比較、XIRR）</label>
           <label class="llm-check"><input type="checkbox" id="llm-inc-realized" checked> 交易績效（已實現損益、勝率）</label>
-          <label class="llm-check"><input type="checkbox" id="llm-inc-expenses"> 收支狀況（收入/支出分類統計）</label>
+          <label class="llm-check"><input type="checkbox" id="llm-inc-expenses"> 收支狀況（今年收支分類、現金可撐幾個月）</label>
         </div>
         <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-primary" onclick="generatePrompt()">產生 Prompt</button>
@@ -975,7 +974,7 @@
         </div>
       </div>
 
-      <div class="card" data-tour="backup">
+      <div class="card">
         <div class="card-header"><h3><span class="i" data-icon="database"></span>備份與還原</h3></div>
         <div class="settings-row">
           <div><strong>下載備份／匯出</strong><p class="form-hint">把勾選的資料存成一個 JSON 檔。全選就是完整備份；只勾一部分可以單獨匯出（例如只有收支）。清除或大量匯入前建議先下載完整備份。</p>
