@@ -122,7 +122,7 @@ export function body(req) {
   }
 }
 
-/** A file to hand to the browser (CSV exports, backups). */
-export function download(filename, content, type = 'application/json') {
-  return { __download: true, filename, content, type };
+/** A JSON file to hand to the browser (backups). */
+export function download(filename, content) {
+  return { __download: true, filename, content, type: 'application/json' };
 }

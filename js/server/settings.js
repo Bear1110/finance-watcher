@@ -42,12 +42,12 @@ function getSettings() {
 // ?groups=expenses,stocks (default: everything). A partial file is named after what it holds.
 function backup({ query }) {
   const all = BACKUP_GROUPS.map((g) => g.key);
-  const keys = (query.get('groups') || '').split(',').filter((k) => all.includes(k));
-  const chosen = keys.length ? keys : all;
-  if (!keys.length && query.get('groups')) throw badRequest('沒有選任何資料');
+  const raw = query.get('groups');
+  const keys = raw ? raw.split(',').filter((k) => all.includes(k)) : all;
+  if (!keys.length) throw badRequest('沒有選任何資料');
   const stamp = fmtLocal(new Date()).replace(/[-:]/g, '').replace(' ', '-');
-  const name = chosen.length === all.length ? 'backup' : chosen.join('-');
-  return download(`finance-watcher-${name}-${stamp}.json`, JSON.stringify(buildBackup(chosen), null, 2));
+  const name = keys.length === all.length ? 'backup' : keys.join('-');
+  return download(`finance-watcher-${name}-${stamp}.json`, JSON.stringify(buildBackup(keys), null, 2));
 }
 
 async function refreshRate() {

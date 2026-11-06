@@ -137,8 +137,11 @@ export function buildAlerts({ today, latestSnapshot, topHolding, spending, month
   return out;
 }
 
-/** Everything 總覽 shows, for the current data (live quotes). */
-export async function overviewData() {
+/**
+ * Everything 總覽 shows, for the current data (live quotes), plus the holdings and 組合分析 it was
+ * built from (the AI prompt reuses them): { overview, stocks, portfolio }.
+ */
+export async function buildOverview() {
   const rate = storedUSDTWDRate();
   const today = db.today();
   const includeOther = includeOtherAssets();
@@ -160,7 +163,7 @@ export async function overviewData() {
   const dayPL = (mkt) => stocks.holdings.filter((h) => !mkt || h.market === mkt).reduce((s, h) => s + h.day_change_twd, 0);
   const pl = dayPL();
 
-  return {
+  const overview = {
     today,
     net_worth: netWorth,
     cash,
@@ -175,6 +178,7 @@ export async function overviewData() {
     spending,
     alerts: buildAlerts({ today, latestSnapshot: snaps[0], topHolding: pf && pf.rows[0], spending, month, otherAssets: includeOther ? db.all('other_assets') : [] }),
   };
+  return { overview, stocks, portfolio: pf };
 }
 
-route('GET', '/api/overview', overviewData);
+route('GET', '/api/overview', async () => (await buildOverview()).overview);

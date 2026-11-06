@@ -14,45 +14,48 @@ const actionOrder = (a) => (a === 'BUY' ? 0 : 1);
 export const ledgerOrder = (a, b) => cmp(a.date, b.date) || actionOrder(a.action) - actionOrder(b.action) || a.id - b.id;
 
 /**
- * Replay one symbol. Must run inside db.transaction. Only counted txns take part.
+ * FIFO replay of one symbol's trades (any account): the one rule every ledger uses.
+ * Must run inside db.transaction. Writes each SELL's realized_pl when it changed.
  *
  * Cost basis per lot includes the BUY fee. A SELL's realized_pl is
  * sum((price - lotCost) * consumed) - fee - tax.
+ * pl_manual SELLs consume lots (so holdings stay right) but keep their stored realized_pl;
+ * a SELL that no lot covers at all keeps its stored realized_pl too.
  *
- * pl_manual SELLs (that are counted, i.e. lots_consumed=1) consume lots so
- * holdings stay right but keep their stored realized_pl. A SELL that no lot
- * covers at all keeps its stored realized_pl. If the symbol has no BUY at all,
- * stock_holdings is not touched.
- *
- * Returns { shares, avgCost, hasBuys, uncovered: Map(sellId -> shares) }.
+ * Returns { lots, hasBuys, market, currency, uncovered: Map(sellId -> shares) }.
  */
-export function replaySymbol(symbol) {
-  const txns = db.where('stock_transactions', (t) => t.symbol === symbol && isCounted(t)).sort(ledgerOrder);
-  const lots = [];
+export function replayTrades(txns) {
+  const out = { lots: [], hasBuys: false, market: '', currency: '', uncovered: new Map() };
   const updates = [];
-  const res = { shares: 0, avgCost: 0, hasBuys: false, uncovered: new Map() };
-  let market = '';
-  let currency = '';
-
-  for (const t of txns) {
+  for (const t of [...txns].sort(ledgerOrder)) {
     if (t.action === 'BUY') {
-      res.hasBuys = true;
-      market = t.market;
-      currency = t.currency;
-      if (t.shares > 0) lots.push(lotFromBuy(t));
+      out.hasBuys = true;
+      out.market = t.market;
+      out.currency = t.currency;
+      if (t.shares > 0) out.lots.push(lotFromBuy(t));
       continue;
     }
-
-    const { cost, left: remaining } = takeLots(lots, t.shares);
+    const { cost, left: remaining } = takeLots(out.lots, t.shares);
     const pl = (t.shares - remaining) * t.price - cost; // on the shares the lots covered
     if (t.pl_manual === 1) continue; // consumed what it could; realized_pl is fixed
-    if (remaining > 1e-9) res.uncovered.set(t.id, remaining);
+    if (remaining > 1e-9) out.uncovered.set(t.id, remaining);
     if (remaining >= t.shares - 1e-9) continue; // nothing consumed: legacy import, keep stored realized_pl
     const newPL = round4(pl - t.fee - t.tax);
     if (Math.abs(newPL - t.realized_pl) > 1e-6) updates.push({ id: t.id, pl: newPL });
   }
-
   for (const u of updates) db.update('stock_transactions', u.id, { realized_pl: u.pl });
+  return out;
+}
+
+/**
+ * Replay one symbol of the self account (counted txns) and rewrite its stock_holdings row.
+ * If the symbol has no BUY at all, stock_holdings is not touched.
+ * Returns { shares, avgCost, hasBuys, uncovered }.
+ */
+export function replaySymbol(symbol) {
+  const r = replayTrades(db.where('stock_transactions', (t) => t.symbol === symbol && isCounted(t)));
+  const res = { shares: 0, avgCost: 0, hasBuys: r.hasBuys, uncovered: r.uncovered };
+  const { lots, market, currency } = r;
 
   if (!res.hasBuys) return res;
 

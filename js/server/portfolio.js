@@ -62,8 +62,7 @@ export function ttmDividendsTWD(rate) {
   return out;
 }
 
-/** 組合分析 for the current data (live quotes). */
-export async function portfolioData() {
+async function portfolioData() {
   const rate = storedUSDTWDRate();
   const ttmTWD = ttmDividendsTWD(rate);
   return portfolioStats({

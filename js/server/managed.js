@@ -5,8 +5,9 @@
 import * as db from './db.js';
 import { route } from './router.js';
 import { fetchQuotes } from './market.js';
-import { HttpError, badRequest, body, cmp, refreshAndPersistRate, round2, round4, storedUSDTWDRate, toTWD, realizedTWD } from './util.js';
-import { lotFromBuy, takeLots, lotsTotal } from './lots.js';
+import { HttpError, badRequest, body, cmp, refreshAndPersistRate, round2, storedUSDTWDRate, toTWD, realizedTWD } from './util.js';
+import { lotsTotal } from './lots.js';
+import { replayTrades } from './ledger.js';
 
 // USD/TWD rate: stored rate, 32 when missing or 0.
 function parseID(s) {
@@ -68,29 +69,17 @@ async function deleteAccount(req) {
 // ---------------------------------------------------------------- holdings
 
 /**
- * Replay an account's trades per symbol, oldest first, with the main ledger's FIFO rule (lots.js:
- * a lot's cost includes its buy fee). Writes each SELL's realized_pl when it changed, so a
- * backdated or deleted trade fixes the later sells too. Returns { symbol: { lots, market, currency } }.
+ * Replay a managed account's trades per symbol with the main ledger's FIFO (ledger.js replayTrades),
+ * rewriting SELLs' realized_pl, so a backdated or deleted trade fixes the later sells too.
+ * Returns Map(symbol -> { lots, market, currency }).
  */
 export function replayAccount(accountID) {
-  const txns = db.where('stock_transactions', (t) => t.account_id === accountID)
-    .sort((a, b) => cmp(a.date, b.date) || a.id - b.id);
   const bySymbol = new Map();
-  for (const t of txns) {
-    let st = bySymbol.get(t.symbol);
-    if (!st) { st = { lots: [] }; bySymbol.set(t.symbol, st); }
-    st.market = t.market; // the most recent record's
-    st.currency = t.currency;
-    if (t.action === 'BUY') {
-      if (t.shares > 0) st.lots.push(lotFromBuy({ ...t, fee: t.fee || 0 }));
-      continue;
-    }
-    const { cost, left } = takeLots(st.lots, t.shares);
-    if (left >= t.shares - 1e-9) continue; // no lot covers it: keep the stored realized_pl
-    const pl = round4((t.shares - left) * t.price - cost - (t.fee || 0) - (t.tax || 0));
-    if (Math.abs(pl - (t.realized_pl || 0)) > 1e-6) db.update('stock_transactions', t.id, { realized_pl: pl });
+  for (const t of db.where('stock_transactions', (x) => x.account_id === accountID)) {
+    if (!bySymbol.has(t.symbol)) bySymbol.set(t.symbol, []);
+    bySymbol.get(t.symbol).push(t);
   }
-  return bySymbol;
+  return new Map([...bySymbol].map(([sym, txns]) => [sym, replayTrades(txns)]));
 }
 
 /** Current holdings of a managed account at live prices. */

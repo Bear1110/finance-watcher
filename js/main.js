@@ -200,8 +200,7 @@ function cloudSignOut() {
 function downloadBackup() {
   const keys = checkedGroups(document.getElementById('backup-groups'));
   if (!keys.length) return window.showToast?.('請至少勾選一類', 'error');
-  const qs = keys.length === BACKUP_GROUPS.length ? '' : `?groups=${keys.join(',')}`;
-  window.api('/api/settings/backup' + qs).catch((e) => window.showToast?.('匯出失敗：' + e.message, 'error'));
+  window.api(`/api/settings/backup?groups=${keys.join(',')}`).catch((e) => window.showToast?.('匯出失敗：' + e.message, 'error'));
 }
 
 function clearLocalData() {
