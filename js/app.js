@@ -3372,10 +3372,13 @@ async function deleteLiability(id) {
   }
 }
 
-/** USD/TWD from the market, saved for every TWD conversion; refreshed in the background at startup (keeps the last rate when offline). */
+/**
+ * USD/TWD from the market, saved for every TWD conversion; refreshed in the background at startup
+ * (keeps the last rate when offline). Returns { usd_twd_rate, previous } or null.
+ */
 async function refreshUSDTWDRate() {
   try {
-    return (await api('/api/settings/refresh-rate', { method: 'POST' })).usd_twd_rate;
+    return await api('/api/settings/refresh-rate', { method: 'POST' });
   } catch (err) {
     return null;
   }
@@ -3432,10 +3435,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   initHoldingsView();
 
-  // Silently refresh USD/TWD rate in background (best-effort, won't block UI)
-  refreshUSDTWDRate().then(() => {
-    // Re-render dashboard if rate changed so live numbers reflect new rate
-    if (document.querySelector('#tab-dashboard.active')) loadDashboard();
+  // Refresh USD/TWD in the background (best-effort, won't block the first paint). Redraw the
+  // dashboard only when the rate moved enough to show (≥ 0.1%), not on every start.
+  refreshUSDTWDRate().then(r => {
+    const moved = r && r.previous > 0 && Math.abs(r.usd_twd_rate / r.previous - 1) >= 0.001;
+    if (moved && document.querySelector('#tab-dashboard.active')) loadDashboard();
   });
 });
 

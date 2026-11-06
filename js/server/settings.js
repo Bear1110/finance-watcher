@@ -4,7 +4,7 @@
 import * as db from './db.js';
 import { route } from './router.js';
 import { fetchUSDTWDRate } from './market.js';
-import { HttpError, badRequest, body, download, fmtLocal, persistRate } from './util.js';
+import { HttpError, badRequest, body, download, fmtLocal, persistRate, storedUSDTWDRate } from './util.js';
 
 export const BACKUP_FORMAT = 'finance-watcher-backup';
 export const BACKUP_VERSION = 1;
@@ -35,7 +35,8 @@ async function refreshRate() {
   } catch (e) {
     throw new HttpError(502, 'fetch forex: ' + e.message);
   }
-  return { usd_twd_rate: r.rate, usd_twd_rate_updated_at: persistRate(r.rate, r.at) };
+  const previous = storedUSDTWDRate();
+  return { usd_twd_rate: r.rate, usd_twd_rate_updated_at: persistRate(r.rate, r.at), previous };
 }
 
 function updateSettings(req) {
