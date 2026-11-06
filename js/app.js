@@ -358,8 +358,9 @@ function togglePrivacy() {
 
 /** What each 股票 sub-tab loads when it is shown (only the visible one loads). */
 const STOCKS_SUBTAB_LOADERS = {
+  holdings: [loadHoldings],
   // loadPerformance first: it refreshes the shared performance data that loadHoldingsTrend reuses
-  holdings: [loadHoldings, loadXirr, loadPerformance, loadDataCheckBadge, loadHoldingsTrend],
+  performance: [loadXirr, loadPerformance, loadDataCheckBadge, loadHoldingsTrend],
   portfolio: [loadPortfolioAnalysis],
   realized: [loadRealizedSummary],
   transactions: [loadTransactions],
@@ -1732,7 +1733,7 @@ function selectedBench() {
   return ((_perfData && _perfData.benchmarks) || []).find(b => b.symbol === sym);
 }
 
-/** 持倉總覽 performance card + monthly heatmap from /api/stocks/performance */
+/** 績效 performance card + monthly heatmap from /api/stocks/performance */
 let _perfPromise = null;
 
 /** /api/stocks/performance, fetched once and shared until data changes (invalidatePerf). */
@@ -1743,7 +1744,7 @@ function getPerf() {
   return _perfPromise;
 }
 
-/** Called by main.js on every data change, and by 持倉總覽 to pick up fresh quotes. */
+/** Called by main.js on every data change, and by 績效 to pick up fresh quotes. */
 function invalidatePerf() {
   _perfPromise = null;
   _perfData = null;
@@ -1881,7 +1882,7 @@ function weekdayIndexes(dates, b) {
 }
 
 // ============================================================
-// SECTION: 持倉總覽 — market value trend (from the performance series, no manual snapshots)
+// SECTION: 績效 — market value trend (from the performance series, no manual snapshots)
 // ============================================================
 
 let _holdingsTrendChart = null;

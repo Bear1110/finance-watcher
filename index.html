@@ -84,7 +84,7 @@
         <button type="button" class="btn btn-outline btn-sm hero-ai" onclick="goToTab('llm')"><span class="i" data-icon="sparkles"></span>AI 分析</button>
         <div class="hero-label">淨資產 <button type="button" class="privacy-toggle hero-privacy" onclick="togglePrivacy()" aria-label="顯示/隱藏金額" aria-pressed="false"><svg class="eye-open" aria-hidden="true"><use href="#i-eye"/></svg><svg class="eye-closed" aria-hidden="true"><use href="#i-eye-off"/></svg></button></div>
         <div class="hero-value" id="dash-net-worth">--</div>
-        <div class="hero-year" id="dash-year" title="年初基準快照（1/1 當天或之前最後一筆）→ 現在。&#10;股價漲跌 = 股票市值變化 − 期間淨買入（現金換成股票不算賺）&#10;股利 = 期間入帳的股利&#10;儲蓄 = 剩下的部分：存下來的錢，加上美金現金匯差等（反推，所以收支沒記齊也不影響）"></div>
+        <div class="hero-year" id="dash-year" title="今年 1/1（或之前最後一筆快照）到現在，淨資產多了多少。&#10;股價漲跌：手上股票漲跌賺賠的錢（拿現金買股票不算賺）&#10;股利：領到的現金股利&#10;儲蓄：其餘增加的部分，主要是薪水存下來的錢（也包含美金現金的匯差）"></div>
         <div class="hero-year-parts" id="dash-year-parts"></div>
         <div class="source-bar hero-comp" id="dash-comp-bar" aria-hidden="true"></div>
         <div class="chart-legend hero-comp-legend" id="dash-comp-legend"></div>
@@ -99,7 +99,7 @@
           <div class="stat-sub" id="dash-fire-sub"></div>
         </div>
         <div class="stat-card">
-          <div class="stat-label" title="你股票部位的時間加權報酬（不受買賣時點影響），對照「照你的台美比例買 0050 和 S&amp;P 500」的報酬。&#10;詳細的各期間報酬在 股票 › 持倉總覽。">投資成績 vs 大盤 ⓘ</div>
+          <div class="stat-label" title="你股票部位的時間加權報酬（不受買賣時點影響），對照「照你的台美比例買 0050 和 S&amp;P 500」的報酬。&#10;詳細的各期間報酬在 股票 › 績效。">投資成績 vs 大盤 ⓘ</div>
           <div class="stat-value" id="dash-invest">--</div>
           <div class="stat-sub" id="dash-invest-sub">計算中…</div>
           <div class="chart-type-toggle dash-invest-periods" id="dash-invest-periods"></div>
@@ -128,7 +128,11 @@
         </div>
         <div class="chart-container-md"><canvas id="chart-asset-trend"></canvas></div>
 
-        <h4 class="nw-subtitle" title="每年的淨資產變化拆成股價漲跌、股利、儲蓄（算法同上方「今年」）。看得出錢是存出來的還是投資賺來的。">年度成長 ⓘ</h4>
+        <h4 class="nw-subtitle">年度成長</h4>
+        <p class="form-hint nw-legend">每年淨資產多了多少，拆成三塊：<br>
+          <b>股價漲跌</b>：手上股票漲跌賺賠的錢（拿現金買股票不算賺）<br>
+          <b>股利</b>：領到的現金股利<br>
+          <b>儲蓄</b>：其餘增加的部分，主要是薪水存下來的錢（也包含美金現金的匯差）</p>
         <div id="nw-years" class="nw-years"></div>
 
         <h4 class="nw-subtitle">資產快照</h4>
@@ -168,6 +172,7 @@
       <!-- Sub-tabs -->
       <div class="sub-tabs" data-tour="stock-subtabs">
         <button class="sub-tab-btn active" data-subtab="holdings"><span class="i" data-icon="briefcase"></span>持倉總覽</button>
+        <button class="sub-tab-btn" data-subtab="performance"><span class="i" data-icon="trending"></span>績效</button>
         <button class="sub-tab-btn" data-subtab="portfolio"><span class="i" data-icon="pie"></span>組合分析</button>
         <button class="sub-tab-btn" data-subtab="realized"><span class="i" data-icon="dollar"></span>已實現損益</button>
         <button class="sub-tab-btn" data-subtab="transactions"><span class="i" data-icon="list"></span>交易紀錄</button>
@@ -231,12 +236,23 @@
               </tfoot>
             </table>
           </div>
-          <div class="table-footer">
-            <span>年化報酬率 (XIRR，含已實現損益與股利，外幣以現行匯率換算): <strong id="xirr-all">--</strong></span>
-            <span style="margin-left:16px">台股 <strong id="xirr-tw">--</strong></span>
-            <span style="margin-left:16px">美股 <strong id="xirr-us">--</strong></span>
-          </div>
         </div>
+      </div>
+
+      <!-- 績效 Sub-tab: how the holdings did over time -->
+      <div id="subtab-performance" class="subtab-content">
+        <div class="card">
+          <div class="card-header">
+            <h3 title="買入為現金流出，賣出與股利為流入，今天的持股市值為最後一筆流入；求出讓折現總和為 0 的年利率。&#10;範圍為第一筆交易至今的累計，外幣以現行匯率換算。">累計年化報酬（XIRR）ⓘ</h3>
+          </div>
+          <div class="xirr-row">
+            <span>全部 <strong id="xirr-all">--</strong></span>
+            <span>台股 <strong id="xirr-tw">--</strong></span>
+            <span>美股 <strong id="xirr-us">--</strong></span>
+          </div>
+          <p class="form-hint">含已實現損益與股利，算的是你實際投入的錢賺了多少（受買賣時點影響）；下方的時間加權報酬則不受時點影響，適合和大盤比。</p>
+        </div>
+
         <div class="card" id="holdings-trend-card">
           <div class="card-header">
             <h3>市值與損益走勢</h3>

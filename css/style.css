@@ -2184,6 +2184,7 @@ body[data-tab="expenses"] .fab { display: flex; }
 
 .nw-periods { width: fit-content; margin-bottom: 10px; }
 .nw-subtitle { margin: 20px 0 10px; font-size: 0.95rem; font-weight: 600; color: var(--text-heading); }
+.nw-legend { margin: -4px 0 10px; line-height: 1.7; }
 .nw-year { padding: 10px 0; border-top: 1px solid var(--border-color); }
 .nw-year:first-child { border-top: none; padding-top: 0; }
 .nw-year-head { display: flex; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
@@ -2194,3 +2195,6 @@ body[data-tab="expenses"] .fab { display: flex; }
   .dash-stats-2 { grid-template-columns: minmax(0, 1fr); }
   .dash-alert { flex-wrap: wrap; }
 }
+
+.xirr-row { display: flex; flex-wrap: wrap; gap: 6px 24px; font-size: 1rem; }
+.xirr-row strong { font-size: 1.15rem; }
