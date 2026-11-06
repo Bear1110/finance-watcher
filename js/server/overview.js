@@ -12,7 +12,7 @@ import { portfolioStats, ttmDividendsTWD } from './portfolio.js';
 /**
  * Net worth change from base to end, split into 股價 (stock value change − net buys: cash turned
  * into stock isn't a gain), 股利 (dividends received), 其他資產 (the change in their filled-in value,
- * when counted) and 儲蓄 (the rest: money saved, plus FX on cash and anything unrecorded). 儲蓄 is
+ * when counted) and 存入與其他 (the rest: money saved or given, FX on cash, anything unrecorded). It is
  * the remainder on purpose: trades and dividends are recorded reliably, 收支 often isn't.
  * base / end: { date, created_at?, stock_value_twd, total, other? } with total = net worth.
  */

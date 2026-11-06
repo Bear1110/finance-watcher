@@ -600,12 +600,12 @@ function renderNetWorthChart() {
   });
 }
 
-/** A growthBetween result (js/server/overview.js) as colored parts: 股價 / 股利 / 儲蓄. */
+/** A growthBetween result (js/server/overview.js) as colored parts: 股價 / 股利 / (其他資產) / 存入與其他. */
 const GROWTH_PARTS = [
   { key: 'price', label: '股價漲跌', desc: '手上股票漲跌賺賠的錢（拿現金買股票不算賺）' },
   { key: 'dividends', label: '股利', desc: '領到的現金股利', color: 'var(--yellow)' },
   { key: 'other', label: '其他資產', desc: '你在設定填的房子、車子等的價值變化', color: '#94a3b8' },
-  { key: 'savings', label: '儲蓄', desc: '其餘增加的部分，主要是薪水存下來的錢（也包含美金現金的匯差）', color: 'var(--accent)' },
+  { key: 'savings', label: '存入與其他', desc: '不是投資賺來的增加：存下的薪水、別人給的錢、美金現金的匯差等（替別人付出去的錢會讓它變少）', color: 'var(--accent)' },
 ];
 /** 其他資產 only shows when counted and present */
 const showOther = () => !!(_overview && _overview.parts.other > 0) || (_overview?.years || []).some(y => y.other);
