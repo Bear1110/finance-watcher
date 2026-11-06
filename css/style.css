@@ -33,6 +33,13 @@
   --series-income: #4e8cff;
   --series-expense: #d97330;
   --red-bg: rgba(248, 113, 113, 0.1);
+
+  /* Market direction: up / down. Default green up, red down; 設定 › 顯示 flips it for the
+     Taiwan / Asia convention (red up, green down) via <html data-updown="red-up">. */
+  --up-rgb: 52, 211, 153;
+  --down-rgb: 248, 113, 113;
+  --up: rgb(var(--up-rgb));
+  --down: rgb(var(--down-rgb));
   --yellow: #fbbf24;
   --yellow-bg: rgba(251, 191, 36, 0.1);
 
@@ -418,19 +425,25 @@ tfoot td {
 }
 
 /* --- Color Coding --- */
-.positive { color: var(--green) !important; }
-.negative { color: var(--red) !important; }
+:root[data-updown="red-up"] {
+  --up-rgb: 248, 113, 113;
+  --down-rgb: 52, 211, 153;
+}
+
+.positive { color: var(--up) !important; }
+.negative { color: var(--down) !important; }
+/* Buy / sell follow the same convention as brokers do (buy in the "up" color) */
 .tag-buy {
-  background: var(--green-bg);
-  color: var(--green);
+  background: rgba(var(--up-rgb), 0.1);
+  color: var(--up);
   padding: 0.15rem 0.5rem;
   border-radius: 3px;
   font-weight: 600;
   font-size: 0.82rem;
 }
 .tag-sell {
-  background: var(--red-bg);
-  color: var(--red);
+  background: rgba(var(--down-rgb), 0.1);
+  color: var(--down);
   padding: 0.15rem 0.5rem;
   border-radius: 3px;
   font-weight: 600;
@@ -571,23 +584,23 @@ select option {
 }
 
 .btn-buy {
-  background: var(--green);
+  background: var(--up);
   color: #fff;
   border: 1px solid transparent; /* same box size as outlined buttons */
   font-weight: 600;
 }
 .btn-buy:hover {
-  background: #2bb585;
+  filter: brightness(0.9);
 }
 
 .btn-sell {
-  background: var(--red);
+  background: var(--down);
   color: #fff;
   border: 1px solid transparent;
   font-weight: 600;
 }
 .btn-sell:hover {
-  background: #e05050;
+  filter: brightness(0.9);
 }
 
 .action-buttons {
@@ -2197,3 +2210,5 @@ body[data-tab="expenses"] .fab { display: flex; }
 .perf-guide ul { margin: 0 0 8px; padding-left: 1.1rem; line-height: 1.7; font-size: 0.9rem; color: var(--text-secondary); }
 .perf-guide b { color: var(--text-primary); }
 .perf-guide .form-hint { margin: 0; }
+
+.updown-swatch { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: rgb(var(--c)); vertical-align: middle; }

@@ -611,7 +611,7 @@ const GROWTH_PARTS = [
 const showOther = () => !!(_overview && _overview.parts.other > 0) || (_overview?.years || []).some(y => y.other);
 const growthPartList = () => GROWTH_PARTS.filter(p => p.key !== 'other' || showOther());
 function growthParts(g) {
-  return growthPartList().map(p => ({ ...p, v: g[p.key] || 0, color: p.color || (g.price < 0 ? 'var(--red)' : 'var(--green)') }));
+  return growthPartList().map(p => ({ ...p, v: g[p.key] || 0, color: p.color || (g.price < 0 ? 'var(--down)' : 'var(--up)') }));
 }
 /** The parts explained, as HTML lines or a plain-text tooltip. */
 const growthLegend = (html) => growthPartList().map(p => html ? `<b>${p.label}</b>：${p.desc}` : `${p.label}：${p.desc}`).join(html ? '<br>' : '\n');
@@ -2039,8 +2039,7 @@ function renderHeatmap(seg) {
   const cell = (v, cap) => {
     if (v == null) return '<td class="heatmap-empty"></td>';
     const a = Math.min(Math.abs(v) / cap, 1) * 0.55 + 0.08;
-    const rgb = v >= 0 ? '52,211,153' : '248,113,113';
-    return `<td style="background:rgba(${rgb},${a.toFixed(2)})">${fmtPct(v)}</td>`;
+    return `<td style="background:rgba(var(${v >= 0 ? '--up-rgb' : '--down-rgb'}),${a.toFixed(2)})">${fmtPct(v)}</td>`;
   };
   body.innerHTML = years.map(y =>
     `<tr><td><strong>${y.year}</strong></td>${y.months.map(v => cell(v, 10)).join('')}${cell(y.total, 30)}</tr>`).join('');
@@ -3315,7 +3314,7 @@ async function loadSettings() {
 
     // Font size buttons
     const saved = localStorage.getItem('fontSize') || 'm';
-    document.querySelectorAll('.font-btn').forEach(b => {
+    document.querySelectorAll('.font-btn[onclick^="setFontSize"]').forEach(b => {
       b.classList.toggle('active', b.textContent.trim().toLowerCase().startsWith(saved));
     });
   } catch (err) {
@@ -3426,7 +3425,7 @@ function setFontSize(size) {
   document.documentElement.className = document.documentElement.className.replace(/font-[sml]/g, '').trim();
   document.documentElement.classList.add('font-' + size);
   localStorage.setItem('fontSize', size);
-  document.querySelectorAll('.font-btn').forEach(b => {
+  document.querySelectorAll('.font-btn[onclick^="setFontSize"]').forEach(b => {
     b.classList.toggle('active', b.textContent.trim().toLowerCase() === size);
   });
 }
@@ -3434,6 +3433,20 @@ function setFontSize(size) {
 function initFontSize() {
   const saved = localStorage.getItem('fontSize') || 'm';
   setFontSize(saved);
+}
+
+/** Up/down colors: 'green-up' (default) or 'red-up' (Taiwan / Asia). Pure CSS: <html data-updown>. */
+function setUpDown(mode) {
+  if (mode === 'red-up') document.documentElement.dataset.updown = 'red-up';
+  else delete document.documentElement.dataset.updown;
+  try { localStorage.setItem('upDown', mode); } catch (e) { /* ignore */ }
+  document.querySelectorAll('#updown-ctrl .font-btn').forEach(b => b.classList.toggle('active', b.dataset.updown === mode));
+}
+
+function initUpDown() {
+  let saved = null;
+  try { saved = localStorage.getItem('upDown'); } catch (e) { /* ignore */ }
+  setUpDown(saved || 'green-up');
 }
 
 /**
@@ -3453,6 +3466,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Module scripts run before DOMContentLoaded, so no LocalAPI here means main.js failed
   if (!window.LocalAPI) return showLoadFailure();
   initFontSize();
+  initUpDown();
   applyIcons();
   initTapTips();
   applyPrivacyUI();

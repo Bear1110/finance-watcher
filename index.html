@@ -979,6 +979,13 @@
             <button class="font-btn" onclick="setFontSize('l')">L 大</button>
           </div>
         </div>
+        <div class="settings-row">
+          <div><strong>漲跌顏色</strong><p class="form-hint">台股習慣紅漲綠跌，美股習慣綠漲紅跌。只影響這台裝置。</p></div>
+          <div class="font-size-ctrl-settings" id="updown-ctrl">
+            <button class="font-btn" data-updown="red-up" onclick="setUpDown('red-up')"><span class="updown-swatch" style="--c: 248, 113, 113"></span>紅漲綠跌</button>
+            <button class="font-btn" data-updown="green-up" onclick="setUpDown('green-up')"><span class="updown-swatch" style="--c: 52, 211, 153"></span>綠漲紅跌</button>
+          </div>
+        </div>
       </div>
 
       <div class="card" data-tour="backup">
