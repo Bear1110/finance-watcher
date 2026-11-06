@@ -226,6 +226,16 @@
 
       <!-- 績效 Sub-tab: how the holdings did over time -->
       <div id="subtab-performance" class="subtab-content">
+        <div class="card perf-guide">
+          <h3>怎麼看這一頁</h3>
+          <ul>
+            <li><b>我的錢一年大約賺幾 %？</b> → 累計年化報酬（XIRR），可以想成存款利率；正的就是整體有賺。</li>
+            <li><b>實際賺了多少錢？</b> → 市值與損益走勢、報酬率下面的 NT$ 金額。</li>
+            <li><b>股票本身表現好不好、有沒有贏大盤？</b> → 投資績效的 %、月報酬。它只看持股本身的漲跌（含股利、匯率），不受你什麼時候加碼影響。</li>
+          </ul>
+          <p class="form-hint">% 和金額對不上通常是時機：大筆錢在下跌前才進場，股票本身可能還是漲的（% 為正），你的錢卻是虧的（金額為負）。</p>
+        </div>
+
         <div class="card">
           <div class="card-header">
             <h3 title="買入為現金流出，賣出與股利為流入，今天的持股市值為最後一筆流入；求出讓折現總和為 0 的年利率。&#10;範圍為第一筆交易至今的累計，外幣以現行匯率換算。">累計年化報酬（XIRR）ⓘ</h3>
@@ -235,7 +245,7 @@
             <div><span>台股</span><strong id="xirr-tw">--</strong></div>
             <div><span>美股</span><strong id="xirr-us">--</strong></div>
           </div>
-          <p class="form-hint">含已實現損益與股利，算的是你實際投入的錢賺了多少（受買賣時點影響）；下方的時間加權報酬則不受時點影響，適合和大盤比。</p>
+          <p class="form-hint">含已實現損益與股利，從第一筆交易算到今天。</p>
         </div>
 
         <div class="card" id="holdings-trend-card">
