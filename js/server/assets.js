@@ -30,15 +30,21 @@ async function autoFill(s) {
   if (s.total_asset === 0) s.total_asset = s.cash_twd + s.cash_usd * s.usd_twd_rate + s.stock_value_twd;
 }
 
-function list() {
+/** Snapshots, newest first. */
+export function listSnapshots() {
   return db.all('asset_snapshots')
     .sort((a, b) => cmp(b.date, a.date) || cmp(b.created_at, a.created_at))
     .map(assetJSON);
 }
 
 /** Is a dated record newer than the snapshot? Same-day ties go by entry time. */
-const afterSnapshot = (r, snap) => r.date > snap.date
+export const afterSnapshot = (r, snap) => r.date > snap.date
   || (r.date === snap.date && !!r.created_at && !!snap.created_at && r.created_at > snap.created_at);
+
+/** Cash a trade moves, in its own currency: a buy pays price + fee, a sell gets price − fee − tax. */
+export const tradeCash = (t) => (t.action === 'BUY'
+  ? -(t.shares * t.price + (t.fee || 0))
+  : t.shares * t.price - (t.fee || 0) - (t.tax || 0));
 
 /**
  * The latest snapshot's cash carried forward by what the app records since: own trades
@@ -47,13 +53,12 @@ const afterSnapshot = (r, snap) => r.date > snap.date
  * Returns null without snapshots; amounts in native currency.
  */
 export function carriedCash() {
-  const [snap] = list();
+  const [snap] = listSnapshots();
   if (!snap) return null;
   const out = { date: snap.date, twd: snap.cash_twd || 0, usd: snap.cash_usd || 0, trades: 0, dividends: 0, moved_twd: 0, moved_usd: 0 };
   const add = (currency, n) => { out[currency === 'USD' ? 'moved_usd' : 'moved_twd'] += n; };
   for (const t of db.where('stock_transactions', (t) => t.account_id == null && !t.is_transfer && afterSnapshot(t, snap))) {
-    const gross = t.shares * t.price;
-    add(t.currency, t.action === 'BUY' ? -(gross + (t.fee || 0)) : gross - (t.fee || 0) - (t.tax || 0));
+    add(t.currency, tradeCash(t));
     out.trades++;
   }
   for (const d of db.where('dividends', (d) => afterSnapshot(d, snap))) {
@@ -80,7 +85,7 @@ async function update(req) {
   return { status: 'updated' };
 }
 
-route('GET', '/api/assets', list);
+route('GET', '/api/assets', listSnapshots);
 route('GET', '/api/assets/cash', carriedCash);
 route('POST', '/api/assets', create);
 route('PUT', '/api/assets/{id}', update);

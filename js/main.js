@@ -13,6 +13,7 @@ import { BACKUP_FORMAT } from './server/settings.js';
 import './server/assets.js';
 import './server/stocks.js';
 import './server/portfolio.js';
+import './server/overview.js';
 import './server/export.js';
 import './server/twr.js';
 import './server/performance.js';

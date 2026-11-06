@@ -410,14 +410,13 @@ let _carriedCash = null; // /api/assets/cash: the latest snapshot's cash carried
 
 async function loadDashboard() {
   try {
-    const [assets, cash, stocks, transactions, expenses, xirr, dividends] = await Promise.all([
+    const [assets, cash, stocks, transactions, xirr, overview] = await Promise.all([
       api('/api/assets').catch(() => []),
       api('/api/assets/cash').catch(() => null),
       api('/api/stocks').catch(() => ({ holdings: [], total_value_twd: 0 })),
       api('/api/transactions').catch(() => []),
-      api('/api/expenses').catch(() => []),
       api('/api/stocks/xirr').catch(() => ({})),
-      api('/api/dividends').catch(() => []),
+      api('/api/overview').catch(() => ({ years: [] })),
     ]);
 
     const assetList = Array.isArray(assets) ? assets : [];
@@ -460,12 +459,7 @@ async function loadDashboard() {
       document.getElementById('dash-growth').innerHTML = '';
     }
 
-    renderDashChangeStats({
-      assetList, latest, rate, liveNetWorth, txList, xirr,
-      twHoldings, usHoldings, stockValue: currentStockValue,
-      expenses: Array.isArray(expenses) ? expenses : [],
-      dividends: Array.isArray(dividends) ? dividends : [],
-    });
+    renderDashChangeStats({ twHoldings, usHoldings, stockValue: currentStockValue, xirr, year: overview.years.find(y => y.current) });
     loadPerformance(); // separate request: the first run fetches price history
     loadDataCheckBadge();
 
@@ -726,6 +720,15 @@ function renderAssetTrendChart(assets) {
   });
 }
 
+/** A growthBetween result (js/server/overview.js) as colored parts: 股價 / 股利 / 儲蓄. */
+function growthParts(g) {
+  return [
+    { label: '股價漲跌', v: g.price, color: g.price < 0 ? 'var(--red)' : 'var(--green)' },
+    { label: '股利', v: g.dividends, color: 'var(--yellow)' },
+    { label: '儲蓄', v: g.savings, color: 'var(--accent)' },
+  ];
+}
+
 /** Whole days from a YYYY-MM-DD date to today (local time). */
 function daysSince(d) {
   const [y, m, day] = d.split('-').map(Number);
@@ -826,7 +829,7 @@ function toggleSnapshotHistory() {
 }
 
 /** Dashboard change cards: today's P&L, YTD, YTD change sources, XIRR. Formulas are in each label's tooltip in index.html. */
-function renderDashChangeStats({ assetList, latest, rate, liveNetWorth, twHoldings, usHoldings, stockValue, txList, expenses, dividends, xirr }) {
+function renderDashChangeStats({ twHoldings, usHoldings, stockValue, xirr, year }) {
   const setPL = (id, n, text) => {
     const el = document.getElementById(id);
     el.className = 'stat-value ' + plClass(n);
@@ -845,47 +848,21 @@ function renderDashChangeStats({ assetList, latest, rate, liveNetWorth, twHoldin
     setSub('dash-day-pl-sub', `台股 <span class="${plClass(twDay)}">${fmtPL(twDay)}</span> · 美股 <span class="${plClass(usDay)}">${fmtPL(usDay)}</span>`);
   }
 
-  // Baseline: last snapshot on/before Jan 1, else the earliest snapshot this year (assetList is newest first)
-  const yearStart = `${new Date().getFullYear()}-01-01`;
-  const base = assetList.find(a => a.date <= yearStart) || assetList.findLast(a => a.date >= yearStart);
-  if (!latest || !base || !(base.total_asset > 0)) {
+  // 2–3. This year (from /api/overview: base snapshot → today), split by source
+  if (!year || !(year.start > 0)) {
     setSub('dash-ytd-sub', '需要至少一筆今年以前或今年的快照');
   } else {
-    // 2. YTD
-    const ytd = liveNetWorth - base.total_asset;
-    setPL('dash-ytd', ytd, `${fmtPL(ytd)} (${fmtPct(ytd / base.total_asset * 100)})`);
-    setSub('dash-ytd-sub', `基準 ${base.date} · ${fmtTWD(base.total_asset)}`);
-
-    // 3. Sources, snapshot to snapshot; "other" is the remainder
-    const inclusive = base.date >= yearStart; // a Jan 1 snapshot still counts Jan 1 records
-    const inRange = e => (inclusive ? e.date >= base.date : e.date > base.date) && e.date <= latest.date;
-    const records = expenses.filter(e => inRange(e) && !(e.type === 'income' && e.category === '股利'));
-    const savings = records.reduce((s, e) => s + (e.type === 'income' ? e.amount_twd : -e.amount_twd), 0);
-    const divTotal = dividends.filter(inRange).reduce((s, d) => s + toTWD(d.amount, d.currency, rate), 0);
-    // Every recorded trade moves cash, imported-history SELLs included (unlike the ledger's countedTxns).
-    const netBuys = txList.filter(inRange).reduce((s, t) => s + (t.action === 'BUY'
-      ? toTWD(t.shares * t.price + t.fee, t.currency, rate)
-      : -toTWD(t.shares * t.price - t.fee - t.tax, t.currency, rate)), 0);
-    const price = (latest.stock_value_twd - base.stock_value_twd) - netBuys;
-    const change = latest.total_asset - base.total_asset;
-    const lastRecord = records.reduce((m, e) => (e.date > m ? e.date : m), '');
-
-    setPL('dash-source', change, fmtPL(change));
-    const parts = [
-      { label: '股價漲幅', v: price, color: price < 0 ? 'var(--red)' : 'var(--green)' },
-      { label: '股利', v: divTotal, color: 'var(--yellow)' },
-      { label: '儲蓄', v: savings, color: 'var(--accent)' },
-      { label: '其他', v: change - savings - divTotal - price, color: 'var(--text-muted)',
-        attrs: ' class="src-other" title="美金現金匯差、交易日與現行匯率差、收支未記等對不上的差額"' },
-    ];
+    setPL('dash-ytd', year.change, `${fmtPL(year.change)} (${fmtPct(year.change / year.start * 100)})`);
+    setSub('dash-ytd-sub', `基準 ${year.from} · ${fmtTWD(year.start)}`);
+    setPL('dash-source', year.change, fmtPL(year.change));
+    const parts = growthParts(year);
     const total = parts.reduce((s, p) => s + Math.abs(p.v), 0);
     document.getElementById('dash-source-bar').innerHTML = total > 0
       ? parts.map(p => `<span style="width:${Math.abs(p.v) / total * 100}%;background:${p.color}"></span>`).join('')
       : '';
     setSub('dash-source-sub', parts.map(p =>
-      `<span${p.attrs || ''}><span class="legend-dot src-dot" style="background:${p.color}"></span>${p.label} ${fmtPL(p.v)}</span>`).join('<br>'));
-    document.getElementById('dash-source').title =
-      `${base.date} → ${latest.date}${lastRecord ? `，收支記到 ${lastRecord}` : '，期間無收支紀錄'}`;
+      `<span><span class="legend-dot src-dot" style="background:${p.color}"></span>${p.label} ${fmtPL(p.v)}</span>`).join('<br>'));
+    document.getElementById('dash-source').title = `${year.from} → ${year.to}`;
   }
 
   // 4. XIRR (cumulative since first trade)
