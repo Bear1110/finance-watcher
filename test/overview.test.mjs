@@ -102,3 +102,21 @@ test('growthBetween: a change in 其他資產 is its own part, not savings', () 
   assert.equal(g.other, -500);
   assert.equal(g.savings, 400);
 });
+
+test('growthBetween: consecutive periods add up (same-day records go to exactly one period)', () => {
+  const a = snap('2026-01-01', 1000, 3000), b = snap('2026-03-01', 1500, 3700, '2026-03-01 10:00:00'), c = snap('2026-06-01', 1800, 4200);
+  const opts = {
+    trades: [
+      tx({ action: 'BUY', shares: 1, price: 100, date: '2026-03-01', created_at: '2026-03-01 09:00:00' }), // before b: first period
+      tx({ action: 'BUY', shares: 1, price: 200, date: '2026-03-01', created_at: '2026-03-01 11:00:00' }), // after b: second
+    ],
+    dividends: [{ amount: 10, currency: 'TWD', date: '2026-03-01', created_at: '2026-03-01 11:00:00' }],
+    rate: 30,
+  };
+  const ab = growthBetween(a, b, opts), bc = growthBetween(b, c, opts), ac = growthBetween(a, c, opts);
+  assert.equal(ab.price + bc.price, ac.price);
+  assert.equal(ab.dividends + bc.dividends, ac.dividends);
+  assert.equal(ab.savings + bc.savings, ac.savings);
+  assert.equal(ab.price, 500 - 100);
+  assert.equal(bc.price, 300 - 200);
+});

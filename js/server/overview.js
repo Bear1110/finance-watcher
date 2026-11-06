@@ -17,7 +17,8 @@ import { portfolioStats, ttmDividendsTWD } from './portfolio.js';
  * base / end: { date, created_at?, stock_value_twd, total, other? } with total = net worth.
  */
 export function growthBetween(base, end, { trades, dividends, rate }) {
-  const inRange = (r) => afterSnapshot(r, base) && r.date <= end.date;
+  // After base, up to end; a same-day record entered after a snapshot belongs to the next period
+  const inRange = (r) => afterSnapshot(r, base) && !afterSnapshot(r, end);
   // Imported positions count as buys here: their value appearing isn't a price gain.
   const netBuys = -trades.filter(inRange).reduce((s, t) => s + toTWD(tradeCash(t), t.currency, rate), 0);
   const price = end.stock_value_twd - base.stock_value_twd - netBuys;
