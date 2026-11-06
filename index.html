@@ -93,7 +93,7 @@
           <div class="stat-sub" id="dash-day-pl-sub"></div>
         </div>
         <div class="stat-card">
-          <div class="stat-label" title="現在淨資產（同上方大字：最新快照現金 + 即時股票市值）− 年初基準。&#10;年初基準 = 1/1 當天或之前最後一筆快照。">今年以來 ⓘ</div>
+          <div class="stat-label" title="現在淨資產（同上方大字：最新快照現金加計之後的股票買賣與股利 + 即時股票市值）− 年初基準。&#10;年初基準 = 1/1 當天或之前最後一筆快照。">今年以來 ⓘ</div>
           <div class="stat-value" id="dash-ytd">--</div>
           <div class="stat-sub" id="dash-ytd-sub"></div>
         </div>
@@ -209,30 +209,13 @@
       <!-- Snapshot management -->
       <div class="card" data-tour="snapshots">
         <div class="card-header">
-          <h3>資產快照紀錄</h3>
+          <h3>資產快照</h3>
           <button class="btn btn-primary btn-sm" onclick="openSnapshotModal()">+ 新增快照</button>
         </div>
-        <p class="form-hint" style="margin: 0 0 12px 0">只需填入現金金額，股票市值由系統自動擷取</p>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>日期</th>
-                <th>台幣現金</th>
-                <th>美金現金</th>
-                <th>台股市值</th>
-                <th>美股市值</th>
-                <th>匯率</th>
-                <th>總資產</th>
-                <th>備註</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody id="snapshot-body">
-              <tr><td colspan="9" class="empty-state">載入中...</td></tr>
-            </tbody>
-          </table>
-        </div>
+        <p class="form-hint snap-hint">填實際現金餘額，股票市值自動擷取。快照之後的股票買賣與股利會自動推算進現金，不用每次交易都記。</p>
+        <div id="snapshot-latest" class="snap-latest"><div class="empty-state">載入中...</div></div>
+        <button type="button" id="snapshot-toggle" class="btn btn-outline btn-sm snap-toggle" onclick="toggleSnapshotHistory()" aria-controls="snapshot-history" aria-expanded="false" hidden>全部紀錄</button>
+        <div id="snapshot-history" class="snap-history" hidden></div>
       </div>
     </section>
 
@@ -1136,6 +1119,7 @@
           <label>日期</label>
           <input type="date" name="date" required>
         </div>
+        <p class="form-hint" id="snapshot-cash-hint" hidden>現金已帶入推算值（上次快照＋之後的股票買賣與股利），請改成實際餘額。</p>
         <div class="form-group">
           <label>台幣現金 (NT$)</label>
           <input type="number" name="cash_twd" required min="0" step="any" placeholder="台幣活存+定存">

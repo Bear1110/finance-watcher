@@ -2115,3 +2115,62 @@ body[data-tab="expenses"] .fab { display: flex; }
 .export-ranges label[hidden] { display: none; }
 .export-custom { display: flex; align-items: center; gap: 6px; }
 .export-custom input { flex: 1; min-width: 0; }
+
+/* --- Asset snapshots (dashboard): latest up front, history by year on demand --- */
+.snap-hint { margin: 0 0 12px 0; }
+.snap-toggle[hidden], .snap-history[hidden], #snapshot-cash-hint[hidden] { display: none; }
+#snapshot-cash-hint { margin: 0 0 0.6rem; }
+.snap-latest { margin-bottom: 0.75rem; }
+.snap-latest-meta { color: var(--text-secondary); font-size: 0.85rem; }
+.snap-latest-total { font-size: 1.5rem; font-weight: 700; color: var(--text-heading); margin: 0.15rem 0; }
+.snap-latest-delta { color: var(--text-secondary); font-size: 0.9rem; }
+.snap-toggle { width: 100%; justify-content: center; }
+.snap-history { margin-top: 0.75rem; }
+
+.snap-year { border-top: 1px solid var(--border-color); }
+.snap-year > summary,
+.snap-row > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  cursor: pointer;
+  list-style: none;
+}
+.snap-year > summary::-webkit-details-marker,
+.snap-row > summary::-webkit-details-marker { display: none; }
+.snap-year > summary { padding: 0.7rem 0.25rem; flex-wrap: wrap; }
+.snap-year > summary::before,
+.snap-row > summary::before {
+  content: '›';
+  display: inline-block;
+  width: 0.7em;
+  color: var(--text-muted);
+  transition: transform var(--transition);
+}
+.snap-year[open] > summary::before,
+.snap-row[open] > summary::before { transform: rotate(90deg); }
+.snap-year-label { font-weight: 600; color: var(--text-heading); }
+.snap-year-meta { color: var(--text-secondary); font-size: 0.85rem; }
+
+.snap-row { border-top: 1px solid var(--border-color); margin-left: 0.25rem; }
+.snap-row > summary { padding: 0.6rem 0.25rem; }
+.snap-row > summary:hover { background: var(--bg-card-hover); }
+.snap-date { color: var(--text-secondary); font-variant-numeric: tabular-nums; min-width: 3em; }
+.snap-total { flex: 1; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.snap-delta { min-width: 4.8em; text-align: right; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+
+.snap-detail { padding: 0.25rem 0.25rem 0.75rem 1.45em; }
+.snap-detail dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.4rem 1rem;
+  margin: 0;
+}
+.snap-detail dt { color: var(--text-muted); font-size: 0.78rem; }
+.snap-detail dd { margin: 0; font-variant-numeric: tabular-nums; }
+.snap-note { margin: 0.5rem 0 0; color: var(--text-secondary); font-size: 0.85rem; white-space: pre-wrap; }
+.snap-actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.5rem; }
+
+@media (max-width: 599px) {
+  .snap-detail dl { grid-template-columns: 1fr 1fr; }
+}
