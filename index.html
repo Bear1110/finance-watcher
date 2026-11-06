@@ -944,15 +944,16 @@
       </div>
 
       <div class="card">
-        <div class="card-header"><h3><span class="i" data-icon="wallet"></span>負債</h3></div>
-        <p class="form-hint liab-hint">房貸、信貸、車貸等。填剩餘本金，偶爾更新一次就好；淨資產會扣掉，之後記的快照也會一起記下當時的負債。</p>
-        <div id="liab-list"></div>
-        <form id="liab-form" class="liab-form" onsubmit="submitLiability(event)">
-          <input type="hidden" name="liab_id">
-          <input type="text" name="liab_name" class="input-sm" placeholder="名稱，例如 房貸" required>
-          <input type="number" name="liab_balance" class="input-sm" placeholder="剩餘本金 NT$" min="0" step="any" required>
+        <div class="card-header"><h3><span class="i" data-icon="wallet"></span>其他資產</h3></div>
+        <p class="form-hint other-hint">房子、車子、勞退、保單解約金等不常變動的資產。自己填目前大約的價值，偶爾更新就好；之後記的快照會一起記下當時的總額。</p>
+        <label class="other-toggle"><input type="checkbox" id="other-include" onchange="saveGoalSetting('include_other_assets', this.checked ? '1' : '0')"> 計入總覽的淨資產（含走勢與年度成長）</label>
+        <div id="other-list"></div>
+        <form id="other-form" class="other-form" onsubmit="submitOtherAsset(event)">
+          <input type="hidden" name="other_id">
+          <input type="text" name="other_name" class="input-sm" placeholder="名稱，例如 自住房" required>
+          <input type="number" name="other_value" class="input-sm" placeholder="目前價值 NT$" min="0" step="any" required>
           <button type="submit" class="btn btn-primary btn-sm">新增</button>
-          <button type="button" class="btn btn-outline btn-sm" id="liab-cancel" onclick="resetLiabilityForm()" hidden>取消</button>
+          <button type="button" class="btn btn-outline btn-sm" id="other-cancel" onclick="resetOtherAssetForm()" hidden>取消</button>
         </form>
       </div>
 

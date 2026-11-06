@@ -20,7 +20,7 @@ test('growthBetween: savings is what price and dividends do not explain', () => 
   const netBuys = 301 - 48 + 60;
   assert.deepEqual(g, {
     from: '2026-01-01', to: '2026-06-30', start: 3000, change: 800,
-    price: 500 - netBuys, dividends: 70, savings: 800 - (500 - netBuys) - 70,
+    price: 500 - netBuys, dividends: 70, other: 0, savings: 800 - (500 - netBuys) - 70,
   });
 });
 
@@ -79,19 +79,26 @@ test('spendingStats: setting wins over records, cash runway', () => {
     { monthly_expense: null, source: null, recorded_monthly_expense: null, cash_months: null });
 });
 
-test('buildAlerts: no snapshot, concentration, low cash, stale 收支 and liabilities', () => {
+test('buildAlerts: no snapshot, concentration, low cash, stale 收支 and 其他資產', () => {
   const a = buildAlerts({
     today: '2026-11-06',
     latestSnapshot: null,
     topHolding: { symbol: '0050.TW', weight: 42, level: 'danger' },
     spending: { cash_months: 2.1 },
     month: { last_record: '2026-10-01' },
-    liabilities: [{ name: '房貸', updated: '2026-01-01' }, { name: '車貸', updated: '2026-10-01' }],
+    otherAssets: [{ name: '自住房', updated: '2025-10-01' }, { name: '車', updated: '2026-10-01' }],
   });
   assert.deepEqual(a.map((x) => x.action), ['snapshot', 'portfolio', 'settings', 'expenses', 'settings']);
   assert.match(a[1].text, /0050\.TW 佔股票 42%/);
-  assert.match(a[4].text, /房貸/);
+  assert.match(a[4].text, /自住房/);
   // a stale snapshot is left to the data check
   assert.deepEqual(buildAlerts({ today: '2026-11-06', latestSnapshot: { date: '2026-01-01' }, topHolding: { weight: 30, level: 'warn' },
-    spending: {}, month: { last_record: '' }, liabilities: [] }), []);
+    spending: {}, month: { last_record: '' }, otherAssets: [] }), []);
+});
+
+test('growthBetween: a change in 其他資產 is its own part, not savings', () => {
+  const g = growthBetween({ date: '2026-01-01', stock_value_twd: 0, total: 5000, other: 3000 },
+    { date: '2026-06-30', stock_value_twd: 0, total: 4900, other: 2500 }, { trades: [], dividends: [], rate: 30 });
+  assert.equal(g.other, -500);
+  assert.equal(g.savings, 400);
 });

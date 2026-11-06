@@ -15,7 +15,7 @@ const CACHE_KEY = 'fw.cache.v1';
 export const SCHEMA = {
   asset_snapshots: {
     synced: true,
-    columns: { id: 'int', date: 'text', cash_twd: 'real', cash_usd: 'real', stock_tw_value: 'real', stock_us_value: 'real', stock_value_twd: 'real', usd_twd_rate: 'real', total_asset: 'real', liabilities: 'real', income: 'real', expense: 'real', note: 'text', created_at: 'text' },
+    columns: { id: 'int', date: 'text', cash_twd: 'real', cash_usd: 'real', stock_tw_value: 'real', stock_us_value: 'real', stock_value_twd: 'real', usd_twd_rate: 'real', total_asset: 'real', other_assets: 'real', income: 'real', expense: 'real', note: 'text', created_at: 'text' },
     defaults: { usd_twd_rate: 32 },
   },
   stock_holdings: {
@@ -38,9 +38,9 @@ export const SCHEMA = {
     columns: { id: 'int', type: 'text', amount: 'real', currency: 'text', fx_rate: 'real', fx_pending: 'int', category: 'text', date: 'text', note: 'text', created_at: 'text' },
     defaults: { type: 'expense', currency: 'TWD' },
   },
-  liabilities: {
+  other_assets: {
     synced: true,
-    columns: { id: 'int', name: 'text', balance: 'real', updated: 'text', note: 'text', created_at: 'text' },
+    columns: { id: 'int', name: 'text', value: 'real', updated: 'text', note: 'text', created_at: 'text' },
     defaults: {},
   },
   managed_accounts: {

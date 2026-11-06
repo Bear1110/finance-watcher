@@ -11,6 +11,7 @@ import {
   computePerformance, perfSegments, benchValues, benchReturn, addDays, addDate, isDateOnly, goRound,
 } from './twr_calc.js';
 import { listSnapshots, netWorthSeries } from './assets.js';
+import { includeOtherAssets } from './other_assets.js';
 
 // How long cached daily closes are trusted before the last week is refetched
 // (the latest bar may have been an intraday price).
@@ -280,7 +281,7 @@ async function performance() {
   series.realized = realized;
   series.bench = benchOut;
   series.fx = res.fx.slice(o).map(round4);
-  series.net_worth = netWorthSeries(series, [...listSnapshots()].reverse());
+  series.net_worth = netWorthSeries(series, [...listSnapshots()].reverse(), includeOtherAssets());
 
   const monthly = {};
   for (const seg of perfSegments) monthly[seg] = res.monthlyReturns(seg, o);

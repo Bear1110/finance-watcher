@@ -2132,14 +2132,16 @@ body[data-tab="expenses"] .fab { display: flex; }
 .pf-rebalance p { margin: 0 0 0.4rem; }
 .pf-rebalance-list { margin: 0 0 0.5rem; padding-left: 1.2rem; line-height: 1.7; }
 
-/* --- Settings › 財務目標 / 負債 --- */
+/* --- Settings › 生活費 / 其他資產 --- */
 .settings-input { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--text-secondary); }
 .settings-input input { width: 8em; }
-.liab-hint { margin: 0 0 4px; }
-.liab-actions { display: flex; align-items: center; gap: 0.5rem; }
-.liab-balance { font-weight: 600; font-variant-numeric: tabular-nums; margin-right: 0.25rem; }
-.liab-form { display: flex; flex-wrap: wrap; gap: 0.5rem; padding-top: 12px; border-top: 1px solid var(--border-color); }
-.liab-form input[type=text], .liab-form input[type=number] { flex: 1 1 8em; }
+.other-hint { margin: 0 0 8px; }
+.other-toggle { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; color: var(--text-primary); cursor: pointer; }
+.other-toggle input[type=checkbox] { width: auto !important; flex: none; margin: 0; }
+.other-actions { display: flex; align-items: center; gap: 0.5rem; }
+.other-value { font-weight: 600; font-variant-numeric: tabular-nums; margin-right: 0.25rem; }
+.other-form { display: flex; flex-wrap: wrap; gap: 0.5rem; padding-top: 12px; border-top: 1px solid var(--border-color); }
+.other-form input[type=text], .other-form input[type=number] { flex: 1 1 8em; }
 
 /* --- 總覽 --- */
 .dash-alerts { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }

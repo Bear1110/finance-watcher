@@ -5,16 +5,16 @@ import { route } from './router.js';
 import { storedUSDTWDRate, toTWD, daysBetween } from './util.js';
 import { listSnapshots, afterSnapshot, tradeCash, carriedCash, netWorthOf } from './assets.js';
 import { listHoldings } from './stocks.js';
-import { liabilitiesTotal } from './liabilities.js';
+import { otherAssetsTotal, includeOtherAssets } from './other_assets.js';
 import { expenseTWD } from './expenses.js';
 import { portfolioStats, ttmDividendsTWD } from './portfolio.js';
 
 /**
  * Net worth change from base to end, split into 股價 (stock value change − net buys: cash turned
- * into stock isn't a gain), 股利 (dividends received) and 儲蓄 (the rest: money saved, plus FX on
- * cash and anything unrecorded). 儲蓄 is the remainder on purpose: trades and dividends are
- * recorded reliably, 收支 often isn't.
- * base / end: { date, created_at?, stock_value_twd, total } with total = net worth.
+ * into stock isn't a gain), 股利 (dividends received), 其他資產 (the change in their filled-in value,
+ * when counted) and 儲蓄 (the rest: money saved, plus FX on cash and anything unrecorded). 儲蓄 is
+ * the remainder on purpose: trades and dividends are recorded reliably, 收支 often isn't.
+ * base / end: { date, created_at?, stock_value_twd, total, other? } with total = net worth.
  */
 export function growthBetween(base, end, { trades, dividends, rate }) {
   const inRange = (r) => afterSnapshot(r, base) && r.date <= end.date;
@@ -22,8 +22,9 @@ export function growthBetween(base, end, { trades, dividends, rate }) {
   const netBuys = -trades.filter(inRange).reduce((s, t) => s + toTWD(tradeCash(t), t.currency, rate), 0);
   const price = end.stock_value_twd - base.stock_value_twd - netBuys;
   const div = dividends.filter(inRange).reduce((s, d) => s + toTWD(d.amount || 0, d.currency, rate), 0);
+  const other = (end.other || 0) - (base.other || 0);
   const change = end.total - base.total;
-  return { from: base.date, to: end.date, start: base.total, change, price, dividends: div, savings: change - price - div };
+  return { from: base.date, to: end.date, start: base.total, change, price, dividends: div, other, savings: change - price - div - other };
 }
 
 /**
@@ -113,7 +114,7 @@ export function spendingStats({ cashTWD, setting, recorded }) {
  * Things worth acting on, most important first. Each: { level: 'warn'|'info', text, action }.
  * A stale snapshot is the data check's job (/api/data-check); the dashboard shows its warnings too.
  */
-export function buildAlerts({ today, latestSnapshot, topHolding, spending, month, liabilities }) {
+export function buildAlerts({ today, latestSnapshot, topHolding, spending, month, otherAssets }) {
   const out = [];
   if (!latestSnapshot) {
     out.push({ level: 'info', text: '還沒有資產快照：記一筆現金餘額，才算得出淨資產', action: 'snapshot' });
@@ -128,9 +129,9 @@ export function buildAlerts({ today, latestSnapshot, topHolding, spending, month
     const days = daysBetween(month.last_record, today);
     if (days > 14) out.push({ level: 'info', text: `收支已經 ${days} 天沒記`, action: 'expenses' });
   }
-  for (const l of liabilities) {
-    const days = l.updated ? daysBetween(l.updated, today) : Infinity;
-    if (days > 180) out.push({ level: 'info', text: `「${l.name}」的剩餘本金超過半年沒更新`, action: 'settings' });
+  for (const a of otherAssets) {
+    const days = a.updated ? daysBetween(a.updated, today) : Infinity;
+    if (days > 365) out.push({ level: 'info', text: `其他資產「${a.name}」的價值超過一年沒更新`, action: 'settings' });
   }
   return out;
 }
@@ -138,13 +139,14 @@ export function buildAlerts({ today, latestSnapshot, topHolding, spending, month
 route('GET', '/api/overview', async () => {
   const rate = storedUSDTWDRate();
   const today = db.today();
-  const snaps = listSnapshots().map((s) => ({ ...s, total: s.net_worth }));
+  const includeOther = includeOtherAssets();
+  const snaps = listSnapshots().map((s) => ({ ...s, total: s.net_worth, other: includeOther ? s.other_assets : 0 }));
   const cash = carriedCash(snaps[0]);
   const stocks = await listHoldings();
-  const debt = liabilitiesTotal();
-  const netWorth = cash ? netWorthOf({ cashTWD: cash.twd, cashUSD: cash.usd, rate, stocks: stocks.total_value_twd, liabilities: debt }) : null;
+  const other = includeOther ? otherAssetsTotal() : 0;
+  const netWorth = cash ? netWorthOf({ cashTWD: cash.twd, cashUSD: cash.usd, rate, stocks: stocks.total_value_twd, other }) : null;
   const ttmTWD = ttmDividendsTWD(rate);
-  const pf = portfolioStats({ holdings: stocks.holdings, ttmTWD, cash, rate, targetPct: null, liabilities: debt });
+  const pf = portfolioStats({ holdings: stocks.holdings, ttmTWD, cash, rate, targetPct: null, other });
 
   const expenses = db.all('expenses').map((e) => ({ ...e, amount_twd: expenseTWD(e) }));
   const month = monthSummary(expenses, today);
@@ -160,15 +162,15 @@ route('GET', '/api/overview', async () => {
     today,
     net_worth: netWorth,
     cash,
-    parts: { cash_twd: cash ? cash.twd : 0, cash_usd: cash ? cash.usd * rate : 0, tw: pf ? pf.split.tw : 0, us: pf ? pf.split.us : 0, liabilities: debt },
+    parts: { cash_twd: cash ? cash.twd : 0, cash_usd: cash ? cash.usd * rate : 0, tw: pf ? pf.split.tw : 0, us: pf ? pf.split.us : 0, other },
     day: stocks.holdings.length ? { pl, tw: dayPL('TW'), us: dayPL('US'), prev_value: stocks.total_value_twd - pl } : null,
-    years: cash ? yearlyGrowth(snaps, { date: today, stock_value_twd: stocks.total_value_twd, total: netWorth }, {
+    years: cash ? yearlyGrowth(snaps, { date: today, stock_value_twd: stocks.total_value_twd, total: netWorth, other }, {
       trades: db.where('stock_transactions', (t) => t.account_id == null),
       dividends: db.all('dividends'),
       rate,
     }) : [],
     month,
     spending,
-    alerts: buildAlerts({ today, latestSnapshot: snaps[0], topHolding: pf && pf.rows[0], spending, month, liabilities: db.all('liabilities') }),
+    alerts: buildAlerts({ today, latestSnapshot: snaps[0], topHolding: pf && pf.rows[0], spending, month, otherAssets: includeOther ? db.all('other_assets') : [] }),
   };
 });

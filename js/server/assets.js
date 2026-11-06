@@ -4,22 +4,23 @@ import * as db from './db.js';
 import { route } from './router.js';
 import { body, refreshAndPersistRate, cmp } from './util.js';
 import { portfolioValues } from './stocks.js';
-import { liabilitiesTotal } from './liabilities.js';
+import { otherAssetsTotal, includeOtherAssets } from './other_assets.js';
 
 const FIELDS = ['cash_twd', 'cash_usd', 'stock_tw_value', 'stock_us_value', 'stock_value_twd', 'usd_twd_rate', 'total_asset'];
 
 const assetJSON = (s) => ({
   id: s.id, date: s.date, cash_twd: s.cash_twd, cash_usd: s.cash_usd,
   stock_tw_value: s.stock_tw_value, stock_us_value: s.stock_us_value, stock_value_twd: s.stock_value_twd,
-  usd_twd_rate: s.usd_twd_rate, total_asset: s.total_asset, liabilities: s.liabilities || 0,
-  net_worth: s.total_asset - (s.liabilities || 0), note: s.note, created_at: s.created_at,
+  usd_twd_rate: s.usd_twd_rate, total_asset: s.total_asset, other_assets: s.other_assets || 0,
+  // total_asset is cash + stocks; 其他資產 join net worth when the setting says so
+  net_worth: s.total_asset + (includeOtherAssets() ? s.other_assets || 0 : 0), note: s.note, created_at: s.created_at,
 });
 
 function decode(req) {
   const b = body(req);
   const s = { date: b.date ? String(b.date) : '', note: b.note == null ? '' : String(b.note) };
   for (const f of FIELDS) s[f] = Number(b[f]) || 0;
-  if (b.liabilities != null) s.liabilities = Number(b.liabilities) || 0; // else: today's total on create, kept on edit
+  if (b.other_assets != null) s.other_assets = Number(b.other_assets) || 0; // else: today's total on create, kept on edit
   return s;
 }
 
@@ -45,21 +46,21 @@ export const afterSnapshot = (r, snap) => r.date > snap.date
   || (r.date === snap.date && !!r.created_at && !!snap.created_at && r.created_at > snap.created_at);
 
 /** Net worth in TWD: the one formula every page uses. */
-export const netWorthOf = ({ cashTWD, cashUSD, rate, stocks, liabilities }) => cashTWD + cashUSD * rate + stocks - liabilities;
+export const netWorthOf = ({ cashTWD, cashUSD, rate, stocks, other = 0 }) => cashTWD + cashUSD * rate + stocks + other;
 
 /**
  * Daily net worth aligned to the performance series' dates: rebuilt stock values, with cash and
- * liabilities from the snapshot on or before each day (null before the first snapshot).
+ * 其他資產 (when counted) from the snapshot on or before each day (null before the first snapshot).
  * snaps: chronological.
  */
-export function netWorthSeries({ dates, value, fx }, snaps) {
+export function netWorthSeries({ dates, value, fx }, snaps, includeOther = true) {
   let j = -1;
   return dates.map((d, i) => {
     while (j + 1 < snaps.length && snaps[j + 1].date <= d) j++;
     if (j < 0) return null;
     const s = snaps[j];
     return Math.round(netWorthOf({ cashTWD: s.cash_twd || 0, cashUSD: s.cash_usd || 0, rate: fx[i],
-      stocks: value.TW[i] + value.US[i], liabilities: s.liabilities || 0 }));
+      stocks: value.TW[i] + value.US[i], other: includeOther ? s.other_assets || 0 : 0 }));
   });
 }
 
@@ -94,7 +95,7 @@ export function carriedCash(snap = listSnapshots()[0]) {
 async function create(req) {
   const s = decode(req);
   if (!s.date) s.date = db.today();
-  s.liabilities ??= liabilitiesTotal();
+  s.other_assets ??= otherAssetsTotal();
   await autoFill(s);
   const row = db.insert('asset_snapshots', s);
   return { ...assetJSON(s), id: row.id, created_at: '' };

@@ -417,6 +417,7 @@ const COMP_PARTS = [
   { key: 'cash_usd', label: '美金現金', color: '#a78bfa' },
   { key: 'tw', label: '台股', color: '#34d399' },
   { key: 'us', label: '美股', color: '#fbbf24' },
+  { key: 'other', label: '其他資產', color: '#94a3b8' },
 ];
 
 /** 總覽: the numbers come from /api/overview (js/server/overview.js); this renders them. */
@@ -479,7 +480,7 @@ function renderHero(ov) {
   $('dash-comp-bar').innerHTML = segmentsHtml(parts);
   $('dash-comp-legend').innerHTML = parts.map(p =>
     `<span class="legend-item"><span class="legend-dot" style="background:${p.color}"></span>${p.label} ${(p.v / total * 100).toFixed(0)}%</span>`).join('') +
-    (ov.parts.liabilities > 0 ? `<span class="legend-item">負債 −${fmt(ov.parts.liabilities)}</span>` : '');
+    '';
 
   const c = ov.cash;
   const counted = [c.trades && `${c.trades} 筆交易`, c.dividends && `${c.dividends} 筆股利`].filter(Boolean);
@@ -526,7 +527,7 @@ function renderMonth(m, f) {
 }
 
 function renderGrowthYears(years) {
-  document.getElementById('nw-legend').innerHTML = `每年淨資產多了多少，拆成三塊：<br>${growthLegend(true)}`;
+  document.getElementById('nw-legend').innerHTML = `每年淨資產多了多少，拆成${showOther() ? '四' : '三'}塊：<br>${growthLegend(true)}`;
   document.getElementById('nw-years').innerHTML = years.length ? years.map(y => `<div class="nw-year">
       <div class="nw-year-head">
         <strong${y.partial ? ` title="從 ${y.from} 第一筆快照開始算"` : ''}>${y.year}${y.current ? '（至今）' : ''}${y.partial ? '*' : ''}</strong>
@@ -603,13 +604,17 @@ function renderNetWorthChart() {
 const GROWTH_PARTS = [
   { key: 'price', label: '股價漲跌', desc: '手上股票漲跌賺賠的錢（拿現金買股票不算賺）' },
   { key: 'dividends', label: '股利', desc: '領到的現金股利', color: 'var(--yellow)' },
+  { key: 'other', label: '其他資產', desc: '你在設定填的房子、車子等的價值變化', color: '#94a3b8' },
   { key: 'savings', label: '儲蓄', desc: '其餘增加的部分，主要是薪水存下來的錢（也包含美金現金的匯差）', color: 'var(--accent)' },
 ];
+/** 其他資產 only shows when counted and present */
+const showOther = () => !!(_overview && _overview.parts.other > 0) || (_overview?.years || []).some(y => y.other);
+const growthPartList = () => GROWTH_PARTS.filter(p => p.key !== 'other' || showOther());
 function growthParts(g) {
-  return GROWTH_PARTS.map(p => ({ ...p, v: g[p.key], color: p.color || (g.price < 0 ? 'var(--red)' : 'var(--green)') }));
+  return growthPartList().map(p => ({ ...p, v: g[p.key] || 0, color: p.color || (g.price < 0 ? 'var(--red)' : 'var(--green)') }));
 }
-/** The three parts explained, as HTML lines or a plain-text tooltip. */
-const growthLegend = (html) => GROWTH_PARTS.map(p => html ? `<b>${p.label}</b>：${p.desc}` : `${p.label}：${p.desc}`).join(html ? '<br>' : '\n');
+/** The parts explained, as HTML lines or a plain-text tooltip. */
+const growthLegend = (html) => growthPartList().map(p => html ? `<b>${p.label}</b>：${p.desc}` : `${p.label}：${p.desc}`).join(html ? '<br>' : '\n');
 
 const growthPartsText = (g) => growthParts(g).map(p => `${p.label} <span class="${plClass(p.v)}">${fmtPL(p.v)}</span>`).join(' · ');
 
@@ -3306,7 +3311,7 @@ async function loadSettings() {
     } catch (_) {}
 
     loadGoalSettings();
-    loadLiabilities();
+    loadOtherAssets();
 
     // Font size buttons
     const saved = localStorage.getItem('fontSize') || 'm';
@@ -3319,7 +3324,7 @@ async function loadSettings() {
 }
 
 // ============================================================
-// SECTION: Settings › 財務目標 / 負債
+// SECTION: Settings › 生活費 / 其他資產
 // ============================================================
 
 async function loadGoalSettings() {
@@ -3338,63 +3343,64 @@ async function saveGoalSetting(key, value) {
   }
 }
 
-let _liabilities = [];
-async function loadLiabilities() {
-  _liabilities = await api('/api/liabilities').catch(() => []);
-  const el = document.getElementById('liab-list');
-  el.innerHTML = _liabilities.length ? _liabilities.map(l => `
+let _otherAssets = [];
+async function loadOtherAssets() {
+  const [list, settings] = await Promise.all([api('/api/other-assets').catch(() => []), api('/api/settings').catch(() => ({}))]);
+  _otherAssets = list;
+  document.getElementById('other-include').checked = settings.include_other_assets !== '0';
+  document.getElementById('other-list').innerHTML = list.map(a => `
     <div class="settings-row">
-      <div><strong>${escapeHtml(l.name)}</strong><p class="form-hint">更新於 ${l.updated || '--'}</p></div>
-      <div class="liab-actions">
-        <span class="liab-balance">${fmtTWD(l.balance)}</span>
-        ${rowBtn('edit', `editLiability(${l.id})`)}
-        ${rowBtn('delete', `deleteLiability(${l.id})`)}
+      <div><strong>${escapeHtml(a.name)}</strong><p class="form-hint">更新於 ${a.updated || '--'}</p></div>
+      <div class="other-actions">
+        <span class="other-value">${fmtTWD(a.value)}</span>
+        ${rowBtn('edit', `editOtherAsset(${a.id})`)}
+        ${rowBtn('delete', `deleteOtherAsset(${a.id})`)}
       </div>
-    </div>`).join('') : '';
-  resetLiabilityForm();
+    </div>`).join('');
+  resetOtherAssetForm();
 }
 
-function resetLiabilityForm() {
-  const f = document.getElementById('liab-form');
+function resetOtherAssetForm() {
+  const f = document.getElementById('other-form');
   f.reset();
-  f.liab_id.value = '';
+  f.other_id.value = '';
   f.querySelector('[type=submit]').textContent = '新增';
-  document.getElementById('liab-cancel').hidden = true;
+  document.getElementById('other-cancel').hidden = true;
 }
 
-function editLiability(id) {
-  const l = _liabilities.find(x => x.id === id);
-  if (!l) return;
-  const f = document.getElementById('liab-form');
-  f.liab_id.value = l.id;
-  f.liab_name.value = l.name;
-  f.liab_balance.value = l.balance;
+function editOtherAsset(id) {
+  const a = _otherAssets.find(x => x.id === id);
+  if (!a) return;
+  const f = document.getElementById('other-form');
+  f.other_id.value = a.id;
+  f.other_name.value = a.name;
+  f.other_value.value = a.value;
   f.querySelector('[type=submit]').textContent = '更新';
-  document.getElementById('liab-cancel').hidden = false;
-  f.liab_balance.focus();
+  document.getElementById('other-cancel').hidden = false;
+  f.other_value.focus();
 }
 
-async function submitLiability(e) {
+async function submitOtherAsset(e) {
   e.preventDefault();
   const f = e.target;
-  const id = f.liab_id.value;
+  const id = f.other_id.value;
   try {
-    await api(id ? `/api/liabilities/${id}` : '/api/liabilities', {
+    await api(id ? `/api/other-assets/${id}` : '/api/other-assets', {
       method: id ? 'PUT' : 'POST',
-      body: JSON.stringify({ name: f.liab_name.value, balance: Number(f.liab_balance.value) }),
+      body: JSON.stringify({ name: f.other_name.value, value: Number(f.other_value.value) }),
     });
-    showToast(id ? '負債已更新' : '負債已新增', 'success');
-    loadLiabilities();
+    showToast(id ? '已更新' : '已新增', 'success');
+    loadOtherAssets();
   } catch (err) {
     showToast('儲存失敗: ' + err.message, 'error');
   }
 }
 
-async function deleteLiability(id) {
-  if (!confirm('確定要刪除這筆負債嗎？')) return;
+async function deleteOtherAsset(id) {
+  if (!confirm('確定要刪除這筆資產嗎？')) return;
   try {
-    await api(`/api/liabilities/${id}`, { method: 'DELETE' });
-    loadLiabilities();
+    await api(`/api/other-assets/${id}`, { method: 'DELETE' });
+    loadOtherAssets();
   } catch (err) {
     showToast('刪除失敗: ' + err.message, 'error');
   }

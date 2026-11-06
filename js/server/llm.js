@@ -143,7 +143,7 @@ export function generateFinancialPrompt(data) {
       sb += `- 台股市值: NT$ ${f(latest.stock_tw_value, 0)}\n`;
       sb += `- 美股市值: NT$ ${f(latest.stock_us_value, 0)}\n`;
       sb += `- **總資產: NT$ ${f(latest.total_asset, 0)}**\n`;
-      if (latest.liabilities > 0) sb += `- 負債: NT$ ${f(latest.liabilities, 0)}\n- **淨資產: NT$ ${f(latest.total_asset - latest.liabilities, 0)}**\n`;
+      if (latest.other_assets > 0) sb += `- 其他資產（不動產、車等，自填）: NT$ ${f(latest.other_assets, 0)}\n`;
       sb += '\n';
 
       const total = latest.total_asset;
