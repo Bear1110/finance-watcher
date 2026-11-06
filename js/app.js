@@ -437,7 +437,7 @@ async function loadDashboard() {
     renderRecentTx(transactions);
     // The data check is slower (price history): its warnings join once it is done
     renderAlerts(ov.alerts);
-    getDataCheck().then(d => renderAlerts([...ov.alerts, ...dataCheckWarnings(d).map(c => ({ level: 'warn', text: c.title, action: c.action }))])).catch(() => {});
+    getDataCheck().then(d => renderAlerts([...ov.alerts, ...dataCheckWarnings(d).map(c => ({ level: 'warn', text: c.title, action: c.action, items: c.items, detail: c.detail }))])).catch(() => {});
     renderNetWorthChart(); // snapshots now; daily once the performance series arrives
     getPerf().then(() => { renderNetWorthChart(); renderInvest(); }).catch(err => renderInvest(err));
   } catch (err) {
@@ -454,6 +454,8 @@ function renderAlerts(alerts) {
       <span class="dash-alert-icon" aria-hidden="true">${CHECK_ICONS[a.level]}</span>
       <span class="dash-alert-text">${escapeHtml(a.text)}</span>
       ${action ? `<button type="button" class="btn btn-outline btn-sm" onclick="CHECK_ACTIONS['${a.action}'][1]()">${action[0]}</button>` : ''}
+      ${a.items && a.items.length ? `<details class="dash-alert-items"><summary>是哪幾筆（${a.items.length}）</summary>
+        ${a.detail ? `<p>${escapeHtml(a.detail)}</p>` : ''}<ul>${a.items.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul></details>` : ''}
     </div>`;
   }).join('');
 }
@@ -488,7 +490,7 @@ function renderHero(ov) {
     `現金：${c.date} 快照${counted.length ? `＋之後 ${counted.join('、')}` : ''}`,
   ].filter(Boolean).join(' · ');
   sub.title = (d ? `今日：台股 ${fmtPL(d.tw)}、美股 ${fmtPL(d.us)}（最近一個交易日，不含匯率）\n` : '') +
-    (counted.length ? `現金調整：台幣 ${fmtPL(c.moved_twd)}、美金 ${fmtPLCur(c.moved_usd, 'USD')}（收支不算，下次記快照時對齊）` : '');
+    (counted.length ? `現金調整：台幣 ${fmtPL(c.moved_twd)}、美金 ${fmtPLCur(c.moved_usd, 'USD')}` : '');
 }
 
 /** "每月 NT$ 44,333，依收支估算" — where the monthly spending figure came from. */

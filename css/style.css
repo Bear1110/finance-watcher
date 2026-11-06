@@ -2158,6 +2158,11 @@ body[data-tab="expenses"] .fab { display: flex; }
 .dash-alert-warn .dash-alert-icon { color: var(--yellow); }
 .dash-alert-text { flex: 1; min-width: 0; }
 .dash-alert .btn { flex: none; }
+.dash-alert { flex-wrap: wrap; }
+.dash-alert-items { flex-basis: 100%; margin-left: 1.6rem; font-size: 0.85rem; color: var(--text-secondary); }
+.dash-alert-items summary { cursor: pointer; }
+.dash-alert-items p { margin: 6px 0 0; }
+.dash-alert-items ul { margin: 6px 0 0; padding-left: 1.1rem; line-height: 1.6; }
 
 .hero-year { margin-top: 6px; font-size: 1.05rem; font-weight: 600; color: var(--text-secondary); }
 .hero-year-parts { margin-top: 4px; font-size: 0.85rem; color: var(--text-secondary); }
