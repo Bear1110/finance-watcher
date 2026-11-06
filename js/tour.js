@@ -58,7 +58,7 @@ const TOUR_STEPS = [
     tab: 'stocks', subtab: 'holdings',
     target: 'stock-subtabs',
     title: '股票的其他分頁',
-    body: '<b>組合分析</b>：持股集中度、美元曝險、股利現金流、台美再平衡試算<br><b>已實現損益</b>：賣出賺賠與勝率<br><b>交易紀錄</b>：補登歷史交易<br><b>股利</b>：可以從 Yahoo 查除息紀錄，勾一勾就記好',
+    body: '<b>組合分析</b>：持股集中度、美元資產佔比、股利現金流、台美再平衡試算<br><b>已實現損益</b>：賣出賺賠與勝率<br><b>交易紀錄</b>：補登歷史交易<br><b>股利</b>：可以從 Yahoo 查除息紀錄，勾一勾就記好',
   },
   {
     tab: 'expenses',

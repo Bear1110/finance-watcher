@@ -1,4 +1,4 @@
-// 組合分析: concentration, USD exposure, dividend cash flow and TW/US rebalance.
+// 組合分析: concentration, USD share of net worth, dividend cash flow and TW/US rebalance.
 // The math is pure (portfolioStats / rebalance) so it is tested without quotes.
 
 import * as db from './db.js';

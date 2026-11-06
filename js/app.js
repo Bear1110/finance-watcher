@@ -1571,7 +1571,7 @@ function renderPortfolioStats(p) {
   set('pf-effective', `${p.effective.toFixed(1)} 檔`, `實際持有 ${p.rows.length} 檔；越小越集中`);
   const usdTotal = p.usd.stock + (p.usd.cash || 0);
   set('pf-usd', p.usd.pct == null ? '--' : `${p.usd.pct.toFixed(1)}%`,
-    `美股 ${fmtTWD(p.usd.stock)}${p.usd.cash == null ? '（尚無快照，只算股票）' : ` ＋ 美金現金 ${fmtTWD(p.usd.cash)}`}<br>台幣升值 1% ≈ ${fmtPL(-usdTotal / 100)}`);
+    `淨資產中美金計價的比例<br>美股 ${fmtTWD(p.usd.stock)}${p.usd.cash == null ? '（尚無快照，只算股票）' : ` ＋ 美金現金 ${fmtTWD(p.usd.cash)}`}<br>台幣升值 1% ≈ ${fmtPL(-usdTotal / 100)}`);
   const d = p.dividends;
   set('pf-div', fmtTWD(d.ttm), d.ttm > 0 ? `月均 ${fmtTWD(d.ttm / 12)} · 殖利率 ${fmtYield(d.yield_cost)}` : '近 12 個月沒有股利紀錄');
 }
