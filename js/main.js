@@ -7,7 +7,7 @@ import { badRequest, body } from './server/util.js';
 import { VERSION } from './version.js';
 import { watchForUpdate } from './update.js';
 import * as sync from './cloud/sync.js';
-import { BACKUP_FORMAT } from './server/settings.js';
+import { BACKUP_FORMAT, BACKUP_GROUPS } from './server/settings.js';
 
 // Route registration happens on import.
 import './server/assets.js';
@@ -15,7 +15,6 @@ import './server/stocks.js';
 import './server/portfolio.js';
 import './server/overview.js';
 import './server/other_assets.js';
-import './server/export.js';
 import './server/twr.js';
 import './server/performance.js';
 import './server/datacheck.js';
@@ -65,11 +64,16 @@ route('POST', '/api/import', async (req) => {
   return { status: 'imported', counts };
 });
 
-const TABLE_LABELS = {
-  asset_snapshots: '資產快照', stock_transactions: '股票交易', stock_holdings: '持倉', dividends: '股利',
-  expenses: '收支', other_assets: '其他資產', managed_accounts: '代管帳戶',
-  managed_snapshots: '代管快照', managed_cash_movements: '代管現金異動', settings: '設定',
-};
+/** Checkboxes for BACKUP_GROUPS; counts: { table: rows } shows how many each group holds. */
+function groupChecks(groups, counts) {
+  return groups.map((g) => {
+    const n = counts ? g.tables.reduce((s, t) => s + (counts[t] || 0), 0) : null;
+    return `<label class="llm-check"><input type="checkbox" value="${g.key}" checked> ${g.label}${n == null ? '' : `（${n} 筆）`}</label>`;
+  }).join('');
+}
+const checkedGroups = (box) => [...box.querySelectorAll('input:checked')].map((i) => i.value);
+
+document.getElementById('backup-groups').innerHTML = groupChecks(BACKUP_GROUPS);
 
 let pendingImport = null;
 
@@ -85,11 +89,12 @@ function onImportFile(e) {
       const data = JSON.parse(reader.result);
       const counts = validateBackup(data);
       pendingImport = data;
-      const items = Object.entries(counts).map(([t, n]) => `<li>${TABLE_LABELS[t] || t}：${n} 筆</li>`).join('');
-      box.innerHTML = `<div class="card" style="padding:12px">
+      const present = BACKUP_GROUPS.filter((g) => g.tables.some((t) => t in counts));
+      box.innerHTML = `<div class="card import-card">
         <div>${data.exported_at ? `匯出時間：${escapeHtml(data.exported_at)}` : ''}</div>
-        <ul style="margin:8px 0 8px 20px">${items}</ul>
-        <button type="button" class="btn btn-primary btn-sm" id="import-confirm">取代目前資料並匯入</button>
+        <p class="form-hint">檔案裡有這些資料，勾選要匯入的類別：</p>
+        <div class="llm-checkboxes" id="import-groups">${groupChecks(present, counts)}</div>
+        <button type="button" class="btn btn-primary btn-sm" id="import-confirm">取代所選類別並匯入</button>
       </div>`;
       document.getElementById('import-confirm').onclick = confirmImport;
     } catch (err) {
@@ -101,9 +106,15 @@ function onImportFile(e) {
 
 async function confirmImport() {
   if (!pendingImport) return;
-  if (!confirm('匯入會取代目前所有資料（登入時也會同步到試算表），確定嗎？')) return;
+  const keys = checkedGroups(document.getElementById('import-groups'));
+  if (!keys.length) return window.showToast?.('請至少勾選一類', 'error');
+  const chosen = BACKUP_GROUPS.filter((g) => keys.includes(g.key));
+  if (!confirm(`匯入會取代目前的「${chosen.map((g) => g.label).join('、')}」（登入時也會同步到試算表），確定嗎？`)) return;
+  // Send only the chosen groups' tables: the importer replaces exactly the tables it receives
+  const tables = {};
+  for (const g of chosen) for (const t of g.tables) if (t in pendingImport.tables) tables[t] = pendingImport.tables[t];
   try {
-    const res = await handle('/api/import', { method: 'POST', body: pendingImport });
+    const res = await handle('/api/import', { method: 'POST', body: { ...pendingImport, tables } });
     const total = Object.values(res.counts).reduce((a, b) => a + b, 0);
     window.showToast?.(`已匯入 ${total} 筆`, 'success');
     pendingImport = null;
@@ -187,7 +198,10 @@ function cloudSignOut() {
 }
 
 function downloadBackup() {
-  window.api('/api/settings/backup').catch((e) => window.showToast?.('備份失敗：' + e.message, 'error'));
+  const keys = checkedGroups(document.getElementById('backup-groups'));
+  if (!keys.length) return window.showToast?.('請至少勾選一類', 'error');
+  const qs = keys.length === BACKUP_GROUPS.length ? '' : `?groups=${keys.join(',')}`;
+  window.api('/api/settings/backup' + qs).catch((e) => window.showToast?.('匯出失敗：' + e.message, 'error'));
 }
 
 function clearLocalData() {

@@ -1,5 +1,4 @@
-// Cash dividends, Yahoo-based suggestions and
-// per-symbol totals. (/api/dividends/export lives in export.js.)
+// Cash dividends, Yahoo-based suggestions and per-symbol totals.
 
 import * as db from './db.js';
 import { route } from './router.js';

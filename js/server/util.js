@@ -123,6 +123,6 @@ export function body(req) {
 }
 
 /** A file to hand to the browser (CSV exports, backups). */
-export function download(filename, content, type = 'text/csv; charset=utf-8') {
+export function download(filename, content, type = 'application/json') {
   return { __download: true, filename, content, type };
 }

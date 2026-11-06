@@ -147,7 +147,7 @@ route('GET', '/api/overview', async () => {
   const other = countedOtherAssets();
   const netWorth = cash ? netWorthOf({ cashTWD: cash.twd, cashUSD: cash.usd, rate, stocks: stocks.total_value_twd, other }) : null;
   const ttmTWD = ttmDividendsTWD(rate);
-  const pf = portfolioStats({ holdings: stocks.holdings, ttmTWD, cash, rate, targetPct: null, other });
+  const pf = portfolioStats({ holdings: stocks.holdings, ttmTWD, cash, rate, other });
 
   const expenses = db.all('expenses').map((e) => ({ ...e, amount_twd: expenseTWD(e) }));
   const month = monthSummary(expenses, today);

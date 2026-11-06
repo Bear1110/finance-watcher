@@ -9,10 +9,26 @@ import { HttpError, badRequest, body, download, fmtLocal, persistRate, storedUSD
 export const BACKUP_FORMAT = 'finance-watcher-backup';
 export const BACKUP_VERSION = 1;
 
-/** Everything the user owns, in the format the importer accepts. */
-export function buildBackup() {
+/**
+ * What a backup can hold, in the groups people pick from. Tables that only make sense together
+ * stay together (holdings are derived from trades; a managed account owns its snapshots and cash).
+ */
+export const BACKUP_GROUPS = [
+  { key: 'assets', label: '資產快照', tables: ['asset_snapshots'] },
+  { key: 'stocks', label: '股票交易與持倉', tables: ['stock_transactions', 'stock_holdings'] },
+  { key: 'dividends', label: '股利', tables: ['dividends'] },
+  { key: 'expenses', label: '收支', tables: ['expenses'] },
+  { key: 'other_assets', label: '其他資產', tables: ['other_assets'] },
+  { key: 'managed', label: '代管帳戶', tables: ['managed_accounts', 'managed_snapshots', 'managed_cash_movements'] },
+  { key: 'settings', label: '設定', tables: ['settings'] },
+];
+
+/** The chosen groups (default: all) in the format the importer accepts. */
+export function buildBackup(keys = BACKUP_GROUPS.map((g) => g.key)) {
   const tables = {};
-  for (const name of db.SYNCED_TABLES) tables[name] = db.all(name);
+  for (const g of BACKUP_GROUPS) {
+    if (keys.includes(g.key)) for (const name of g.tables) tables[name] = db.all(name);
+  }
   return { format: BACKUP_FORMAT, version: BACKUP_VERSION, exported_at: new Date().toISOString(), tables };
 }
 
@@ -23,9 +39,15 @@ function getSettings() {
   return s;
 }
 
-function backup() {
+// ?groups=expenses,stocks (default: everything). A partial file is named after what it holds.
+function backup({ query }) {
+  const all = BACKUP_GROUPS.map((g) => g.key);
+  const keys = (query.get('groups') || '').split(',').filter((k) => all.includes(k));
+  const chosen = keys.length ? keys : all;
+  if (!keys.length && query.get('groups')) throw badRequest('沒有選任何資料');
   const stamp = fmtLocal(new Date()).replace(/[-:]/g, '').replace(' ', '-');
-  return download(`finance-watcher-backup-${stamp}.json`, JSON.stringify(buildBackup(), null, 2), 'application/json');
+  const name = chosen.length === all.length ? 'backup' : chosen.join('-');
+  return download(`finance-watcher-${name}-${stamp}.json`, JSON.stringify(buildBackup(chosen), null, 2));
 }
 
 async function refreshRate() {

@@ -1911,11 +1911,6 @@ body[data-tab="expenses"] .fab { display: flex; }
 .exp-income .e-amt { color: var(--green); }
 .exp-income .e-amt::before { content: '+'; }
 
-/* --- 收支 export dialog --- */
-.export-ranges { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
-.export-custom { display: flex; align-items: center; gap: 6px; }
-.export-custom input { flex: 1; min-width: 0; }
-
 /* --- Asset snapshots (dashboard): latest up front, history by year on demand --- */
 .snap-hint { margin: 0 0 12px 0; }
 #snapshot-cash-hint { margin: 0 0 0.6rem; }
@@ -1974,7 +1969,7 @@ body[data-tab="expenses"] .fab { display: flex; }
   .snap-detail dl { grid-template-columns: 1fr 1fr; }
 }
 
-/* --- 組合分析: weights, concentration, TW/US rebalance (TW/US colors match the trend chart) --- */
+/* --- 組合分析: weights, concentration (TW/US colors match the trend chart) --- */
 .pf-mkt-tw { --mkt: var(--green); }
 .pf-mkt-us { --mkt: var(--yellow); }
 .risk-warn { color: var(--yellow); font-weight: 600; }
@@ -2007,21 +2002,6 @@ body[data-tab="expenses"] .fab { display: flex; }
 }
 .pf-row-sub { font-size: 0.8rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 
-.pf-split-bar { height: 12px; border-radius: 6px; margin-top: 0; }
-.pf-split-bar span { background: var(--mkt); }
-.pf-split-legend {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  margin-top: 0.4rem;
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-}
-.pf-target { display: flex; align-items: center; gap: 0.4rem; margin: 1rem 0 0.75rem; color: var(--text-secondary); }
-.pf-target input { width: 5.5em; }
-.pf-rebalance p { margin: 0 0 0.4rem; }
-.pf-rebalance-list { margin: 0 0 0.5rem; padding-left: 1.2rem; line-height: 1.7; }
 
 /* --- Settings › 生活費 / 其他資產 --- */
 .settings-input { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--text-secondary); }
@@ -2090,3 +2070,10 @@ body[data-tab="expenses"] .fab { display: flex; }
 .perf-guide .form-hint { margin: 0; }
 
 .updown-swatch { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: rgb(var(--c)); vertical-align: middle; }
+
+/* Backup / import: which data groups, as compact wrapping chips */
+.backup-groups, #import-groups { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+.backup-groups .llm-check, #import-groups .llm-check { padding: 6px 10px; font-size: 0.85rem; gap: 6px; }
+.backup-groups { margin-top: 8px; }
+.import-card { padding: 12px; }
+.import-card .llm-checkboxes { margin: 8px 0 12px; }

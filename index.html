@@ -425,7 +425,6 @@
               <input type="date" id="tx-filter-end" class="input-sm">
               <button class="btn btn-outline btn-sm" onclick="loadTransactions()">篩選</button>
               <button class="btn btn-outline btn-sm" onclick="openAIImport('transactions')"><span class="i" data-icon="sparkles"></span>AI 匯入</button>
-              <button class="btn btn-outline btn-sm" onclick="exportCSV('transactions')"><span class="i" data-icon="download"></span>匯出 CSV</button>
             </div>
           </div>
           <div class="table-wrap">
@@ -541,7 +540,6 @@
             <h3>股利紀錄</h3>
             <div class="header-actions">
               <select id="div-year-filter" onchange="renderDividends()" class="input-sm"></select>
-              <button class="btn btn-outline btn-sm" onclick="exportCSV('dividends')"><span class="i" data-icon="download"></span>匯出 CSV</button>
             </div>
           </div>
           <div class="table-wrap">
@@ -598,16 +596,6 @@
           <div id="pf-weights"><div class="empty-state">載入中...</div></div>
         </div>
 
-        <div class="card" id="pf-rebalance-card">
-          <div class="card-header">
-            <h3>台美配置與再平衡</h3>
-          </div>
-          <div id="pf-split"></div>
-          <label class="pf-target">目標台股比例
-            <input type="number" id="pf-target-tw" class="input-sm" min="0" max="100" step="5" placeholder="例如 60" onchange="saveRebalanceTarget(this.value)">%
-          </label>
-          <div id="pf-rebalance" class="pf-rebalance"></div>
-        </div>
       </div>
     </section>
 
@@ -677,7 +665,6 @@
           <div class="header-actions">
             <button type="button" id="exp-cat-chip" class="filter-chip" style="display:none" onclick="setCategoryFilter(null)" title="清除分類篩選"></button>
             <button class="btn btn-outline btn-sm" onclick="openAIImport('expenses')" data-tour="ai-import"><span class="i" data-icon="sparkles"></span>AI 匯入</button>
-            <button class="btn btn-outline btn-sm" onclick="openExpenseExport()"><span class="i" data-icon="download"></span>匯出 CSV</button>
           </div>
         </div>
         <div class="exp-search">
@@ -991,11 +978,12 @@
       <div class="card" data-tour="backup">
         <div class="card-header"><h3><span class="i" data-icon="database"></span>備份與還原</h3></div>
         <div class="settings-row">
-          <div><strong>下載備份</strong><p class="form-hint">把所有資料存成一個 JSON 檔。清除或大量匯入前建議先下載。</p></div>
-          <button type="button" class="btn btn-primary btn-sm" onclick="downloadBackup()">下載備份</button>
+          <div><strong>下載備份／匯出</strong><p class="form-hint">把勾選的資料存成一個 JSON 檔。全選就是完整備份；只勾一部分可以單獨匯出（例如只有收支）。清除或大量匯入前建議先下載完整備份。</p>
+            <div class="llm-checkboxes backup-groups" id="backup-groups"></div></div>
+          <button type="button" class="btn btn-primary btn-sm" onclick="downloadBackup()">下載</button>
         </div>
         <div class="settings-row">
-          <div><strong>匯入備份</strong><p class="form-hint">選擇本網站的備份檔（JSON），會<strong>取代</strong>目前所有資料。</p></div>
+          <div><strong>匯入備份</strong><p class="form-hint">選擇本網站匯出的 JSON 檔，可以挑要匯入哪幾類；匯入的類別會<strong>取代</strong>目前那一類的資料，沒勾的不受影響。</p></div>
           <label class="btn btn-outline btn-sm">選擇檔案<input type="file" id="import-file" accept=".json,application/json" hidden></label>
         </div>
         <div id="import-preview"></div>
@@ -1328,31 +1316,6 @@
         <div class="form-actions">
           <button type="submit" class="btn btn-primary" id="managed-cash-submit-btn">確認</button>
           <button type="button" class="btn btn-outline" onclick="closeModal('modal-managed-cash')">取消</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- 收支: export CSV — which period (openExpenseExport) -->
-  <div id="modal-export-expenses" class="modal-overlay" style="display:none">
-    <div class="modal">
-      <div class="modal-header">
-        <h3>匯出收支 CSV</h3>
-        <button class="modal-close" onclick="closeModal('modal-export-expenses')">&times;</button>
-      </div>
-      <form id="export-expenses-form" onsubmit="submitExpenseExport(event)" onchange="updateExpenseExportCount()">
-        <div class="export-ranges">
-          <label class="llm-check" id="export-range-month-row"><input type="radio" name="range" value="month"><span id="export-range-month"></span></label>
-          <label class="llm-check"><input type="radio" name="range" value="year"><span id="export-range-year"></span></label>
-          <label class="llm-check"><input type="radio" name="range" value="all"><span>全部紀錄</span></label>
-          <label class="llm-check"><input type="radio" name="range" value="custom"><span>自訂期間</span></label>
-          <div class="export-custom" onfocusin="this.closest('form').elements.range.value = 'custom'">
-            <input type="date" name="from" aria-label="起日"><span>～</span><input type="date" name="to" aria-label="迄日">
-          </div>
-        </div>
-        <p class="form-hint" id="export-count"></p>
-        <div class="form-actions">
-          <button type="submit" class="btn btn-primary"><span class="i" data-icon="download"></span>匯出</button>
         </div>
       </form>
     </div>

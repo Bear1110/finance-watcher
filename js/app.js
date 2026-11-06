@@ -1361,7 +1361,7 @@ async function loadTransactions() {
 // SECTION: Portfolio Analysis
 // ============================================================
 
-const MKT = { TW: { cls: 'tw', short: '台', label: '台股' }, US: { cls: 'us', short: '美', label: '美股' } };
+const MKT = { TW: { cls: 'tw', short: '台' }, US: { cls: 'us', short: '美' } };
 const CONCENTRATION = { warn: ['偏高', 'risk-warn'], danger: ['高度集中', 'risk-danger'] };
 
 /** 組合分析: numbers come from /api/stocks/portfolio (js/server/portfolio.js); this only renders. */
@@ -1374,7 +1374,6 @@ async function loadPortfolioAnalysis() {
     }
     renderPortfolioStats(p);
     renderPortfolioWeights(p.rows);
-    renderRebalance(p);
   } catch (err) {
     showToast('載入投資組合分析失敗: ' + err.message, 'error');
   }
@@ -1426,55 +1425,6 @@ function renderPortfolioWeights(rows) {
       <div class="pf-row-sub">${sub}</div>
     </div>`;
   }).join('');
-}
-
-/** TW/US split bar and how to reach the target TW share. */
-function renderRebalance(p) {
-  const { tw, us } = p.split;
-  // Only one market held: nothing to balance
-  document.getElementById('pf-rebalance-card').hidden = !(tw > 0 && us > 0);
-  if (!(tw > 0 && us > 0)) return;
-  const twPct = tw / (tw + us) * 100;
-  document.getElementById('pf-split').innerHTML = `
-    <div class="source-bar pf-split-bar" aria-hidden="true">
-      <span class="pf-mkt-tw" style="width:${twPct}%"></span><span class="pf-mkt-us" style="width:${100 - twPct}%"></span>
-    </div>
-    <div class="pf-split-legend">
-      <span>台股 ${twPct.toFixed(1)}% · ${fmtTWD(tw)}</span><span>美股 ${(100 - twPct).toFixed(1)}% · ${fmtTWD(us)}</span>
-    </div>`;
-  _savedRebalanceTarget = p.target_tw == null ? '' : String(p.target_tw);
-  document.getElementById('pf-target-tw').value = _savedRebalanceTarget;
-
-  const r = p.rebalance;
-  const out = document.getElementById('pf-rebalance');
-  if (!r) {
-    out.innerHTML = '<p class="form-hint">填一個目標比例（例如台股 60%），算出要怎麼買才會回到目標。</p>';
-  } else if (r.in_range) {
-    out.innerHTML = `<p>目前已在目標（台股 ${r.target}%／美股 ${100 - r.target}%）的 1% 以內，不用動。</p>`;
-  } else {
-    const under = MKT[r.under].label;
-    const over = MKT[r.under === 'TW' ? 'US' : 'TW'].label;
-    out.innerHTML = `
-      <p>目標 台股 ${r.target}%／美股 ${100 - r.target}%，目前${under}偏低：</p>
-      <ul class="pf-rebalance-list">
-        <li><strong>只用買的：</strong>${under}再買 ${r.buy_only == null ? '--（目標 100% 只能靠賣出）' : fmtTWD(r.buy_only)}</li>
-        <li><strong>用換的：</strong>賣出${over} ${fmtTWD(r.switch)}，換成${under}</li>
-      </ul>
-      <p class="form-hint">只看股票市值，不含現金；手續費、稅與匯差另計。</p>`;
-  }
-}
-
-let _savedRebalanceTarget = null;
-async function saveRebalanceTarget(v) {
-  const n = v === '' ? '' : String(Math.min(100, Math.max(0, Number(v))));
-  if (n === _savedRebalanceTarget) return; // spinner clicks fire change per step
-  _savedRebalanceTarget = n;
-  try {
-    await api('/api/settings', { method: 'PUT', body: JSON.stringify({ rebalance_target_tw: n }) });
-    loadPortfolioAnalysis(); // quotes are cached, so this only recomputes
-  } catch (err) {
-    showToast('儲存目標比例失敗: ' + err.message, 'error');
-  }
 }
 
 // ============================================================
@@ -1629,11 +1579,6 @@ function showLedgerWarnings(result) {
   if (warnings && warnings.length) showToast(warnings.join('\n'), 'error');
 }
 
-function exportCSV(kind) {
-  const year = kind === 'dividends' ? (document.getElementById('div-year-filter')?.value || '') : '';
-  const qs = /^\d{4}$/.test(year) ? '?year=' + year : '';
-  api(`/api/${kind}/export${qs}`).catch(err => showToast('匯出失敗: ' + err.message, 'error'));
-}
 
 // ============================================================
 // SECTION: XIRR (annualized money-weighted return)
@@ -2953,52 +2898,6 @@ function expTotals(records) {
   let inc = 0, out = 0;
   for (const e of records) if (e.type === 'income') inc += e.amount_twd; else out += e.amount_twd;
   return [inc ? `收入 +${fmtTWD(inc)}` : '', out ? `支出 ${fmtTWD(out)}` : ''].filter(Boolean).join(' · ');
-}
-
-// --- 收支 export: pick a period (default: the one on screen), download CSV ---
-
-const pad2 = (n) => String(n).padStart(2, '0');
-
-/** [from, to] of the chosen export range ('' = open end; day 31 is a safe upper bound for any month). */
-function expenseExportRange() {
-  const f = document.getElementById('export-expenses-form').elements;
-  const y = expYear();
-  const m = pad2(expMonth());
-  switch (f.range.value) {
-    case 'month': return [`${y}-${m}-01`, `${y}-${m}-31`];
-    case 'year': return [`${y}-01-01`, `${y}-12-31`];
-    case 'custom': return [f.from.value, f.to.value];
-    default: return ['', ''];
-  }
-}
-
-function openExpenseExport() {
-  const f = document.getElementById('export-expenses-form').elements;
-  const y = expYear();
-  const m = expMonth();
-  document.getElementById('export-range-month').textContent = `${y} 年 ${m} 月`;
-  document.getElementById('export-range-month-row').hidden = !m; // 全年 on screen: no single month
-  document.getElementById('export-range-year').textContent = `${y} 整年`;
-  f.range.value = m ? 'month' : 'year';
-  // 自訂 starts as the period on screen
-  f.from.value = m ? `${y}-${pad2(m)}-01` : `${y}-01-01`;
-  f.to.value = m ? `${y}-${pad2(m)}-${pad2(new Date(y, m, 0).getDate())}` : `${y}-12-31`;
-  updateExpenseExportCount();
-  openModal('modal-export-expenses');
-}
-
-function updateExpenseExportCount() {
-  const [from, to] = expenseExportRange();
-  const n = _expAll.filter(e => (!from || e.date >= from) && (!to || e.date <= to)).length;
-  document.getElementById('export-count').textContent = `共 ${n} 筆`;
-}
-
-function submitExpenseExport(ev) {
-  ev.preventDefault();
-  const [from, to] = expenseExportRange();
-  api(`/api/expenses/export?from=${from}&to=${to}`)
-    .then(() => closeModal('modal-export-expenses'))
-    .catch(err => showToast('匯出失敗: ' + err.message, 'error'));
 }
 
 /**
