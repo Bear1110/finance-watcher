@@ -84,7 +84,7 @@
         <button type="button" class="btn btn-outline btn-sm hero-ai" onclick="goToTab('llm')"><span class="i" data-icon="sparkles"></span>AI 分析</button>
         <div class="hero-label">淨資產 <button type="button" class="privacy-toggle hero-privacy" onclick="togglePrivacy()" aria-label="顯示/隱藏金額" aria-pressed="false"><svg class="eye-open" aria-hidden="true"><use href="#i-eye"/></svg><svg class="eye-closed" aria-hidden="true"><use href="#i-eye-off"/></svg></button></div>
         <div class="hero-value" id="dash-net-worth">--</div>
-        <div class="hero-year" id="dash-year" title="今年 1/1（或之前最後一筆快照）到現在，淨資產多了多少。&#10;股價漲跌：手上股票漲跌賺賠的錢（拿現金買股票不算賺）&#10;股利：領到的現金股利&#10;儲蓄：其餘增加的部分，主要是薪水存下來的錢（也包含美金現金的匯差）"></div>
+        <div class="hero-year" id="dash-year"></div>
         <div class="hero-year-parts" id="dash-year-parts"></div>
         <div class="source-bar hero-comp" id="dash-comp-bar" aria-hidden="true"></div>
         <div class="chart-legend hero-comp-legend" id="dash-comp-legend"></div>
@@ -129,10 +129,7 @@
         <div class="chart-container-md"><canvas id="chart-asset-trend"></canvas></div>
 
         <h4 class="nw-subtitle">年度成長</h4>
-        <p class="form-hint nw-legend">每年淨資產多了多少，拆成三塊：<br>
-          <b>股價漲跌</b>：手上股票漲跌賺賠的錢（拿現金買股票不算賺）<br>
-          <b>股利</b>：領到的現金股利<br>
-          <b>儲蓄</b>：其餘增加的部分，主要是薪水存下來的錢（也包含美金現金的匯差）</p>
+        <p class="form-hint nw-legend" id="nw-legend"></p>
         <div id="nw-years" class="nw-years"></div>
 
         <h4 class="nw-subtitle">資產快照</h4>
@@ -245,10 +242,10 @@
           <div class="card-header">
             <h3 title="買入為現金流出，賣出與股利為流入，今天的持股市值為最後一筆流入；求出讓折現總和為 0 的年利率。&#10;範圍為第一筆交易至今的累計，外幣以現行匯率換算。">累計年化報酬（XIRR）ⓘ</h3>
           </div>
-          <div class="xirr-row">
-            <span>全部 <strong id="xirr-all">--</strong></span>
-            <span>台股 <strong id="xirr-tw">--</strong></span>
-            <span>美股 <strong id="xirr-us">--</strong></span>
+          <div class="trend-summary">
+            <div><span>全部</span><strong id="xirr-all">--</strong></div>
+            <div><span>台股</span><strong id="xirr-tw">--</strong></div>
+            <div><span>美股</span><strong id="xirr-us">--</strong></div>
           </div>
           <p class="form-hint">含已實現損益與股利，算的是你實際投入的錢賺了多少（受買賣時點影響）；下方的時間加權報酬則不受時點影響，適合和大盤比。</p>
         </div>

@@ -1305,17 +1305,17 @@ select option {
   color: var(--text-secondary);
 }
 
-.check-item details {
+.check-items {
   margin: 6px 0 0 calc(1.2em + 8px);
   font-size: 0.82rem;
   color: var(--text-secondary);
 }
 
-.check-item details summary {
+.check-items summary {
   cursor: pointer;
 }
 
-.check-item details ul {
+.check-items ul {
   margin: 6px 0 0;
   padding-left: 18px;
 }
@@ -1795,7 +1795,7 @@ body[data-tab="expenses"] .fab { display: flex; }
   cursor: pointer;
 }
 
-/* 持倉總覽: market value / P&L trend */
+/* 績效: market value / P&L trend */
 #holdings-trend-card { margin-top: 20px; }
 .chart-note { margin: 8px 0 0; }
 .trend-controls { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -2152,17 +2152,15 @@ body[data-tab="expenses"] .fab { display: flex; }
   border: 1px solid var(--border-color);
   background: var(--bg-card);
   font-size: 0.9rem;
+  flex-wrap: wrap;
 }
 .dash-alert-warn { border-color: rgba(251, 191, 36, 0.45); background: var(--yellow-bg); }
 .dash-alert-icon { flex: none; }
 .dash-alert-warn .dash-alert-icon { color: var(--yellow); }
 .dash-alert-text { flex: 1; min-width: 0; }
 .dash-alert .btn { flex: none; }
-.dash-alert { flex-wrap: wrap; }
-.dash-alert-items { flex-basis: 100%; margin-left: 1.6rem; font-size: 0.85rem; color: var(--text-secondary); }
-.dash-alert-items summary { cursor: pointer; }
-.dash-alert-items p { margin: 6px 0 0; }
-.dash-alert-items ul { margin: 6px 0 0; padding-left: 1.1rem; line-height: 1.6; }
+.dash-alert .check-items { flex-basis: 100%; margin: 0 0 0 1.6rem; }
+.check-items p { margin: 6px 0 0; }
 
 .hero-year { margin-top: 6px; font-size: 1.05rem; font-weight: 600; color: var(--text-secondary); }
 .hero-year-parts { margin-top: 4px; font-size: 0.85rem; color: var(--text-secondary); }
@@ -2193,8 +2191,5 @@ body[data-tab="expenses"] .fab { display: flex; }
 
 @media (max-width: 599px) {
   .dash-stats-2 { grid-template-columns: minmax(0, 1fr); }
-  .dash-alert { flex-wrap: wrap; }
 }
 
-.xirr-row { display: flex; flex-wrap: wrap; gap: 6px 24px; font-size: 1rem; }
-.xirr-row strong { font-size: 1.15rem; }

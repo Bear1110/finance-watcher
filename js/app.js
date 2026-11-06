@@ -438,7 +438,7 @@ async function loadDashboard() {
     renderRecentTx(transactions);
     // The data check is slower (price history): its warnings join once it is done
     renderAlerts(ov.alerts);
-    getDataCheck().then(d => renderAlerts([...ov.alerts, ...dataCheckWarnings(d).map(c => ({ level: 'warn', text: c.title, action: c.action, items: c.items, detail: c.detail }))])).catch(() => {});
+    getDataCheck().then(d => renderAlerts([...ov.alerts, ...dataCheckWarnings(d).map(c => ({ ...c, text: c.title }))])).catch(() => {});
     renderNetWorthChart(); // snapshots now; daily once the performance series arrives
     getPerf().then(() => { renderNetWorthChart(); renderInvest(); }).catch(err => renderInvest(err));
   } catch (err) {
@@ -455,8 +455,7 @@ function renderAlerts(alerts) {
       <span class="dash-alert-icon" aria-hidden="true">${CHECK_ICONS[a.level]}</span>
       <span class="dash-alert-text">${escapeHtml(a.text)}</span>
       ${action ? `<button type="button" class="btn btn-outline btn-sm" onclick="CHECK_ACTIONS['${a.action}'][1]()">${action[0]}</button>` : ''}
-      ${a.items && a.items.length ? `<details class="dash-alert-items"><summary>是哪幾筆（${a.items.length}）</summary>
-        ${a.detail ? `<p>${escapeHtml(a.detail)}</p>` : ''}<ul>${a.items.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul></details>` : ''}
+      ${checkItemsHtml(a, true)}
     </div>`;
   }).join('');
 }
@@ -473,6 +472,7 @@ function renderHero(ov) {
   }
   $('dash-net-worth').textContent = fmtTWD(ov.net_worth);
   $('dash-year').innerHTML = year && year.start > 0 ? `今年 ${changeHtml(year.start + year.change, year.start)}` : '';
+  $('dash-year').title = `今年 1/1（或之前最後一筆快照）到現在，淨資產多了多少：\n${growthLegend(false)}`;
   $('dash-year-parts').innerHTML = year ? growthPartsText(year) : '';
 
   const parts = COMP_PARTS.map(p => ({ ...p, v: Math.max(0, ov.parts[p.key]) })).filter(p => p.v > 0);
@@ -544,6 +544,7 @@ function renderMonth(m, f) {
 }
 
 function renderGrowthYears(years) {
+  document.getElementById('nw-legend').innerHTML = `每年淨資產多了多少，拆成三塊：<br>${growthLegend(true)}`;
   document.getElementById('nw-years').innerHTML = years.length ? years.map(y => `<div class="nw-year">
       <div class="nw-year-head">
         <strong${y.partial ? ` title="從 ${y.from} 第一筆快照開始算"` : ''}>${y.year}${y.current ? '（至今）' : ''}${y.partial ? '*' : ''}</strong>
@@ -656,13 +657,16 @@ function renderInvest(err) {
 }
 
 /** A growthBetween result (js/server/overview.js) as colored parts: 股價 / 股利 / 儲蓄. */
+const GROWTH_PARTS = [
+  { key: 'price', label: '股價漲跌', desc: '手上股票漲跌賺賠的錢（拿現金買股票不算賺）' },
+  { key: 'dividends', label: '股利', desc: '領到的現金股利', color: 'var(--yellow)' },
+  { key: 'savings', label: '儲蓄', desc: '其餘增加的部分，主要是薪水存下來的錢（也包含美金現金的匯差）', color: 'var(--accent)' },
+];
 function growthParts(g) {
-  return [
-    { label: '股價漲跌', v: g.price, color: g.price < 0 ? 'var(--red)' : 'var(--green)' },
-    { label: '股利', v: g.dividends, color: 'var(--yellow)' },
-    { label: '儲蓄', v: g.savings, color: 'var(--accent)' },
-  ];
+  return GROWTH_PARTS.map(p => ({ ...p, v: g[p.key], color: p.color || (g.price < 0 ? 'var(--red)' : 'var(--green)') }));
 }
+/** The three parts explained, as HTML lines or a plain-text tooltip. */
+const growthLegend = (html) => GROWTH_PARTS.map(p => html ? `<b>${p.label}</b>：${p.desc}` : `${p.label}：${p.desc}`).join(html ? '<br>' : '\n');
 
 const growthPartsText = (g) => growthParts(g).map(p => `${p.label} <span class="${plClass(p.v)}">${fmtPL(p.v)}</span>`).join(' · ');
 
@@ -1735,9 +1739,11 @@ function selectedBench() {
 
 /** 績效 performance card + monthly heatmap from /api/stocks/performance */
 let _perfPromise = null;
+let _perfAt = 0; // when _perfPromise was started
 
 /** /api/stocks/performance, fetched once and shared until data changes (invalidatePerf). */
 function getPerf() {
+  if (!_perfPromise) _perfAt = Date.now();
   _perfPromise ||= api('/api/stocks/performance')
     .then(d => (_perfData = d))
     .catch(err => { _perfPromise = null; throw err; });
@@ -1756,7 +1762,7 @@ async function loadPerformance() {
   if (!head || !body) return;
   let data;
   try {
-    invalidatePerf(); // always show today's quotes
+    if (Date.now() - _perfAt > 5 * 60 * 1000) invalidatePerf(); // pick up today's quotes, but not on every visit
     data = await getPerf();
   } catch (err) {
     // 503 = no Yahoo proxy configured; its message says where to set one
@@ -2035,6 +2041,13 @@ function getDataCheck() {
 function invalidateDataCheck() { _dataCheckPromise = null; }
 const dataCheckWarnings = (d) => (d.checks || []).filter(c => c.level === 'warn');
 
+/** A data check's affected records, collapsed. withDetail: put the explanation inside (the dashboard has no room for it). */
+function checkItemsHtml(c, withDetail = false) {
+  if (!c.items || !c.items.length) return '';
+  return `<details class="check-items"><summary>看明細（${c.items.length}）</summary>
+    ${withDetail && c.detail ? `<p>${escapeHtml(c.detail)}</p>` : ''}<ul>${c.items.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul></details>`;
+}
+
 /** Warning count next to the performance note, linking to the settings page */
 async function loadDataCheckBadge() {
   const badge = document.getElementById('perf-check-badge');
@@ -2087,10 +2100,10 @@ async function loadDataCheck() {
   list.innerHTML = (d.checks || []).slice().sort((a, b) => order[a.level] - order[b.level]).map(c => {
     const action = CHECK_ACTIONS[c.action];
     return `<div class="check-item check-${c.level}">
-      <div class="check-title"><span class="check-icon">${CHECK_ICONS[c.level] || ''}</span><span>${c.title}</span>
+      <div class="check-title"><span class="check-icon">${CHECK_ICONS[c.level] || ''}</span><span>${escapeHtml(c.title)}</span>
         ${action ? `<button type="button" class="btn btn-outline btn-sm" onclick="CHECK_ACTIONS['${c.action}'][1]()">${action[0]}</button>` : ''}</div>
-      ${c.detail ? `<div class="check-detail">${c.detail}</div>` : ''}
-      ${c.items && c.items.length ? `<details><summary>明細（${c.items.length}）</summary><ul>${c.items.map(x => `<li>${x}</li>`).join('')}</ul></details>` : ''}
+      ${c.detail ? `<div class="check-detail">${escapeHtml(c.detail)}</div>` : ''}
+      ${checkItemsHtml(c)}
     </div>`;
   }).join('');
 }
