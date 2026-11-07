@@ -266,6 +266,63 @@ const rowBtn = (kind, onclick, label = ROW_ACTIONS[kind][2]) => {
 };
 
 // ============================================================
+// SECTION: Segmented selects — a short <select data-segmented> shown as a row of buttons
+// ============================================================
+
+const SELECT_VALUE = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+
+/**
+ * Shows a select with a few short options as buttons: everything is visible and one tap picks it.
+ * The select stays (hidden) as the source of truth, so forms, `onchange`, edit forms setting
+ * `.value` and form.reset() all keep working. Call again after replacing the options.
+ * Button text: the option's data-short, else its text (the full text becomes the tooltip).
+ */
+function segmentSelect(sel) {
+  let box = sel._seg;
+  if (!box) {
+    box = sel._seg = document.createElement('div');
+    box.className = 'chart-type-toggle seg-select';
+    box.setAttribute('role', 'radiogroup'); // one choice among several
+    if (sel.getAttribute('aria-label')) box.setAttribute('aria-label', sel.getAttribute('aria-label'));
+    sel.after(box);
+    sel.style.display = 'none';
+    box.addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b || b.dataset.v === sel.value) return; // like a select: no change event when nothing changed
+      sel.value = b.dataset.v;
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    // Code that sets .value directly (edit forms) moves the highlight too
+    Object.defineProperty(sel, 'value', {
+      configurable: true,
+      get() { return SELECT_VALUE.get.call(this); },
+      set(v) { SELECT_VALUE.set.call(this, v); syncSegments(this); },
+    });
+  }
+  box.innerHTML = [...sel.options].map(o => {
+    const short = o.dataset.short;
+    return `<button type="button" role="radio" class="chart-type-btn" data-v="${escapeAttr(o.value)}"${short ? ` title="${escapeAttr(o.textContent)}"` : ''}>${escapeHtml(short || o.textContent)}</button>`;
+  }).join('');
+  syncSegments(sel);
+}
+
+function syncSegments(sel) {
+  sel._seg?.querySelectorAll('button').forEach(b => {
+    const on = b.dataset.v === sel.value;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-checked', String(on));
+  });
+}
+
+/** Every `select[data-segmented]` under root (like applyIcons). */
+function initSegmented(root = document) {
+  root.querySelectorAll('select[data-segmented]').forEach(segmentSelect);
+}
+
+// form.reset() sets the selects without a value assignment: resync once it has run
+document.addEventListener('reset', (e) => setTimeout(() => e.target.querySelectorAll('select[data-segmented]').forEach(syncSegments)));
+
+// ============================================================
 // SECTION: Tap tooltips — a `title` is only a hover tooltip, and touch screens can't hover.
 // Tapping an element that has one (and isn't itself a control) shows its text in a bubble.
 // ============================================================
@@ -1823,7 +1880,7 @@ function perfCardHtml(view) {
     <p class="form-hint card-hint"><span data-perf="note"></span>${view === 'main' ? '<span id="perf-check-badge"></span>' : ''}</p>
     <div class="chart-controls perf-controls">
       <div class="chart-type-toggle" data-perf="periods"></div>
-      <select data-perf="bench" class="input-sm" onchange="renderPerfChart(PERF_VIEWS.${view}.period, '${view}')" title="比較基準用含息還原價（股利再投入），美股換算成台幣">
+      <select data-perf="bench" class="input-sm" data-segmented aria-label="比較大盤" onchange="renderPerfChart(PERF_VIEWS.${view}.period, '${view}')" title="比較基準用含息還原價（股利再投入），美股換算成台幣">
         <option value="">不比較大盤</option>
       </select>
     </div>
@@ -1897,8 +1954,10 @@ async function loadPerformance(view = 'main') {
 
   const benchSel = perfEl(view, 'bench');
   const benchKept = benchSel.value;
-  benchSel.innerHTML = '<option value="">不比較大盤</option>' +
-    (data.benchmarks || []).map(b => `<option value="${b.symbol}">比較 ${b.label}</option>`).join('');
+  // Buttons show the ticker (0050, SPY…); the full name is the tooltip
+  benchSel.innerHTML = '<option value="" data-short="不比較大盤">不比較大盤</option>' +
+    (data.benchmarks || []).map(b => `<option value="${b.symbol}" data-short="${escapeAttr(b.symbol.replace(/\.TWO?$/, ''))}">比較 ${b.label}</option>`).join('');
+  segmentSelect(benchSel);
   benchSel.value = benchKept;
 
   head.innerHTML = '<th></th>' + periods.map(p => {
@@ -3776,6 +3835,7 @@ document.addEventListener('DOMContentLoaded', () => {
   applyPrivacyUI();
   initTabs();
   initPerfCards();
+  initSegmented();
   initExpenseDefaults();
   renderAISites();
 

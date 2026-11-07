@@ -958,6 +958,10 @@ select option {
   color: var(--text-primary);
 }
 
+/* <select data-segmented> shown as buttons (segmentSelect): in a form, sized like the inputs */
+.seg-select { width: fit-content; max-width: 100%; flex-wrap: wrap; }
+.form-group .seg-select .chart-type-btn { padding: 8px 14px; font-size: 0.85rem; }
+
 .dash-stats-5 {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }

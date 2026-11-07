@@ -22,6 +22,16 @@ test('UI: a card header holds the title (with meta) and controls, no loose text'
   }
 });
 
+test('UI: a select with a few fixed options is shown as buttons (data-segmented)', () => {
+  for (const [file, src] of sources) {
+    for (const m of src.matchAll(/<select\b([^>]*)>([\s\S]*?)<\/select>/g)) {
+      const options = (m[2].match(/<option\b/g) || []).length;
+      if (!options || options > 5 || /data-(segmented|keep-select)\b/.test(m[1])) continue;
+      assert.fail(`${file}:${lineOf(src, m.index)} <select> with ${options} options: add data-segmented (or data-keep-select)`);
+    }
+  }
+});
+
 test('UI: hints use form-hint with card-hint / chart-note, no inline margins or one-off *-hint classes', () => {
   for (const [file, src] of sources) {
     for (const m of src.matchAll(/class="([^"]*\bform-hint\b[^"]*)"\s+style=/g)) {

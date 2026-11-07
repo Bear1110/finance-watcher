@@ -408,7 +408,7 @@
             </div>
             <div class="form-group">
               <label>操作</label>
-              <select name="action" required>
+              <select name="action" required data-segmented aria-label="買賣">
                 <option value="BUY">買入</option>
                 <option value="SELL">賣出</option>
               </select>
@@ -531,10 +531,10 @@
             </div>
             <div class="form-group">
               <label>市場</label>
-              <select name="market" onchange="updateDividendCurrency()">
-                <option value="">自動（依代號）</option>
-                <option value="TW">台股 (NT$)</option>
-                <option value="US">美股 (US$)</option>
+              <select name="market" onchange="updateDividendCurrency()" data-segmented aria-label="市場">
+                <option value="" data-short="自動">自動（依代號判斷）</option>
+                <option value="TW" data-short="台股">台股 (NT$)</option>
+                <option value="US" data-short="美股">美股 (US$)</option>
               </select>
             </div>
             <div class="form-group">
@@ -1161,7 +1161,7 @@
         <div class="settings-row">
           <div><strong>清除股票交易與持倉</strong><p class="form-hint">刪除所選市場的所有交易與持倉（含匯入持倉），會同步到試算表。股利、快照、收支、代管帳戶保留。</p></div>
           <div class="settings-inline">
-            <select id="clear-stock-market" class="input-sm" aria-label="要清除的市場">
+            <select id="clear-stock-market" class="input-sm" aria-label="要清除的市場" data-segmented>
               <option value="TW" selected>台股</option>
               <option value="US">美股</option>
               <option value="ALL">台股＋美股</option>
@@ -1244,7 +1244,7 @@
       <form id="holding-form" onsubmit="submitHolding(event)">
         <div class="form-group">
           <label>市場</label>
-          <select name="market" onchange="onHoldingMarketChange(this)">
+          <select name="market" onchange="onHoldingMarketChange(this)" data-segmented aria-label="市場">
             <option value="TW">台股</option>
             <option value="US">美股</option>
           </select>
@@ -1365,7 +1365,7 @@
         <input type="hidden" name="action">
         <div class="form-group">
           <label>市場</label>
-          <select name="market" onchange="onManagedTradeMarketChange(this)">
+          <select name="market" onchange="onManagedTradeMarketChange(this)" data-segmented aria-label="市場">
             <option value="TW">台股</option>
             <option value="US">美股</option>
           </select>
@@ -1414,7 +1414,7 @@
         <input type="hidden" name="type">
         <div class="form-group">
           <label>幣別</label>
-          <select name="currency">
+          <select name="currency" data-segmented aria-label="幣別">
             <option value="TWD">台幣 (TWD)</option>
             <option value="USD">美金 (USD)</option>
           </select>

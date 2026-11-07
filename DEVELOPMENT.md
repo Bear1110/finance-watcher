@@ -98,7 +98,7 @@ node --test                  # 單元測試（FIFO、TWR、代管帳戶、股利
 
 ## UI 準則
 
-`test/ui.test.mjs` 會檢查標題列和提示行的規則。
+`test/ui.test.mjs` 會檢查標題列、提示行和下拉選單的規則。
 
 ### 卡片標題列（`.card-header`）
 
@@ -122,6 +122,7 @@ node --test                  # 單元測試（FIFO、TWR、代管帳戶、股利
 - 長條用 `.source-bar.cat-track`；多個來源堆疊加 `.lt-stack`，顏色 `--lt-0`…`--lt-5`（`--lt-5` 是「其他」）。列表的一列用 `.pf-row`（`.pf-row-head` / `.pf-row-sub`）。
 - % 折線圖用 `pctLineChart` / `pctLine`，大盤線顏色用 `BENCH_COLORS`。
 - 單一勾選框（勾選＋一句說明）用 `<label class="inline-check">`；一組選項清單用 `.llm-check`。
+- **少用下拉選單**：固定的少數選項（5 個以內、名稱短，例如市場、買賣、幣別、比較大盤）直接顯示成一排按鈕：在 `<select>` 加 `data-segmented` 即可（照常用 `onchange`、`.value`；按鈕字太長就給 `<option data-short="短名">`；程式重建選項後呼叫 `segmentSelect(sel)`）。選項多或會隨資料增加的（年份、月份、幣別清單、分類）才用下拉；真的要保留下拉就加 `data-keep-select`。圖表的檢視切換（期間、市場、表格／卡片）沿用 `.chart-type-toggle` 按鈕組。
 
 ### 文字
 
