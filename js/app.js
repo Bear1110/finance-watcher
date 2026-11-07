@@ -225,6 +225,7 @@ const ICONS = {
   type: '<path d="M4 7V4h16v3M9 20h6M12 4v16"/>',
   database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>',
   check: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+  copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
   info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
   alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4M12 17h.01"/>',
   refresh: '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>',
@@ -509,7 +510,7 @@ function renderHero(ov) {
 /** "每月 NT$ 44,333，依收支估算" — where the monthly spending figure came from. */
 const monthlyExpenseNote = (f) => `每月 ${fmtTWD(f.monthly_expense)}${f.source === 'records' ? '，依收支紀錄估算' : ''}`;
 
-/** This month so far: spending vs the same days last month, income, top categories, cash runway. */
+/** This month (whole month, planned entries included): spending, income, top categories, cash runway. */
 function renderMonth(m, f) {
   document.getElementById('dash-month-range').textContent = `${shortDate(m.from)}–${shortDate(m.to)}`;
   const cashLine = f.cash_months != null
@@ -520,13 +521,17 @@ function renderMonth(m, f) {
     body.innerHTML = '<p class="form-hint">這個月還沒有收支紀錄。</p>' + cashLine;
     return;
   }
-  const vs = m.prev_expense > 0 ? (m.expense - m.prev_expense) / m.prev_expense * 100 : null;
+  // Pace: spending so far against the same days of last month
+  const vs = m.prev_expense > 0 ? (m.expense_to_date - m.prev_expense) / m.prev_expense * 100 : null;
+  const planned = m.expense - m.expense_to_date;
+  const pace = vs == null ? '上月同期沒有紀錄' : `到今天比上月同期 <span class="${plClass(-vs)}">${fmtPct(vs)}</span>`;
+  const plannedLine = planned > 0 ? `<br>含 ${shortDate(m.today)} 之後預計 ${fmtTWD(planned)}` : '';
   const net = m.income - m.expense;
   const max = m.top.length ? m.top[0].amount : 0;
   body.innerHTML = `
     <div class="month-grid">
       <div><span>支出</span><strong>${fmtTWD(m.expense)}</strong>
-        <small title="上月同期：${m.prev_from}～${m.prev_to}">${vs == null ? '上月同期沒有紀錄' : `比上月同期 <span class="${plClass(-vs)}">${fmtPct(vs)}</span>`}</small></div>
+        <small title="到今天為止 ${fmtTWD(m.expense_to_date)}，對比上月同期 ${m.prev_from}～${m.prev_to}">${pace}${plannedLine}</small></div>
       <div><span>收入</span><strong>${fmtTWD(m.income)}</strong>
         <small>結餘 <span class="${plClass(net)}">${fmtPL(net)}</span>${m.income > 0 ? ` · 儲蓄率 ${(net / m.income * 100).toFixed(0)}%` : ''}</small></div>
     </div>
@@ -1915,7 +1920,80 @@ async function loadPerformance(view = 'main') {
     seg.hidden = rows.length < 2;
     seg.innerHTML = rows.map(r => `<button class="chart-type-btn" data-seg="${r.seg}" onclick="renderHeatmap('${r.seg}')">${r.name}</button>`).join('');
     renderHeatmap(rows.some(r => r.seg === _heatmapSeg) ? _heatmapSeg : 'ALL');
+    renderRolling();
   }
+}
+
+/** Benchmark line colors (the first one is the one compared by default). */
+const BENCH_COLORS = ['#c3cede', '#a78bfa', '#f472b6'];
+
+/** One line of a % chart. */
+const pctLine = (label, data, color, width, dash, hidden = false) => ({
+  label, data, borderColor: color, backgroundColor: 'transparent', hidden,
+  borderWidth: width, borderDash: dash || [], pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 8, tension: 0,
+});
+
+/** A % line chart (績效, 滾動一年報酬): legend on top, the 0% gridline emphasized. Replaces `old`. */
+function pctLineChart(canvas, old, labels, datasets, tooltipTitle) {
+  if (old) old.destroy();
+  return new Chart(canvas, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, position: 'top', labels: { color: '#8a9ab5', usePointStyle: true, pointStyle: 'line', font: { size: 11 } } },
+        tooltip: { callbacks: { ...(tooltipTitle && { title: tooltipTitle }), label: c => c.parsed.y == null ? null : `${c.dataset.label}: ${fmtPct(c.parsed.y)}` } },
+      },
+      scales: {
+        x: { ticks: { color: '#5c6f8a', font: { size: 11 }, maxTicksLimit: 8, maxRotation: 0 }, grid: { display: false } },
+        y: {
+          ticks: { color: '#5c6f8a', font: { size: 11 }, callback: v => v + '%' },
+          // Emphasize the 0% line: above it the period made money.
+          grid: { color: c => c.tick.value === 0 ? 'rgba(138,154,181,0.6)' : 'rgba(42,58,78,0.4)' },
+        },
+      },
+    },
+  });
+}
+
+let _rollingChart = null;
+
+/** 滾動一年報酬: the markets' 1-year windows against the benchmarks (only the first shown at first). */
+function renderRolling() {
+  const data = _perfData;
+  const s = data.series;
+  const rows = perfRows();
+  const benches = data.benchmarks || [];
+  const head = document.getElementById('rolling-head');
+  const body = document.getElementById('rolling-body');
+  if (!data.rolling || !data.rolling.ALL) {
+    head.innerHTML = '';
+    body.innerHTML = '<tr><td class="text-muted">要有一年以上的紀錄才算得出來。</td></tr>';
+    if (_rollingChart) { _rollingChart.destroy(); _rollingChart = null; }
+    return;
+  }
+  const cols = [...rows.map(r => ({ key: r.seg, name: r.name })), ...benches.map(b => ({ key: b.symbol, name: b.label }))];
+  head.innerHTML = '<th></th>' + cols.map(c => `<th>${c.name}</th>`).join('');
+  const cells = fn => cols.map(c => { const r = data.rolling[c.key]; return `<td>${r ? fn(r) : '--'}</td>`; }).join('');
+  const pct = v => plSpan(v, fmtPct);
+  body.innerHTML = `
+    <tr><td>最好的一年</td>${cells(r => `${pct(r.best)}<span class="cell-sub">到 ${r.best_date}</span>`)}</tr>
+    <tr><td>最差的一年</td>${cells(r => `${pct(r.worst)}<span class="cell-sub">到 ${r.worst_date}</span>`)}</tr>
+    <tr><td title="把所有一年期的報酬排序後的中間值：比平均更不受極端值影響">中位數 ⓘ</td>${cells(r => pct(r.median))}</tr>
+    <tr><td title="所有一年期中，報酬是負的比例">抱一年會虧錢的機率 ⓘ</td>${cells(r => `${r.negative_pct.toFixed(0)}%`)}</tr>`;
+
+  const first = s.dates.findIndex((_, i) => s.rolling.ALL[i] != null);
+  const idx = weekdayIndexes(s.dates, Math.max(first, 0));
+  const at = vals => idx.map(i => (vals || [])[i]);
+  const datasets = [
+    ...rows.map(r => pctLine(r.name, at(s.rolling[r.seg]), r.color, r.width, r.dash)),
+    ...benches.map((b, i) => pctLine(b.label, at(s.rolling[b.symbol]), BENCH_COLORS[i % BENCH_COLORS.length], 1.5, [1, 3], i > 0)),
+  ];
+  _rollingChart = pctLineChart(document.getElementById('chart-rolling'), _rollingChart, idx.map(i => s.dates[i]), datasets,
+    c => `${c[0].label} 往回一年`);
 }
 
 /** Return rows per market, plus the selected benchmark's row */
@@ -1963,36 +2041,10 @@ function renderPerfChart(key, view = 'main') {
     const base = idx.map(i => vals[i]).find(v => v != null);
     return idx.map(i => (vals[i] == null || !base) ? null : (vals[i] / base - 1) * 100);
   };
-  const line = (label, vals, color, width, dash) => ({
-    label, data: rebased(vals || []), borderColor: color, backgroundColor: 'transparent',
-    borderWidth: width, borderDash: dash || [], pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 8, tension: 0,
-  });
-  const datasets = perfRows().map(r => line(r.name, s.growth[r.seg], r.color, r.width, r.dash));
+  const datasets = perfRows().map(r => pctLine(r.name, rebased(s.growth[r.seg] || []), r.color, r.width, r.dash));
   const bench = selectedBench(view);
-  if (bench) datasets.push(line(bench.label, s.bench[bench.symbol], '#c3cede', 1.5, [1, 3]));
-
-  if (v.chart) v.chart.destroy();
-  v.chart = new Chart(perfEl(view, 'chart'), {
-    type: 'line',
-    data: { labels: idx.map(i => s.dates[i]), datasets },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: true, position: 'top', labels: { color: '#8a9ab5', usePointStyle: true, pointStyle: 'line', font: { size: 11 } } },
-        tooltip: { callbacks: { label: c => c.parsed.y == null ? null : `${c.dataset.label}: ${fmtPct(c.parsed.y)}` } },
-      },
-      scales: {
-        x: { ticks: { color: '#5c6f8a', font: { size: 11 }, maxTicksLimit: 8, maxRotation: 0 }, grid: { display: false } },
-        y: {
-          ticks: { color: '#5c6f8a', font: { size: 11 }, callback: v => v + '%' },
-          // Emphasize the 0% line: above it the period made money.
-          grid: { color: c => c.tick.value === 0 ? 'rgba(138,154,181,0.6)' : 'rgba(42,58,78,0.4)' },
-        },
-      },
-    },
-  });
+  if (bench) datasets.push(pctLine(bench.label, rebased(s.bench[bench.symbol] || []), BENCH_COLORS[0], 1.5, [1, 3]));
+  v.chart = pctLineChart(perfEl(view, 'chart'), v.chart, idx.map(i => s.dates[i]), datasets);
 }
 
 /** Indexes from b to the end, skipping weekends but keeping the first and last day */
@@ -2114,6 +2166,9 @@ document.addEventListener('click', (e) => {
   renderHoldingsTrend();
 });
 
+/** Sortino: negative loses money, 2 and up is strong. */
+const sortinoClass = (v) => (v < 0 ? 'negative' : v >= 2 ? 'positive' : '');
+
 /** Max drawdown and volatility of the selected period, per market */
 function renderPerfRisk(p, view) {
   const rows = perfRows();
@@ -2128,7 +2183,8 @@ function renderPerfRisk(p, view) {
     <tr><td title="期間內從最高點到之後最低點的最大跌幅">最大回撤 ⓘ</td>${cells(r => r.max_drawdown ? `<span class="negative">${fmtPct(r.max_drawdown)}</span>` : '0%')}</tr>
     <tr><td>回撤期間</td>${cells(r => !r.dd_peak ? '--' :
       `${md(r.dd_peak)} → ${md(r.dd_trough)}<span class="cell-sub">${r.dd_recovered ? `${md(r.dd_recovered)} 回到高點` : '尚未回到高點'}</span>`)}</tr>
-    <tr><td title="每日報酬的標準差 × √252，越大代表波動越劇烈。0050 長期約 15–20%">年化波動度 ⓘ</td>${cells(r => r.volatility == null ? '--' : r.volatility.toFixed(1) + '%')}</tr>`;
+    <tr><td title="每日報酬的標準差 × √252，越大代表波動越劇烈。0050 長期約 15–20%">年化波動度 ⓘ</td>${cells(r => r.volatility == null ? '--' : r.volatility.toFixed(1) + '%')}</tr>
+    <tr><td title="年化報酬 ÷ 下跌日的波動（只把下跌算成風險，上漲的波動不扣分；無風險利率以 0 計）。&#10;每承受一單位「下跌」換到多少報酬：1 以上不錯、2 以上很好，負的代表期間在賠錢。">Sortino 比率 ⓘ</td>${cells(r => r.sortino == null ? '--' : `<span class="${sortinoClass(r.sortino)}">${r.sortino.toFixed(2)}</span>`)}</tr>`;
 }
 
 /** Monthly TWR heatmap for one market, newest year first */
@@ -2254,6 +2310,7 @@ function applySuggestedStart() {
 let _dividends = [];
 
 async function loadDividends() {
+  loadDividendSources();
   try {
     _dividends = await api('/api/dividends');
     const sel = document.getElementById('div-year-filter');
@@ -2269,6 +2326,42 @@ async function loadDividends() {
   } catch (err) {
     showToast('載入股利失敗: ' + err.message, 'error');
   }
+}
+
+/** 股利來源 (js/server/dividends.js dividendSources): each year split by stock, and what moved it. */
+async function loadDividendSources() {
+  let r;
+  try {
+    r = await api('/api/dividends/sources');
+  } catch (err) {
+    return; // the records below still show
+  }
+  const card = document.getElementById('div-sources-card');
+  card.hidden = !r.years.length;
+  if (!r.years.length) return;
+  // The biggest payers overall keep a color across years (same palette as 穿透持股); 其他 is gray
+  const color = (sym) => { const i = r.symbols.indexOf(sym); return i >= 0 ? `var(--lt-${i})` : 'var(--lt-5)'; };
+  document.getElementById('div-sources-legend').innerHTML = [...r.symbols, ...(r.has_other ? ['其他'] : [])]
+    .map(s => `<span class="legend-item"><span class="legend-dot" style="background:${color(s)}"></span>${escapeHtml(s)}</span>`).join('');
+
+  const max = Math.max(...r.years.map(y => y.total));
+  const wan = v => (v < 0 ? '−' : '+') + fmtWan(Math.abs(v));
+  document.getElementById('div-sources-rows').innerHTML = r.years.map(y => {
+    const drivers = y.drivers.map(x => `${escapeHtml(x.symbol)} <span class="${plClass(x.delta)}">${wan(x.delta)}</span>`).join('、');
+    return `<div class="pf-row">
+      <div class="pf-row-head"><strong>${y.year}</strong><span class="pf-weight">${fmtTWD(y.total)}</span></div>
+      <div class="source-bar cat-track lt-stack" aria-hidden="true" style="width:${y.total / max * 100}%">${y.parts.map(p =>
+        `<span style="width:${p.amount / y.total * 100}%;background:${color(p.symbol)}" title="${escapeAttr(p.symbol)} ${fmtTWD(p.amount)}"></span>`).join('')}</div>
+      <div class="pf-row-sub">${y.parts.slice(0, 3).map(p => `${escapeHtml(p.symbol)} ${(p.amount / y.total * 100).toFixed(0)}%`).join(' · ')}${
+        y.change != null ? `<br>比前一年 <span class="${plClass(y.change)}">${wan(y.change)}</span>${drivers ? `：${drivers}` : ''}` : ''}</div>
+    </div>`;
+  }).join('');
+
+  const t = r.ttm;
+  document.getElementById('div-sources-hint').innerHTML = t.total > 0
+    ? `近 12 個月 ${fmtTWD(t.total)}，${escapeHtml(t.parts[0].symbol)} 佔 ${t.top_share.toFixed(0)}%` +
+      (t.top_share >= 50 ? '：股利現金流大多靠這一檔，它的配息政策一改變，整體股利就會跟著變。' : '。')
+    : '近 12 個月沒有股利。';
 }
 
 function renderDividends() {
@@ -3293,12 +3386,20 @@ const AI_PROMPTS = {
   import: () => _aiImportPrompt,
 };
 
-/** Every AI site button plus 只複製, always all of them (drawn once; the prompt is read on click). */
+/** 複製提示詞 plus every AI site button, always all of them (drawn once; the prompt is read on click),
+ *  and a status line that stays: a toast is gone by the time the user is back from the AI's tab. */
 function renderAISites() {
-  const buttons = AI_SITES.map(s =>
-    `<a class="btn btn-outline btn-sm" data-site="${s.name}" href="${s.url}" target="_blank" rel="noopener noreferrer">${s.name}</a>`).join('') +
-    '<button type="button" class="btn btn-outline btn-sm" data-copy>只複製</button>';
-  document.querySelectorAll('.ai-actions[data-ai]').forEach(el => { el.innerHTML = buttons; });
+  const buttons = '<button type="button" class="btn btn-primary btn-sm" data-copy><span class="i" data-icon="copy"></span>複製提示詞</button>' +
+    AI_SITES.map(s =>
+      `<a class="btn btn-outline btn-sm" data-site="${s.name}" href="${s.url}" target="_blank" rel="noopener noreferrer">${s.name}</a>`).join('') +
+    '<p class="ai-status" aria-live="polite"></p>';
+  document.querySelectorAll('.ai-actions[data-ai]').forEach(el => { el.innerHTML = buttons; applyIcons(el); });
+}
+
+function setAIStatus(block, text, ok = true) {
+  const el = block.querySelector('.ai-status');
+  el.textContent = text;
+  el.classList.toggle('error', !ok);
 }
 
 // A click copies the prompt and opens the site, pre-filled where the site supports it and the prompt
@@ -3310,18 +3411,18 @@ document.addEventListener('click', (e) => {
   if (!button) return;
   const prompt = AI_PROMPTS[block.dataset.ai]();
   const site = AI_SITES.find(s => s.name === button.dataset.site);
-  if (!site) return copyText(prompt);
   const q = encodeURIComponent(prompt);
-  const prefilled = site.prefill && q.length <= AI_LINK_MAX;
-  button.href = prefilled ? `${site.url}?q=${q}` : site.url;
-  copyText(prompt, prefilled ? '已帶入提示詞（也複製了一份）' : '提示詞已複製，到 AI 對話框貼上即可');
+  const prefilled = site && site.prefill && q.length <= AI_LINK_MAX;
+  if (site) button.href = prefilled ? `${site.url}?q=${q}` : site.url;
+  const time = new Date().toTimeString().slice(0, 5);
+  let msg;
+  if (!site) msg = `✓ 已複製提示詞（${time}），到 AI 對話框貼上即可`;
+  else if (prefilled) msg = `✓ 已開啟 ${site.name} 並帶入提示詞，也複製了一份（${time}）`;
+  else msg = `✓ 已開啟 ${site.name} 並複製提示詞（${time}）：${site.prefill ? '提示詞太長帶不進去，' : ''}在對話框貼上即可`;
+  navigator.clipboard.writeText(prompt)
+    .then(() => setAIStatus(block, msg))
+    .catch(() => setAIStatus(block, '複製失敗：請在下面的文字框全選後手動複製', false));
 });
-
-function copyText(text, done = '已複製到剪貼簿') {
-  navigator.clipboard.writeText(text)
-    .then(() => showToast(done, 'success'))
-    .catch(() => showToast('複製失敗，請手動選取複製', 'error'));
-}
 
 let _aiImportMode = 'add'; // 'replace' = 以對帳單取代 (stock trades)
 let _aiImportKindLabels = {}; // kind id -> label, from /api/ai-import/kinds
@@ -3400,6 +3501,14 @@ const IMPORT_COLUMNS = {
     ['手續費 / 稅', t => `${fmtCur(t.fee, t.currency)} / ${fmtCur(t.tax, t.currency)}`],
     ['損益', t => (t.history ? `<span class="${plClass(t.realized_pl)}">${fmtPLCur(t.realized_pl, t.currency)}</span>` : '<span class="text-muted">自動計算</span>')],
     ['備註', t => escapeHtml(t.note || '') + (t.flags || []).map(f => `<div class="import-flag">${escapeHtml(f)}</div>`).join('')],
+  ],
+  asset_snapshots: [
+    ['日期', s => s.date],
+    ['台幣現金', s => fmtTWD(s.cash_twd)],
+    ['美金現金', s => fmtUSD(s.cash_usd)],
+    ['股票市值（當天）', s => fmtTWD(s.stock_value_twd)],
+    ['合計', s => `<strong>${fmtTWD(s.total_asset)}</strong>`],
+    ['備註', s => escapeHtml(s.note || '')],
   ],
 };
 

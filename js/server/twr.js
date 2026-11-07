@@ -8,7 +8,7 @@ import { isHistorySell, sellCostBasis, storedUSDTWDRate, cmp, round4, goRound } 
 import { fetchDailyCloses, fetchQuotes, hasProxy, MarketUnavailableError, USDTWD_SYMBOL } from './market.js';
 import { queryDividends } from './dividends.js';
 import {
-  computePerformance, perfSegments, benchValues, benchReturn, addDays, addDate, isDateOnly,
+  computePerformance, perfSegments, benchValues, benchReturn, addDays, addDate, isDateOnly, rollingYear, rollingSummary,
 } from './twr_calc.js';
 import { listSnapshots, netWorthSeries } from './assets.js';
 import { includeOtherAssets } from './other_assets.js';
@@ -281,6 +281,13 @@ export async function performance() {
   series.realized = realized;
   series.bench = benchOut;
   series.fx = res.fx.slice(o).map(round4);
+  // 滾動一年報酬: every 1-year window ending on each day, for the markets and the benchmarks
+  series.rolling = {};
+  const rolling = {};
+  for (const [k, vals] of [...perfSegments.map((seg) => [seg, growth[seg]]), ...Object.entries(benchOut)]) {
+    series.rolling[k] = rollingYear(series.dates, vals);
+    rolling[k] = rollingSummary(series.dates, series.rolling[k]);
+  }
   series.net_worth = netWorthSeries(series, [...listSnapshots()].reverse(), includeOtherAssets());
 
   const monthly = {};
@@ -294,6 +301,7 @@ export async function performance() {
     // Markets ever held: the UI hides the others (not everyone has US stocks)
     markets: ['TW', 'US'].filter((m) => res.series[m].value.some((v) => v > 0)),
     monthly,
+    rolling,
     benchmarks: perfBenchmarks.map(({ symbol, label }) => ({ symbol, label })),
     missing: res.missing,
     series,

@@ -266,8 +266,11 @@ export class PerfResult {
         }
       }
     }
-    const v = volatility(ps, this.days, b, last);
+    const rs = dailyReturns(ps, this.days, b, last);
+    const v = volatility(rs);
     if (v !== null) s.volatility = round2(v * 100);
+    const so = sortino(rs);
+    s.sortino = so == null ? null : round2(so);
     return s;
   }
 
@@ -332,11 +335,10 @@ export function drawdown(g, b, last) {
 }
 
 /**
- * Annualized standard deviation of daily returns over trading days with
- * capital at work. Weekends and holidays (exactly 0) are skipped so they don't
- * dilute it. Needs 20 samples; null otherwise.
+ * Daily returns over trading days with capital at work. Weekends and holidays
+ * (exactly 0) are skipped so they don't dilute the statistics below.
  */
-export function volatility(ps, days, b, last) {
+export function dailyReturns(ps, days, b, last) {
   const rs = [];
   for (let i = b + 1; i <= last; i++) {
     if (ps.active[i] === ps.active[i - 1]) continue;
@@ -346,10 +348,62 @@ export function volatility(ps, days, b, last) {
     const r = ps.growth[i] / ps.growth[i - 1] - 1;
     if (r !== 0) rs.push(r);
   }
-  if (rs.length < 20) return null;
-  const mean = rs.reduce((a, r) => a + r, 0) / rs.length;
-  const ss = rs.reduce((a, r) => a + (r - mean) * (r - mean), 0);
+  return rs;
+}
+
+const MIN_SAMPLES = 20;
+const mean = (rs) => rs.reduce((a, r) => a + r, 0) / rs.length;
+
+/** Annualized standard deviation of daily returns (dailyReturns). Needs 20 samples; null otherwise. */
+export function volatility(rs) {
+  if (rs.length < MIN_SAMPLES) return null;
+  const m = mean(rs);
+  const ss = rs.reduce((a, r) => a + (r - m) * (r - m), 0);
   return Math.sqrt(ss / (rs.length - 1)) * Math.sqrt(252);
+}
+
+/**
+ * Sortino ratio: annualized mean daily return ÷ annualized downside deviation (only the
+ * falling days count as risk; risk-free rate taken as 0). null with under 20 samples or no
+ * falling day.
+ */
+export function sortino(rs) {
+  if (rs.length < MIN_SAMPLES) return null;
+  const down = Math.sqrt(rs.reduce((a, r) => a + (r < 0 ? r * r : 0), 0) / rs.length);
+  return down > 0 ? (mean(rs) * 252) / (down * Math.sqrt(252)) : null;
+}
+
+/**
+ * Rolling 1-year return (%) on each day: value ÷ value 365 calendar days earlier − 1.
+ * values: growth or price index aligned to dates, null where there's nothing yet.
+ * null for days without a full year behind them.
+ */
+export function rollingYear(dates, values) {
+  const out = new Array(dates.length).fill(null);
+  let j = 0;
+  for (let i = 0; i < dates.length; i++) {
+    const from = addDays(dates[i], -365);
+    if (dates[0] > from) continue;
+    while (j + 1 < i && dates[j + 1] <= from) j++;
+    const a = values[j];
+    const v = values[i];
+    if (a > 0 && v > 0) out[i] = round2((v / a - 1) * 100);
+  }
+  return out;
+}
+
+/** Best, worst, median and the share of negative windows of a rolling series; null when empty. */
+export function rollingSummary(dates, rolling) {
+  const pts = rolling.map((v, i) => [v, dates[i]]).filter(([v]) => v != null).sort((a, b) => a[0] - b[0]);
+  if (!pts.length) return null;
+  const [worst, best] = [pts[0], pts.at(-1)];
+  const mid = pts.length >> 1;
+  return {
+    best: best[0], best_date: best[1],
+    worst: worst[0], worst_date: worst[1],
+    median: round2(pts.length % 2 ? pts[mid][0] : (pts[mid - 1][0] + pts[mid][0]) / 2),
+    negative_pct: round2(pts.filter(([v]) => v < 0).length / pts.length * 100),
+  };
 }
 
 /**

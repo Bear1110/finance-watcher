@@ -13,7 +13,7 @@
 //   plan(res, summary)  (選用)         「以對帳單取代」：要刪哪些、匯入持倉改成什麼、合計對不對得上
 //   review(res, plan)   (選用)         判斷重複之後的整批檢查（例如賣出時持股夠不夠）
 //   insertAll(records, plan) (async)  寫入（在 db.transaction 裡；plan 只在取代模式時給）
-// 之後加股利、資產快照只要再登記一項。
+// 之後加股利只要再登記一項。
 //
 // 模式：add（預設）只新增、略過重複；replace（有 plan() 的種類才有）把對帳單期間內這幾檔股票的
 // 舊交易換成這份對帳單，期間開始前的持股用「匯入持倉」補上（股數由目前持股倒推）。
@@ -24,7 +24,8 @@ import { badRequest, body, isCounted, isDate, round4 } from './util.js';
 import { EXPENSE_CATEGORIES, EXPENSE_CURRENCIES, expenseTWD, normalizeExpense, withFxRate } from './expenses.js';
 import { normalizeTxn, applyAutoFee, replaySymbol, ledgerOrder, fmtShares } from './ledger.js';
 import { hasProxy } from './market.js';
-import { syncPriceHistory } from './twr.js';
+import { syncPriceHistory, performance } from './twr.js';
+import { autoFill, insertSnapshot } from './assets.js';
 import { addDays } from './twr_calc.js';
 
 const IMPORT_FORMAT = 'finance-watcher-import';
@@ -418,7 +419,58 @@ const transactions = {
   },
 };
 
-const KINDS = { expenses, transactions };
+// ---------------------------------------------------------------- 資產快照
+
+const snapshots = {
+  label: '資產快照',
+  example: [
+    { date: '2026-10-31', cash_twd: 519921, cash_usd: 325.5, note: '台新 300,000；國泰 219,921；Firstrade 美金 325.5' },
+  ],
+  prompt() {
+    return `資產快照（asset_snapshots）規則：
+- 記的是某一天「現金」的餘額（銀行存款、券商交割戶裡的現金），不含股票；股票市值 App 會用當天的股價自己算。
+- 每個日期一筆：同一天有好幾個帳戶，就把台幣加總成 cash_twd、美金加總成 cash_usd，各帳戶金額寫進 note。
+- date：餘額的日期 YYYY-MM-DD（對帳單或截圖上的日期）。資料沒寫日期或年份時先問我，不要猜。
+- cash_twd：台幣現金合計；cash_usd：美金現金合計（填美金原幣，不要換算台幣）。沒有就填 0。
+- 台幣、美金以外的幣別先問我要怎麼處理。
+- note：各帳戶名稱與金額，沒有就 ""。`;
+  },
+  normalize(raw) {
+    const date = normDate(raw.date);
+    if (!date) return { error: `日期看不懂：${str(raw.date) || '（空白）'}` };
+    const twd = optAmount(raw.cash_twd);
+    const usd = optAmount(raw.cash_usd);
+    if (Number.isNaN(twd) || Number.isNaN(usd)) return { error: `金額看不懂：${str(raw.cash_twd)} / ${str(raw.cash_usd)}` };
+    if (twd == null && usd == null) return { error: '沒有現金金額' };
+    if ((twd || 0) < 0 || (usd || 0) < 0) return { error: '現金不能是負數' };
+    // Stock values, rate and total left at 0 for assets.js autoFill
+    return { row: { date, cash_twd: twd || 0, cash_usd: usd || 0, note: str(raw.note), stock_tw_value: 0, stock_us_value: 0, stock_value_twd: 0, usd_twd_rate: 0, total_asset: 0 } };
+  },
+  // Each snapshot gets its date's stock value and rate (assets.js autoFill); the series is built once.
+  // Unlike the form, a past date without the series is an error: a batch of old balances valued
+  // at today's prices would quietly bend the net-worth history.
+  async prepare(res) {
+    const today = db.today();
+    const perf = res.records.some((r) => r.date < today) ? await performance().catch(() => null) : null;
+    const kept = [];
+    for (const r of res.records) {
+      if (r.date < today && !perf) {
+        res.errors.push({ index: r.index, error: '算不出當天的股票市值（還沒抓到歷史股價），請稍後再試或手動新增' });
+        continue;
+      }
+      await autoFill(r, perf);
+      kept.push(r);
+    }
+    res.records = kept;
+  },
+  key: (r) => [r.date, Math.round(r.cash_twd), Math.round(r.cash_usd * 100)].join('|'),
+  existing: () => db.all('asset_snapshots'),
+  async insertAll(records) {
+    for (const { index, ...r } of records) insertSnapshot(r);
+  },
+};
+
+const KINDS = { expenses, transactions, asset_snapshots: snapshots };
 
 // ---------------------------------------------------------------- prompt
 

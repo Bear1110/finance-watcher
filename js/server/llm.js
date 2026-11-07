@@ -160,7 +160,23 @@ function portfolioSection(data) {
     }
     const y1 = perf.periods.find((p) => p.key === '1Y');
     const r1 = y1 && y1.markets.ALL;
-    if (r1 && r1.twr != null) sb += `\n近 1 年最大回撤 ${pct(r1.max_drawdown)}、年化波動度 ${r1.volatility == null ? '--' : f(r1.volatility, 1) + '%'}。\n`;
+    if (r1 && r1.twr != null) {
+      const sortino = r1.sortino == null ? '' : `、Sortino 比率 ${f(r1.sortino, 2)}（年化報酬 ÷ 下跌日的波動，無風險利率以 0 計）`;
+      sb += `\n近 1 年最大回撤 ${pct(r1.max_drawdown)}、年化波動度 ${r1.volatility == null ? '--' : f(r1.volatility, 1) + '%'}${sortino}。\n`;
+    }
+    const roll = perf.rolling || {};
+    if (roll.ALL) {
+      const keys = [...segs, ...benches.map((b) => b.symbol)].filter((k) => roll[k]);
+      const labels = { ...MARKET_NAME, ...Object.fromEntries(benches.map((b) => [b.symbol, b.label])) };
+      const label = (k) => labels[k];
+      const row = (name, cell) => `| ${name} | ${keys.map((k) => cell(roll[k])).join(' | ')} |\n`;
+      sb += '\n### 滾動一年報酬（每一天往回看整整一年的 TWR，也就是「任何時候抱一年」的結果分布）\n\n';
+      sb += `| | ${keys.map(label).join(' | ')} |\n|---|${keys.map(() => '---').join('|')}|\n`;
+      sb += row('最好', (r) => `${pct(r.best)}（到 ${r.best_date}）`);
+      sb += row('最差', (r) => `${pct(r.worst)}（到 ${r.worst_date}）`);
+      sb += row('中位數', (r) => pct(r.median));
+      sb += row('抱一年虧錢的比例', (r) => `${f(r.negative_pct, 0)}%`);
+    }
     sb += '\n';
   }
   const x = data.xirr;

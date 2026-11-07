@@ -4,7 +4,7 @@ import * as db from './db.js';
 import { route } from './router.js';
 import { fetchDividendHistory, MarketUnavailableError } from './market.js';
 import {
-  HttpError, badRequest, body, cmp, isCounted, normalizeSymbolMarket, settingFloat, storedUSDTWDRate,
+  HttpError, badRequest, body, cmp, isCounted, normalizeSymbolMarket, settingFloat, storedUSDTWDRate, toTWD,
 } from './util.js';
 
 function normalizeDividend(d) {
@@ -69,11 +69,16 @@ route('DELETE', '/api/dividends/{id}', ({ params }) => {
   return { status: 'deleted' };
 });
 
+/** The date a year before today ('YYYY-MM-DD'): the start of 近 12 個月. */
+function yearAgo(today) {
+  const c = new Date(today + 'T00:00:00');
+  c.setFullYear(c.getFullYear() - 1);
+  return db.today(c);
+}
+
 /** Dividends received per symbol in its own currency: all-time and trailing 12 months. */
 export function dividendsBySymbol() {
-  const c = new Date();
-  c.setFullYear(c.getFullYear() - 1);
-  const cutoff = db.today(c);
+  const cutoff = yearAgo(db.today());
   const groups = new Map();
   for (const d of db.all('dividends')) {
     const k = `${d.symbol}\u0000${d.currency}`;
@@ -84,6 +89,62 @@ export function dividendsBySymbol() {
   }
   return [...groups.values()].sort((a, b) => cmp(a.symbol, b.symbol) || cmp(a.currency, b.currency));
 }
+
+/** Symbols shown on their own in 股利來源; the rest are lumped into 其他. */
+const SOURCE_TOP = 5;
+export const OTHER_SOURCE = '其他';
+
+/**
+ * 股利來源: each year's dividends (TWD at rate) split by stock, how much each stock added or lost
+ * against the year before, and how concentrated the last 12 months are. The biggest payers overall
+ * keep their own color across years; the rest are 其他.
+ */
+export function dividendSources(rows, rate, today) {
+  const twd = (d) => toTWD(d.amount, d.currency, rate);
+  const sumBy = (list, key) => {
+    const m = new Map();
+    for (const d of list) m.set(key(d), (m.get(key(d)) || 0) + twd(d));
+    return m;
+  };
+  const total = (m) => [...m.values()].reduce((a, b) => a + b, 0);
+  const parts = (m) => [...m].sort((a, b) => b[1] - a[1]).map(([symbol, amount]) => ({ symbol, amount }));
+
+  const symbols = parts(sumBy(rows, (d) => d.symbol)).slice(0, SOURCE_TOP).map((p) => p.symbol);
+  const label = (d) => (symbols.includes(d.symbol) ? d.symbol : OTHER_SOURCE);
+
+  const byYear = new Map();
+  for (const d of rows) byYear.set(d.date.slice(0, 4), [...(byYear.get(d.date.slice(0, 4)) || []), d]);
+  const yearsAsc = [...byYear].sort((a, b) => cmp(a[0], b[0]));
+  let prev = null; // the year before, per real symbol: what moved the total
+  const years = yearsAsc.map(([year, list]) => {
+    const exact = sumBy(list, (d) => d.symbol);
+    const y = {
+      year,
+      total: total(exact),
+      parts: parts(sumBy(list, label)),
+      change: prev ? total(exact) - total(prev) : null,
+      drivers: prev ? [...new Set([...exact.keys(), ...prev.keys()])]
+        .map((symbol) => ({ symbol, delta: (exact.get(symbol) || 0) - (prev.get(symbol) || 0) }))
+        .filter((x) => Math.abs(x.delta) >= 1)
+        .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+        .slice(0, 3) : [],
+    };
+    prev = exact;
+    return y;
+  });
+
+  const cutoff = yearAgo(today);
+  const ttm = parts(sumBy(rows.filter((d) => d.date >= cutoff && d.date <= today), (d) => d.symbol));
+  const ttmTotal = ttm.reduce((a, p) => a + p.amount, 0);
+  return {
+    years: years.reverse(),
+    symbols,
+    has_other: years.some((y) => y.parts.some((p) => p.symbol === OTHER_SOURCE)),
+    ttm: { total: ttmTotal, parts: ttm, top_share: ttmTotal > 0 ? ttm[0].amount / ttmTotal * 100 : null },
+  };
+}
+
+route('GET', '/api/dividends/sources', () => dividendSources(db.all('dividends'), storedUSDTWDRate(), db.today()));
 
 route('GET', '/api/dividends/by-symbol', () => ({ items: dividendsBySymbol(), usd_twd_rate: storedUSDTWDRate() }));
 

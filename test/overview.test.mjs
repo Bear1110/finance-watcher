@@ -48,17 +48,19 @@ test('yearlyGrowth: a first year without a Jan 1 base starts at its first snapsh
 
 const ex = (date, amount, category = '餐飲', type = 'expense') => ({ date, amount_twd: amount, category, type });
 
-test('monthSummary: month to date vs the same days last month, clamped to its length', () => {
+test('monthSummary: whole month incl. planned entries; pace vs the same days last month, clamped', () => {
   const m = monthSummary([
     ex('2026-03-01', 100), ex('2026-03-02', 50, '交通'), ex('2026-03-03', 300, '購物'), ex('2026-03-02', 1000, '薪資', 'income'),
-    ex('2026-02-28', 70), ex('2026-02-27', 30), ex('2026-02-10', 5), ex('2026-03-31', 999), // future: not counted
+    ex('2026-02-28', 70), ex('2026-02-27', 30), ex('2026-02-10', 5), ex('2026-03-31', 999), ex('2026-04-01', 7), // planned later this month counts; next month doesn't
   ], '2026-03-30');
-  assert.equal(m.expense, 450);
+  assert.equal(m.to, '2026-03-31');
+  assert.equal(m.expense, 1449);
+  assert.equal(m.expense_to_date, 450);
   assert.equal(m.income, 1000);
   assert.equal(m.prev_to, '2026-02-28');
   assert.equal(m.prev_expense, 105);
-  assert.deepEqual(m.top.map((t) => t.category), ['購物', '餐飲', '交通']);
-  assert.equal(m.last_record, '2026-03-31');
+  assert.deepEqual(m.top.map((t) => t.category), ['餐飲', '購物', '交通']);
+  assert.equal(m.last_record, '2026-04-01');
   assert.equal(monthSummary([], '2026-01-15').prev_from, '2025-12-01');
 });
 

@@ -54,29 +54,34 @@ const ymd = (y, m, d) => `${y}-${pad(m)}-${pad(d)}`;
 const daysInMonth = (y, m) => new Date(y, m, 0).getDate(); // m is 1-based
 
 /**
- * This month so far vs the same days of last month, plus the top expense categories.
+ * The whole calendar month, including entries recorded ahead of time (planned), plus the top
+ * expense categories. The comparison with last month uses only the days so far against the same
+ * days of last month, so early in the month it isn't "spending is way down".
  * expenses: rows with { type, category, date, amount_twd }.
  */
 export function monthSummary(expenses, today) {
   const [y, m, d] = today.split('-').map(Number);
   const [py, pm] = m === 1 ? [y - 1, 12] : [y, m - 1];
   const from = ymd(y, m, 1);
+  const to = ymd(y, m, daysInMonth(y, m));
   const prevFrom = ymd(py, pm, 1);
   const prevTo = ymd(py, pm, Math.min(d, daysInMonth(py, pm)));
-  const sum = (lo, hi, type) => expenses
+  const sum = (lo, hi, type, list = expenses) => list
     .filter((e) => e.type === type && e.date >= lo && e.date <= hi)
     .reduce((s, e) => s + e.amount_twd, 0);
+  const month = expenses.filter((e) => e.date >= from && e.date <= to);
   const byCat = new Map();
-  for (const e of expenses) {
-    if (e.type === 'expense' && e.date >= from && e.date <= today) byCat.set(e.category, (byCat.get(e.category) || 0) + e.amount_twd);
+  for (const e of month) {
+    if (e.type === 'expense') byCat.set(e.category, (byCat.get(e.category) || 0) + e.amount_twd);
   }
   return {
-    from, to: today, prev_from: prevFrom, prev_to: prevTo,
-    expense: sum(from, today, 'expense'),
-    income: sum(from, today, 'income'),
+    from, to, today, prev_from: prevFrom, prev_to: prevTo,
+    expense: sum(from, to, 'expense', month),
+    income: sum(from, to, 'income', month),
+    expense_to_date: sum(from, today, 'expense', month),
     prev_expense: sum(prevFrom, prevTo, 'expense'),
     top: [...byCat].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([category, amount]) => ({ category, amount })),
-    count: expenses.filter((e) => e.date >= from && e.date <= today).length,
+    count: month.length,
     last_record: expenses.reduce((mx, e) => (e.date > mx ? e.date : mx), ''),
   };
 }

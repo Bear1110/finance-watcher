@@ -2,8 +2,9 @@
 
 import * as db from './db.js';
 import { route } from './router.js';
-import { body, refreshAndPersistRate, cmp } from './util.js';
+import { body, refreshAndPersistRate, cmp, storedUSDTWDRate } from './util.js';
 import { portfolioValues } from './stocks.js';
+import { performance } from './twr.js';
 import { otherAssetsTotal, includeOtherAssets } from './other_assets.js';
 
 const FIELDS = ['cash_twd', 'cash_usd', 'stock_tw_value', 'stock_us_value', 'stock_value_twd', 'usd_twd_rate', 'total_asset'];
@@ -24,14 +25,43 @@ function decode(req) {
   return s;
 }
 
-/** Fill whatever the client left at 0: live rate, live stock values, total. */
-async function autoFill(s) {
-  // Refresh and persist so the snapshot freezes the live rate
-  if (s.usd_twd_rate === 0) s.usd_twd_rate = await refreshAndPersistRate();
-  if (s.stock_value_twd === 0) {
-    [s.stock_tw_value, s.stock_us_value, s.stock_value_twd] = await portfolioValues();
+/**
+ * Stock values (TWD) and USD/TWD rate on a past date from the performance series, which is rebuilt
+ * daily from the trades and closing prices: [tw, us, rate]. No trades at all (or none yet on that
+ * date): no stock. perf: performance() result.
+ */
+export function marketOn(date, perf) {
+  const s = perf.series;
+  if (!s || !s.dates.length) return [0, 0, storedUSDTWDRate()];
+  const i = s.dates.findLastIndex((d) => d <= date);
+  return i < 0 ? [0, 0, s.fx[0]] : [s.value.TW[i] || 0, s.value.US[i] || 0, s.fx[i]];
+}
+
+/**
+ * Fill whatever was left at 0: rate, stock values, total. Today: live quotes and rate (refreshed and
+ * persisted, so the snapshot freezes it). A past date: that day's values from the performance series
+ * (built here unless passed in), so a snapshot for last March doesn't get today's stock value; live
+ * values when the series can't be built.
+ */
+export async function autoFill(s, perf) {
+  const needRate = s.usd_twd_rate === 0;
+  const needStock = s.stock_value_twd === 0;
+  if (needRate || needStock) {
+    if (s.date < db.today()) perf ??= await performance().catch(() => null);
+    const past = s.date < db.today() && perf ? marketOn(s.date, perf) : null;
+    if (needRate) s.usd_twd_rate = past ? past[2] : await refreshAndPersistRate();
+    if (needStock) {
+      const [tw, us] = past || await portfolioValues();
+      [s.stock_tw_value, s.stock_us_value, s.stock_value_twd] = [tw, us, tw + us];
+    }
   }
-  if (s.total_asset === 0) s.total_asset = s.cash_twd + s.cash_usd * s.usd_twd_rate + s.stock_value_twd;
+  if (s.total_asset === 0) s.total_asset = netWorthOf({ cashTWD: s.cash_twd, cashUSD: s.cash_usd, rate: s.usd_twd_rate, stocks: s.stock_value_twd });
+}
+
+/** Save a new snapshot; 其他資產 default to today's total. */
+export function insertSnapshot(s) {
+  s.other_assets ??= otherAssetsTotal();
+  return db.insert('asset_snapshots', s);
 }
 
 /** Snapshots, newest first. */
@@ -95,9 +125,8 @@ export function carriedCash(snap = listSnapshots()[0]) {
 async function create(req) {
   const s = decode(req);
   if (!s.date) s.date = db.today();
-  s.other_assets ??= otherAssetsTotal();
   await autoFill(s);
-  const row = db.insert('asset_snapshots', s);
+  const row = insertSnapshot(s);
   return { ...assetJSON(s), id: row.id, created_at: '' };
 }
 

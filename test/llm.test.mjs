@@ -52,6 +52,7 @@ test('prompt: ETF look-through table, held-period note on a late market, fixed �
     sections: new Set(['portfolio']), rate: 32, overview,
     holdings: { total_value_twd: 900_000, total_cost_twd: 700_000, total_pl_twd: 200_000, total_pl_percent: 28.57, realized_pl_twd: 0, holdings: [] },
     perf: { markets: ['TW', 'US'], benchmarks: [],
+      rolling: { ALL: { best: 43.2, best_date: '2025-12-01', worst: -6.8, worst_date: '2025-05-02', median: 18.1, negative_pct: 12 } },
       periods: [{ key: 'ALL', label: '全部', start: '2020-01-01', days: 2500, bench: {},
         markets: { ALL: { twr: 100, annualized: 10.6, active_days: 2500 }, TW: { twr: 100, annualized: 10.6, active_days: 2500 }, US: { twr: 20, annualized: 18.8, active_days: 400 } } }] },
     lookthrough: {
@@ -71,4 +72,6 @@ test('prompt: ETF look-through table, held-period note on a late market, fixed �
   assert.match(p, /\+20\.00%（年化 \+18\.80%，實際有持股約 1\.1 年）/);
   assert.doesNotMatch(p, /\+100\.00%（年化 \+10\.60%，實際/); // held the whole period: no note
   assert.match(p, /行動總結[\s\S]*A\. 立即處理[\s\S]*D\. 優先順序表/);
+  assert.match(p, /\| 最差 \| -6\.80%（到 2025-05-02） \|/); // rolling 1-year: only the series that have it
+  assert.match(p, /\| 抱一年虧錢的比例 \| 12% \|/);
 });
