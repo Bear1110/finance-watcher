@@ -823,6 +823,15 @@ select option {
   margin-bottom: 24px;
 }
 
+/* Small heading over a row of stat cards (已實現損益: 損益 / 交易品質) */
+.stats-group-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin: 4px 0 10px;
+}
+
 .realized-stats .stat-card,
 .dash-stats .stat-card {
   background: var(--bg-card);
@@ -906,7 +915,7 @@ select option {
 
 .dash-stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
   margin-bottom: 24px;
 }
@@ -944,10 +953,8 @@ select option {
 }
 
 .dash-stats-5 {
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
-
-.dash-stats .stat-card { min-width: 0; }
 
 .dash-stats .stat-sub,
 .realized-stats .stat-sub {
@@ -1006,7 +1013,7 @@ select option {
 
 @media (max-width: 900px) {
   .dash-stats {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

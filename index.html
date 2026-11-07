@@ -296,19 +296,34 @@
         </div>
         <!-- Year Filter -->
         <div class="rpl-filter" id="rpl-year-filter"></div>
-        <!-- Overall Stats Cards -->
-        <div class="realized-stats">
+                <div class="stats-group-label">損益</div>
+        <div class="dash-stats">
           <div class="stat-card">
-            <div class="stat-label">總已實現損益</div>
+            <div class="stat-label">已實現損益</div>
             <div class="stat-value" id="rpl-total">--</div>
+            <div class="stat-sub" id="rpl-total-sub"></div>
           </div>
           <div class="stat-card">
-            <div class="stat-label">總交易次數</div>
-            <div class="stat-value" id="rpl-trades">--</div>
+            <div class="stat-label">股利收入</div>
+            <div class="stat-value" id="rpl-div">--</div>
           </div>
+          <div class="stat-card">
+            <div class="stat-label">含股利總損益</div>
+            <div class="stat-value" id="rpl-total-div">--</div>
+            <div class="stat-sub" id="rpl-total-div-sub"></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">最佳交易</div>
+            <div class="stat-value" id="rpl-best">--</div>
+            <div class="stat-sub" id="rpl-best-sub"></div>
+          </div>
+        </div>
+        <div class="stats-group-label">交易品質</div>
+        <div class="dash-stats">
           <div class="stat-card">
             <div class="stat-label">勝率</div>
             <div class="stat-value" id="rpl-winrate">--</div>
+            <div class="stat-sub" id="rpl-winrate-sub"></div>
           </div>
           <div class="stat-card">
             <div class="stat-label" title="Profit Factor：所有賺錢交易的總獲利 ÷ 所有賠錢交易的總虧損。&#10;小於 1 代表整體在賠錢；1～1.5 偏薄；2 以上算強。">獲利因子 ⓘ</div>
@@ -321,21 +336,9 @@
             <div class="stat-sub" id="rpl-payoff-sub"></div>
           </div>
           <div class="stat-card">
-            <div class="stat-label" title="Expectancy：平均每一筆賣出交易賺（或賠）多少台幣，&#10;= 總已實現損益 ÷ 交易筆數。正數才代表照這樣交易長期會賺。">每筆期望值 ⓘ</div>
+            <div class="stat-label" title="Expectancy：平均每一筆賣出交易賺（或賠）多少台幣，&#10;= 已實現損益 ÷ 交易筆數 = 勝率 × 平均賺 − 敗率 × 平均賠。&#10;正數才代表照這樣交易長期會賺。">每筆期望值 ⓘ</div>
             <div class="stat-value" id="rpl-exp">--</div>
             <div class="stat-sub" id="rpl-exp-sub"></div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">最佳交易</div>
-            <div class="stat-value" id="rpl-best">--</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">股利收入</div>
-            <div class="stat-value" id="rpl-div">--</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">含股利總損益</div>
-            <div class="stat-value" id="rpl-total-div">--</div>
           </div>
         </div>
 

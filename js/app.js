@@ -57,6 +57,16 @@ function plClass(n) {
   return n > 0 ? 'positive' : 'negative';
 }
 
+/** Value wrapped in a span coloured green/red by its sign. */
+const plSpan = (v, f = fmtTWD) => `<span class="${plClass(v)}">${f(v)}</span>`;
+
+/** Stat card: big value plus the optional `${id}-sub` line under it. */
+function setStat(id, html, sub = '') {
+  document.getElementById(id).innerHTML = html;
+  const subEl = document.getElementById(id + '-sub');
+  if (subEl) subEl.innerHTML = sub;
+}
+
 /** Format P&L value with sign */
 function fmtPL(n) {
   if (n == null || isNaN(n)) return '--';
@@ -1132,25 +1142,24 @@ function filterRealizedPL(market) {
   renderRealizedSummary();
 }
 
-/** 獲利因子、平均賺／平均賠、每筆期望值: how big the wins are next to the losses, not just how many. */
+/** 勝率、獲利因子、平均賺／平均賠、每筆期望值: how big the wins are next to the losses, not just how many. */
 function renderTradeQuality(ts) {
-  const set = (id, html, sub) => {
-    document.getElementById(id).innerHTML = html;
-    document.getElementById(id + '-sub').innerHTML = sub;
-  };
+  setStat('rpl-winrate',
+    ts.trades ? `${ts.win_rate.toFixed(1)}%` : '--',
+    `${ts.trades} 筆：勝 ${ts.wins} / 負 ${ts.losses}${ts.flat ? ' / 平 ' + ts.flat : ''}`);
   const any = ts.wins || ts.losses; // only flat trades (or none): nothing to compare
   // Profit factor: < 1 loses money overall, 1–1.5 thin, ≥ 2 strong
   const pf = ts.profit_factor;
   const pfCls = pf < 1 ? 'negative' : pf >= 2 ? 'positive' : '';
-  set('rpl-pf',
+  setStat('rpl-pf',
     !any ? '--' : pf == null ? '<span class="positive">無虧損</span>' : `<span class="${pfCls}">${pf.toFixed(2)}</span>`,
-    any ? `總賺 ${fmtTWD(ts.gross_profit)} ÷ 總賠 ${fmtTWD(ts.gross_loss)}` : '');
-  set('rpl-payoff',
-    any ? `<span class="positive">${fmtTWD(ts.avg_win)}</span> / <span class="negative">${fmtTWD(ts.avg_loss)}</span>` : '--',
+    any ? `總賺 ${fmt(ts.gross_profit)} ÷ 總賠 ${fmt(ts.gross_loss)}` : '');
+  setStat('rpl-payoff',
+    any ? `<span class="positive">+${fmt(ts.avg_win)}</span> <span class="text-muted">/</span> <span class="negative">−${fmt(ts.avg_loss)}</span>` : '--',
     ts.payoff != null ? `賺賠比 ${ts.payoff.toFixed(2)}${ts.payoff < 1 ? '：平均賺的比賠的少' : ''}` : '');
-  set('rpl-exp',
-    ts.trades ? `<span class="${plClass(ts.expectancy)}">${fmtPL(ts.expectancy)}</span>` : '--',
-    ts.trades ? `勝率 ${ts.win_rate.toFixed(0)}% × 平均賺 − 敗率 × 平均賠` : '');
+  setStat('rpl-exp',
+    ts.trades ? plSpan(ts.expectancy, fmtPL) : '--',
+    ts.trades ? '平均每筆賣出（NT$）' : '');
 }
 
 function renderRealizedSummary() {
@@ -1185,27 +1194,21 @@ function renderRealizedSummary() {
 
   // Render stats cards
   const totalPct = totalCostTwd > 0 ? (totalPLTwd / totalCostTwd) * 100 : 0;
-  document.getElementById('rpl-total').innerHTML =
-    `<span class="${plClass(totalPLTwd)}">${fmtTWD(totalPLTwd)}</span> ` +
-    `<span class="${plClass(totalPct)}" style="font-size:0.6em">(${fmtPct(totalPct)})</span>`;
-  document.getElementById('rpl-trades').textContent =
-    `${ts.trades} 筆 (勝${ts.wins}/負${ts.losses}${ts.flat ? '/平' + ts.flat : ''})`;
-  document.getElementById('rpl-winrate').textContent = `${ts.win_rate.toFixed(1)}%`;
+  setStat('rpl-total',
+    plSpan(totalPLTwd), `報酬率 ${plSpan(totalPct, fmtPct)}`);
   renderTradeQuality(ts);
 
   const divTwd = (_rplData.dividends || [])
     .filter(d => _rplFilter === 'ALL' || d.market === _rplFilter)
     .reduce((sum, d) => sum + toTWD(d.total, d.currency, rate), 0);
-  document.getElementById('rpl-div').innerHTML = divTwd ? `<span class="positive">${fmtTWD(divTwd)}</span>` : '--';
+  setStat('rpl-div', divTwd ? `<span class="positive">${fmtTWD(divTwd)}</span>` : '--');
   const withDiv = totalPLTwd + divTwd;
-  document.getElementById('rpl-total-div').innerHTML =
-    `<span class="${plClass(withDiv)}">${fmtTWD(withDiv)}</span>`;
-
+  setStat('rpl-total-div', plSpan(withDiv), '已實現損益 ＋ 股利');
   if (bestTrade) {
-    document.getElementById('rpl-best').innerHTML =
-      `${bestTrade.symbol} <span class="${plClass(bestTrade.pct)}">${fmtPct(bestTrade.pct)}</span>`;
+    const worst = worstTrade ? ` · 最差 ${worstTrade.symbol} ${plSpan(worstTrade.pct, fmtPct)}` : '';
+    setStat('rpl-best', plSpan(bestTrade.pct, fmtPct), bestTrade.symbol + worst);
   } else {
-    document.getElementById('rpl-best').textContent = '--';
+    setStat('rpl-best', '--');
   }
 
   // Render table
@@ -1385,22 +1388,15 @@ async function loadPortfolioAnalysis() {
 
 function renderPortfolioStats(p) {
   const top = p.rows[0];
-  const set = (id, text, sub, cls = '') => {
-    const el = document.getElementById(id);
-    el.textContent = text;
-    el.className = 'stat-value ' + cls;
-    document.getElementById(id + '-sub').innerHTML = sub;
-  };
-  set('pf-top', `${top.weight.toFixed(1)}%`,
-    `${escapeHtml(top.symbol)}${p.rows.length > 3 ? ` · 前 3 大 ${p.top3.toFixed(1)}%` : ''}`,
-    top.level ? CONCENTRATION[top.level][1] : '');
-  set('pf-effective', `${p.effective.toFixed(1)} 檔`, `實際持有 ${p.rows.length} 檔；越小越集中`);
+  setStat('pf-top', `<span class="${top.level ? CONCENTRATION[top.level][1] : ''}">${top.weight.toFixed(1)}%</span>`,
+    `${escapeHtml(top.symbol)}${p.rows.length > 3 ? ` · 前 3 大 ${p.top3.toFixed(1)}%` : ''}`);
+  setStat('pf-effective', `${p.effective.toFixed(1)} 檔`, `實際持有 ${p.rows.length} 檔；越小越集中`);
   const usdTotal = p.usd.stock + (p.usd.cash || 0);
   document.getElementById('pf-usd-card').hidden = !(usdTotal > 0); // no US stock or USD cash
-  set('pf-usd', p.usd.pct == null ? '--' : `${p.usd.pct.toFixed(1)}%`,
+  setStat('pf-usd', p.usd.pct == null ? '--' : `${p.usd.pct.toFixed(1)}%`,
     `淨資產中美金計價的比例<br>美股 ${fmtTWD(p.usd.stock)}${p.usd.cash == null ? '（尚無快照，只算股票）' : ` ＋ 美金現金 ${fmtTWD(p.usd.cash)}`}<br>台幣升值 1% ≈ ${fmtPL(-usdTotal / 100)}`);
   const d = p.dividends;
-  set('pf-div', fmtTWD(d.ttm), d.ttm > 0 ? `月均 ${fmtTWD(d.ttm / 12)} · 殖利率 ${fmtYield(d.yield_cost)}` : '近 12 個月沒有股利紀錄');
+  setStat('pf-div', fmtTWD(d.ttm), d.ttm > 0 ? `月均 ${fmtTWD(d.ttm / 12)} · 殖利率 ${fmtYield(d.yield_cost)}` : '近 12 個月沒有股利紀錄');
 }
 
 /** Bar = weight now, tick = weight at cost; bars scale to the heaviest so small ones stay visible. */
