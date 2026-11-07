@@ -154,8 +154,7 @@ function listTransactions(req) {
     && (!to || t.date <= to));
   txns.sort((a, b) => cmp(b.date, a.date) || cmp(b.created_at, a.created_at));
   const limit = Number(q.get('limit')) || txns.length;
-  const rate = storedUSDTWDRate();
-  return txns.slice(0, limit).map((t) => ({ ...txnJSON(t), realized_pl_twd: toTWD(t.realized_pl || 0, t.currency, rate) }));
+  return txns.slice(0, limit).map(txnJSON);
 }
 
 /** Read and normalize a transaction body (400 on failure). */

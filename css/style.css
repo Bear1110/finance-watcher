@@ -382,14 +382,6 @@ tfoot td {
   font-style: italic;
 }
 
-.table-footer {
-  padding: 0.75rem;
-  text-align: right;
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-  border-top: 1px solid var(--border-color);
-  margin-top: -1px;
-}
 
 /* --- Color Coding --- */
 :root[data-updown="red-up"] {

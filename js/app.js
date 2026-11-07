@@ -1404,13 +1404,10 @@ async function loadTransactions() {
 
     if (list.length === 0) {
       tbody.innerHTML = '<tr><td colspan="10" class="empty-state">尚無交易紀錄</td></tr>';
-      document.getElementById('cumulative-realized-pl').textContent = '--';
       return;
     }
 
-    let cumPL = 0;
     tbody.innerHTML = list.map(t => {
-      cumPL += t.realized_pl_twd || 0; // TWD: US trades converted like on 已實現損益
       const escaped = (s) => (s || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
       return `
         <tr>
@@ -1431,10 +1428,6 @@ async function loadTransactions() {
       `;
     }).join('');
 
-    const plEl = document.getElementById('cumulative-realized-pl');
-    plEl.textContent = fmtTWD(cumPL);
-    plEl.className = plClass(cumPL);
-    document.getElementById('cumulative-realized-label').textContent = (sym || start || end) ? '篩選範圍內已實現損益' : '已實現損益合計';
 
   } catch (err) {
     showToast('載入交易紀錄失敗: ' + err.message, 'error');
