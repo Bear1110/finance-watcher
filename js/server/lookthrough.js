@@ -107,8 +107,9 @@ export function lookThrough({ holdings, funds }) {
 // Only funds have holdings; the quote's instrument type (unknown without a proxy) saves a lookup per stock.
 const mayBeFund = (h) => !h.type || h.type === 'ETF' || h.type === 'MUTUALFUND';
 
-async function lookThroughData() {
-  const holdings = (await listHoldings()).holdings;
+/** holdings: pass them when already listed (the AI prompt has them from buildOverview). */
+export async function lookThroughData(holdings) {
+  holdings ??= (await listHoldings()).holdings;
   const funds = {};
   await Promise.all(holdings.filter(mayBeFund).map(async (h) => {
     try {
@@ -120,4 +121,4 @@ async function lookThroughData() {
   return lookThrough({ holdings, funds });
 }
 
-route('GET', '/api/stocks/lookthrough', lookThroughData);
+route('GET', '/api/stocks/lookthrough', () => lookThroughData());

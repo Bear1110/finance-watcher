@@ -45,3 +45,30 @@ test('prompt: 已實現 section uses the same summary as the 已實現損益 pag
   assert.match(p, /勝率: 33\.3% \(1 勝 \/ 1 負 \/ 1 平\)/);
   assert.match(p, /\| AAA \| TW \| 3 \| NT\$ 3 \|/);
 });
+
+test('prompt: ETF look-through table, held-period note on a late market, fixed 行動總結', async () => {
+  const { REST } = await import('../js/server/lookthrough.js');
+  const p = generateFinancialPrompt({
+    sections: new Set(['portfolio']), rate: 32, overview,
+    holdings: { total_value_twd: 900_000, total_cost_twd: 700_000, total_pl_twd: 200_000, total_pl_percent: 28.57, realized_pl_twd: 0, holdings: [] },
+    perf: { markets: ['TW', 'US'], benchmarks: [],
+      periods: [{ key: 'ALL', label: '全部', start: '2020-01-01', days: 2500, bench: {},
+        markets: { ALL: { twr: 100, annualized: 10.6, active_days: 2500 }, TW: { twr: 100, annualized: 10.6, active_days: 2500 }, US: { twr: 20, annualized: 18.8, active_days: 400 } } }] },
+    lookthrough: {
+      etf_total: 600_000, unresolved: [],
+      before: { top: { symbol: '0050.TW', weight: 66.7 }, effective: 1.8 },
+      after: { top: { symbol: '2330.TW', weight: 55.6 }, effective: 1.5 },
+      rows: [
+        { key: '2330.TW', name: '台積電', lumped: false, value: 500_000, weight: 55.6, direct: 300_000, via: { '0050.TW': 200_000 } },
+        { key: REST, name: '其他成分股', lumped: true, value: 400_000, weight: 44.4, direct: 0, via: { '0050.TW': 400_000 } },
+      ],
+    },
+    warnings: [], expenses: [],
+  });
+  assert.match(p, /\| 2330\.TW 台積電 \| 500,000 \| 55\.6% \| 50\.0% \| 300,000 \| 0050\.TW 200,000 \|/);
+  assert.match(p, /其他成分股（前十大以外）/);
+  assert.match(p, /穿透後最大單一公司 2330\.TW 佔股票 55\.6%/);
+  assert.match(p, /\+20\.00%（年化 \+18\.80%，實際有持股約 1\.1 年）/);
+  assert.doesNotMatch(p, /\+100\.00%（年化 \+10\.60%，實際/); // held the whole period: no note
+  assert.match(p, /行動總結[\s\S]*A\. 立即處理[\s\S]*D\. 優先順序表/);
+});

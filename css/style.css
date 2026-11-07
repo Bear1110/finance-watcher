@@ -2113,3 +2113,50 @@ body[data-tab="expenses"] .fab { display: flex; }
 .backup-groups { margin-top: 8px; }
 .import-card { padding: 12px; }
 .import-card .llm-checkboxes { margin: 8px 0 12px; }
+
+/* ---- AI 分析 › 關於你 ---- */
+.profile-head {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.profile-head h3 { margin: 0; }
+.profile-count { font-size: 0.8rem; color: var(--text-muted); }
+.profile-saved { font-size: 0.8rem; color: var(--green); }
+.profile-chevron { margin-left: auto; color: var(--text-muted); font-size: 1.2rem; transition: transform 0.2s; }
+.profile-card.open .profile-chevron { transform: rotate(90deg); }
+.profile-summary { margin-top: 10px; color: var(--text-secondary); line-height: 1.7; }
+.profile-missing { font-size: 0.82rem; color: var(--text-muted); }
+.profile-form { margin-top: 12px; }
+.profile-inputs { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.profile-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-sm { padding: 5px 12px; font-size: 0.85rem; }
+.profile-big { align-items: flex-start; }
+.profile-big-list { display: flex; flex-direction: column; gap: 8px; }
+.profile-big-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.profile-big-row .pf-year { width: 5.5em; }
+.profile-big-row .pf-amount { width: 9em; }
+.profile-big-row input[type=text] { width: 10em; }
+.profile-big-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.profile-del {
+  background: none; border: 1px solid var(--border-color); border-radius: 6px;
+  color: var(--text-muted); width: 28px; height: 28px; cursor: pointer; font-size: 1rem; line-height: 1;
+}
+.profile-del:hover { color: var(--red); border-color: currentColor; }
+.profile-note { width: min(100%, 22em); flex: 1 1 16em; resize: vertical; }
+
+/* ---- 組合分析 › 股市大跌時 ---- */
+.stress-rows { display: flex; flex-direction: column; gap: 12px; }
+.stress-row { display: grid; grid-template-columns: 6.5em minmax(0, 1fr) minmax(0, 15em); align-items: center; gap: 12px; }
+.stress-label { color: var(--text-secondary); font-size: 0.9rem; }
+.stress-track { position: relative; height: 10px; border-radius: 5px; background: var(--bg-card-hover, rgba(255,255,255,0.06)); }
+.stress-fill { position: absolute; inset: 0 auto 0 0; border-radius: 5px; background: var(--red); opacity: 0.55; }
+.stress-row.over .stress-fill { opacity: 1; }
+.stress-mark { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--text-primary); border-radius: 1px; }
+.stress-value { font-size: 0.9rem; }
+.stress-sub { display: block; font-size: 0.78rem; color: var(--text-muted); }
+.stress-row.over .stress-sub { color: var(--red); }
+#stress-hint { margin-top: 14px; line-height: 1.7; }
+@media (max-width: 599px) {
+  .stress-row { grid-template-columns: 5.5em minmax(0, 1fr); }
+  .stress-value { grid-column: 1 / -1; }
+}

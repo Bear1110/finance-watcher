@@ -252,6 +252,7 @@ export class PerfResult {
     // isn't diluted by the years before its first trade.
     const span = ps.active[last] - ps.active[b];
     s.annualized = annualizePct(ret * 100, span);
+    s.active_days = span;
 
     const [dd, peak, trough] = drawdown(ps.growth, b, last);
     s.max_drawdown = round2(dd * 100);

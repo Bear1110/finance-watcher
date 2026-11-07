@@ -25,6 +25,7 @@ import './server/llm.js';
 import './server/managed.js';
 import './server/settings.js';
 import './server/aiimport.js';
+import './server/profile.js';
 import { EXPENSE_CATEGORIES, EXPENSE_CURRENCIES } from './server/expenses.js';
 
 db.load();

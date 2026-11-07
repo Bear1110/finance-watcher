@@ -16,6 +16,7 @@
 | `twr.js` / `twr_calc.js` / `performance.js` / `datacheck.js` | 投資績效（TWR / XIRR）與資料檢查 |
 | `market.js` | 報價、匯率、歷史股價、股利歷史、ETF 前十大成分股 |
 | `portfolio.js` / `lookthrough.js` | 組合分析：集中度、美元佔比；穿透持股（ETF 拆成分股，跟直接持有合併並記下來源） |
+| `profile.js` | 關於你：使用者自填的財務狀況（存成一個 `profile` 設定；每月生活費仍是 `monthly_expense`），帶進 AI 提示詞；「股市大跌時」壓力測試（`/api/profile/stress`） |
 | `aiimport.js` | AI 匯入：產生只有格式說明的提示詞、寬鬆解析 AI 回覆、預覽與判斷重複、整批寫入 |
 
 ## 資料與同步

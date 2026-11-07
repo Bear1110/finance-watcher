@@ -56,6 +56,10 @@ export function portfolioStats({ holdings, ttmTWD, cash, rate, other = 0 }) {
     usd: { stock: usdStock, cash: cash ? usdCash : null, pct: netWorth > 0 ? (usdStock + usdCash) / netWorth * 100 : null },
     dividends: { ttm, yield_cost: yieldOn(ttm, totalCost) },
     split: { tw, us: totalValue - tw },
+    // For 股市大跌時 (profile.js stressTest)
+    stock_value: totalValue,
+    cash_twd: cash ? cash.twd + usdCash : null,
+    net_worth: netWorth,
   };
 }
 
@@ -68,7 +72,7 @@ export function ttmDividendsTWD(rate) {
   return out;
 }
 
-async function portfolioData() {
+export async function portfolioData() {
   const rate = storedUSDTWDRate();
   const ttmTWD = ttmDividendsTWD(rate);
   return portfolioStats({

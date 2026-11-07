@@ -67,6 +67,16 @@ function setStat(id, html, sub = '') {
   if (subEl) subEl.innerHTML = sub;
 }
 
+/** 12.5 萬 style amount for short summaries. */
+function fmtWan(n) {
+  if (n == null || isNaN(n)) return '--';
+  if (privacyMode) return MASK;
+  return n >= 10000 ? `${+(n / 10000).toFixed(n >= 1e6 ? 0 : 1)} 萬` : fmtNum(n);
+}
+
+/** A large expense ahead (關於你): 2029 買房 300 萬. */
+const bigExpenseLabel = (e) => `${e.year} ${escapeHtml(e.what || '支出')} ${fmtWan(e.amount)}`;
+
 /** Format P&L value with sign */
 function fmtPL(n) {
   if (n == null || isNaN(n)) return '--';
@@ -379,7 +389,7 @@ function onTabActivated(tab) {
     }
     case 'expenses': loadExpenses(); break;
     case 'managed': loadManagedAccounts(); break;
-    case 'llm': initAIImport(); break;
+    case 'llm': loadProfile(); initAIImport(); break;
     case 'settings': loadSettings(); loadDataCheck(); break;
   }
 }
@@ -1373,6 +1383,7 @@ const CONCENTRATION = { warn: ['偏高', 'risk-warn'], danger: ['高度集中', 
 /** 組合分析: numbers come from /api/stocks/portfolio (js/server/portfolio.js); this only renders. */
 async function loadPortfolioAnalysis() {
   loadLookThrough(); // separate: it needs the Yahoo proxy and can fail on its own
+  loadStressTest();
   try {
     const p = await api('/api/stocks/portfolio');
     if (!p) {
@@ -1397,6 +1408,39 @@ function renderPortfolioStats(p) {
     `淨資產中美金計價的比例<br>美股 ${fmtTWD(p.usd.stock)}${p.usd.cash == null ? '（尚無快照，只算股票）' : ` ＋ 美金現金 ${fmtTWD(p.usd.cash)}`}<br>台幣升值 1% ≈ ${fmtPL(-usdTotal / 100)}`);
   const d = p.dividends;
   setStat('pf-div', fmtTWD(d.ttm), d.ttm > 0 ? `月均 ${fmtTWD(d.ttm / 12)} · 殖利率 ${fmtYield(d.yield_cost)}` : '近 12 個月沒有股利紀錄');
+}
+
+/** 股市大跌時 (/api/profile/stress): each drop's hit to net worth, against the drop the user can take (AI 分析 › 關於你). */
+async function loadStressTest() {
+  let st = null;
+  try {
+    st = await api('/api/profile/stress');
+  } catch (err) { /* the card just stays hidden */ }
+  const card = document.getElementById('stress-card');
+  card.hidden = !st;
+  if (!st) return;
+  const max = st.max_drawdown;
+  // Scale so the biggest drop and the user's limit both fit
+  const scale = Math.max(st.drops.at(-1).nw_pct, max || 0) * 1.15;
+  const mark = max ? `<span class="stress-mark" style="left:${max / scale * 100}%" title="你能接受的跌幅 ${max}%"></span>` : '';
+  document.getElementById('stress-rows').innerHTML = st.drops.map((d) => `
+    <div class="stress-row${d.over ? ' over' : ''}">
+      <div class="stress-label">股市跌 ${d.drop}%</div>
+      <div class="stress-track"><span class="stress-fill" style="width:${d.nw_pct / scale * 100}%"></span>${mark}</div>
+      <div class="stress-value">淨資產 <strong class="negative">−${d.nw_pct.toFixed(1)}%</strong><span class="stress-sub">少 ${fmtWan(d.loss)}，剩 ${fmtWan(d.remaining)}${d.over ? ` · 超過你能接受的 ${max}%` : ''}</span></div>
+    </div>`).join('');
+
+  const hints = [max
+    ? `細線是你能接受的跌幅（淨資產 −${max}%）。`
+    : '到 <a href="#" onclick="goToTab(\'llm\'); return false">AI 分析 › 關於你</a> 填「可接受的最大跌幅」，這裡會標出超過的情境。'];
+  if (st.big.length) {
+    const list = st.big.map(bigExpenseLabel).join('、');
+    hints.push(`${st.years} 年內的大筆支出：${list}。` + (
+      st.cash == null ? ''
+        : st.shortfall > 0 ? `現金 ${fmtWan(st.cash)}，不夠的 ${fmtWan(st.shortfall)} 得從股票來；如果那時剛好股市跌 ${st.sale_drop}%，要賣掉跌前價值約 ${fmtWan(st.sale_at_drop)} 的股票才湊得到。`
+          : '現金就夠付，股市大跌也不用被迫賣股。'));
+  }
+  document.getElementById('stress-hint').innerHTML = hints.join('<br>');
 }
 
 /** Bar = weight now, tick = weight at cost; bars scale to the heaviest so small ones stay visible. */
@@ -3088,6 +3132,141 @@ async function generatePrompt() {
   } catch (err) {
     showToast('產生 Prompt 失敗: ' + err.message, 'error');
   }
+}
+
+// ============================================================
+// SECTION: AI 分析 › 關於你 (js/server/profile.js: fields, choices and what is missing come from there)
+// ============================================================
+
+let _profile = null; // { profile, missing, field_count, choices }
+let _pfSavedTimer = null;
+
+async function loadProfile() {
+  try {
+    _profile = await api('/api/profile');
+  } catch (err) {
+    return; // the card stays empty; the prompt works without it
+  }
+  const p = _profile.profile;
+  const form = document.getElementById('profile-form');
+  if (!form.dataset.bound) {
+    form.dataset.bound = '1';
+    form.addEventListener('change', onProfileChange);
+  }
+  form.querySelectorAll('[data-pf]').forEach((el) => { el.value = p[el.dataset.pf] ?? ''; });
+  const est = _overview && _overview.spending.recorded_monthly_expense;
+  document.getElementById('pf-living').placeholder = est ? `依收支估 ${Math.round(est)}` : '例如 30000';
+  form.querySelectorAll('[data-pf-chips]').forEach((box) => {
+    const key = box.dataset.pfChips;
+    box.innerHTML = _profile.choices[key].map(([v, label]) =>
+      `<button type="button" class="rpl-filter-btn chip-sm${p[key] === v ? ' active' : ''}" data-v="${v}" onclick="pickProfileChip('${key}', '${v}')">${label}</button>`).join('');
+  });
+  document.getElementById('pf-big-none').checked = Array.isArray(p.big_expenses) && p.big_expenses.length === 0;
+  document.getElementById('pf-big-rows').innerHTML = (p.big_expenses || []).map(bigExpenseRow).join('');
+  renderProfileSummary();
+  // First visit: open the form; afterwards show the one-line summary
+  setProfileOpen(_profile.missing.length === _profile.field_count);
+}
+
+function setProfileOpen(open) {
+  document.getElementById('profile-form').hidden = !open;
+  document.getElementById('profile-summary').hidden = open;
+  document.getElementById('profile-head').setAttribute('aria-expanded', String(open));
+  document.getElementById('profile-card').classList.toggle('open', open);
+}
+
+function toggleProfile() {
+  setProfileOpen(document.getElementById('profile-form').hidden);
+}
+
+function renderProfileSummary() {
+  const { profile: p, missing, field_count: total, choices } = _profile;
+  const year = new Date().getFullYear();
+  document.getElementById('profile-count').textContent = `已填 ${total - missing.length}/${total}`;
+  const choice = (key) => choices[key].find(([v]) => v === p[key])?.[1];
+  const bits = [
+    p.birth_year && `${year - p.birth_year} 歲`,
+    p.income && `月收 ${fmtWan(p.income)}`,
+    p.monthly_expense && `生活費 ${fmtWan(p.monthly_expense)}`,
+    p.stability && `收入${choice('stability')}`,
+    p.goal && choice('goal'),
+    p.max_drawdown && `可接受跌 ${p.max_drawdown}%`,
+    ...(p.big_expenses || []).map(bigExpenseLabel),
+    p.big_expenses && p.big_expenses.length === 0 && '近年無大筆支出',
+  ].filter(Boolean);
+  document.getElementById('profile-summary').innerHTML =
+    (bits.length ? `<div>${bits.join(' · ')}</div>` : '<div class="text-muted">還沒填，AI 會先假設或問你</div>') +
+    (bits.length && missing.length ? `<div class="profile-missing">沒填：${missing.join('、')} → AI 會先假設或問你</div>` : '');
+  // Hints that react to what was typed
+  document.getElementById('pf-age-hint').textContent = p.birth_year ? `今年約 ${year - p.birth_year} 歲` : '用來判斷投資期限';
+  const nw = _overview && _overview.net_worth;
+  document.getElementById('pf-dd-hint').textContent = p.max_drawdown && nw > 0
+    ? `以目前淨資產算，大約是帳面少 ${fmtTWD(nw * p.max_drawdown / 100)} 時，你還能照常投入、不會賣出`
+    : '淨資產跌這麼多，你還能照常投入、不會賣出';
+}
+
+async function saveProfile(changes) {
+  try {
+    _profile = await api('/api/profile', { method: 'PUT', body: JSON.stringify(changes) });
+    renderProfileSummary();
+    // Saved on every change, so a quiet inline note instead of a toast each time
+    const el = document.getElementById('profile-saved');
+    el.textContent = '已儲存';
+    clearTimeout(_pfSavedTimer);
+    _pfSavedTimer = setTimeout(() => { el.textContent = ''; }, 1500);
+  } catch (err) {
+    showToast('儲存失敗: ' + err.message, 'error');
+  }
+}
+
+function pickProfileChip(key, v) {
+  const next = _profile.profile[key] === v ? '' : v; // tap again to clear
+  document.querySelectorAll(`[data-pf-chips="${key}"] button`).forEach((b) => b.classList.toggle('active', b.dataset.v === next));
+  saveProfile({ [key]: next });
+}
+
+function onProfileChange(e) {
+  const t = e.target;
+  if (t.dataset.pf) saveProfile({ [t.dataset.pf]: t.value.trim() });
+  else if (t.closest('.profile-big-row')) saveBigExpenses();
+}
+
+// ---- 未來大筆支出: the rows on screen are the source; incomplete ones (no year or amount) aren't saved yet
+
+function bigExpenseRow(e = {}) {
+  const year = new Date().getFullYear();
+  return `
+    <div class="profile-big-row">
+      <input type="number" class="input-sm pf-year" data-big="year" min="${year}" max="${year + 50}" placeholder="年份" value="${e.year ?? ''}" aria-label="年份">
+      <input type="text" class="input-sm" data-big="what" maxlength="40" placeholder="用途，例如買房" value="${escapeHtml(e.what || '')}" aria-label="用途">
+      <label class="settings-input">NT$ <input type="number" class="input-sm pf-amount" data-big="amount" min="0" step="100000" placeholder="金額" value="${e.amount ?? ''}" aria-label="金額"></label>
+      <button type="button" class="profile-del" onclick="removeBigExpense(this)" aria-label="刪除" title="刪除">×</button>
+    </div>`;
+}
+
+function saveBigExpenses() {
+  const done = [...document.querySelectorAll('#pf-big-rows .profile-big-row')].map((row) => {
+    const v = (k) => row.querySelector(`[data-big="${k}"]`).value.trim();
+    return { year: Number(v('year')), what: v('what'), amount: Number(v('amount')) };
+  }).filter((e) => e.year && e.amount > 0);
+  // Nothing complete and 「沒有」 not ticked: not answered yet
+  saveProfile({ big_expenses: done.length || document.getElementById('pf-big-none').checked ? done : null });
+}
+
+function addBigExpense() {
+  document.getElementById('pf-big-none').checked = false;
+  document.getElementById('pf-big-rows').insertAdjacentHTML('beforeend', bigExpenseRow({ year: new Date().getFullYear() + 3 }));
+  document.querySelector('#pf-big-rows .profile-big-row:last-child [data-big=what]')?.focus();
+}
+
+function removeBigExpense(btn) {
+  btn.closest('.profile-big-row').remove();
+  saveBigExpenses();
+}
+
+function setNoBigExpense(none) {
+  if (none) document.getElementById('pf-big-rows').innerHTML = '';
+  saveBigExpenses();
 }
 
 // ============================================================

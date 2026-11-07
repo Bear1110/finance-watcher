@@ -628,6 +628,14 @@
           <button type="button" class="btn btn-outline btn-sm lt-more" id="lt-more" hidden onclick="toggleLookThroughAll()"></button>
         </div>
 
+        <div class="card" id="stress-card" hidden>
+          <div class="card-header">
+            <h3 title="假設所有股票一起跌這麼多，現金和其他資產不變。&#10;只是粗估：沒算匯率，各檔實際跌幅也會不同。">股市大跌時 ⓘ</h3>
+          </div>
+          <div id="stress-rows" class="stress-rows"></div>
+          <p class="form-hint pf-hint" id="stress-hint"></p>
+        </div>
+
       </div>
     </section>
 
@@ -894,6 +902,61 @@
     <!-- ==================== LLM TAB ==================== -->
     <section id="tab-llm" class="tab-content">
       <button type="button" class="back-link" onclick="goBack()"></button>
+      <!-- 關於你: only the user knows these; they go into the prompt (js/server/profile.js) -->
+      <div class="card profile-card" id="profile-card" style="margin-bottom:20px">
+        <button type="button" class="profile-head" id="profile-head" onclick="toggleProfile()" aria-expanded="false" aria-controls="profile-form">
+          <h3>關於你</h3>
+          <span class="profile-count" id="profile-count"></span>
+          <span class="profile-saved" id="profile-saved" aria-live="polite"></span>
+          <span class="profile-chevron" aria-hidden="true">›</span>
+        </button>
+        <div class="profile-summary" id="profile-summary"></div>
+        <div class="profile-form" id="profile-form" hidden>
+          <p class="form-hint" style="margin:0 0 4px">只有你知道的資料，填了會一起放進提示詞，AI 就不用猜或每次問。都可以不填；改完自動儲存。</p>
+          <div class="settings-row">
+            <div><strong>出生年份</strong><p class="form-hint" id="pf-age-hint">用來判斷投資期限</p></div>
+            <label class="settings-input"><input type="number" class="input-sm" data-pf="birth_year" min="1900" step="1" placeholder="例如 1996"> 年</label>
+          </div>
+          <div class="settings-row">
+            <div><strong>稅後月收入</strong><p class="form-hint">大約即可；年終或獎金另外填</p></div>
+            <div class="profile-inputs">
+              <label class="settings-input">NT$ <input type="number" class="input-sm" data-pf="income" min="0" step="1000" placeholder="每月"></label>
+              <label class="settings-input">年終 NT$ <input type="number" class="input-sm" data-pf="bonus" min="0" step="10000" placeholder="每年，選填"></label>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div><strong>每月生活費</strong><p class="form-hint">跟設定頁同一個值；也用來算總覽的「現金可撐幾個月」</p></div>
+            <label class="settings-input">NT$ <input type="number" class="input-sm" data-pf="monthly_expense" id="pf-living" min="0" step="1000"></label>
+          </div>
+          <div class="settings-row">
+            <div><strong>收入穩定度</strong></div>
+            <div class="profile-chips" data-pf-chips="stability"></div>
+          </div>
+          <div class="settings-row">
+            <div><strong>投資目標</strong></div>
+            <div class="profile-chips" data-pf-chips="goal"></div>
+          </div>
+          <div class="settings-row">
+            <div><strong>可接受的最大跌幅</strong><p class="form-hint" id="pf-dd-hint">淨資產跌這麼多，你還能照常投入、不會賣出</p></div>
+            <label class="settings-input">− <input type="number" class="input-sm" data-pf="max_drawdown" min="1" max="100" step="5" placeholder="例如 30"> %</label>
+          </div>
+          <div class="settings-row profile-big">
+            <div><strong>未來大筆支出</strong><p class="form-hint">買房頭期款、結婚、換車、進修等；這筆錢不適合承擔股票風險</p></div>
+            <div class="profile-big-list">
+              <div id="pf-big-rows"></div>
+              <div class="profile-big-actions">
+                <button type="button" class="btn btn-outline btn-sm" onclick="addBigExpense()">＋ 新增</button>
+                <label class="other-toggle"><input type="checkbox" id="pf-big-none" onchange="setNoBigExpense(this.checked)"> 未來 5 年沒有</label>
+              </div>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div><strong>其他想讓 AI 知道的</strong><p class="form-hint">選填，例如扶養家人、打算換工作</p></div>
+            <textarea class="profile-note" data-pf="note" rows="2" maxlength="500"></textarea>
+          </div>
+        </div>
+      </div>
+
       <!-- Step 1: Select data to include -->
       <div class="card" style="margin-bottom:20px">
         <div class="card-header">
@@ -902,8 +965,8 @@
         <p class="form-hint" style="margin:0 0 12px">勾選你想要提供給 AI 的資料範圍，再產生 Prompt</p>
         <div class="llm-checkboxes">
           <label class="llm-check"><input type="checkbox" id="llm-inc-assets" checked> 資產總覽（淨資產、配置比例、每年成長來自股價／股利／存入）</label>
-          <label class="llm-check"><input type="checkbox" id="llm-inc-portfolio" checked> 投資組合（持股、集中度、股利、報酬率與大盤比較、XIRR）</label>
-          <label class="llm-check"><input type="checkbox" id="llm-inc-realized" checked> 交易績效（已實現損益、勝率）</label>
+          <label class="llm-check"><input type="checkbox" id="llm-inc-portfolio" checked> 投資組合（持股、集中度、ETF 穿透、股利、報酬率與大盤比較、XIRR）</label>
+          <label class="llm-check"><input type="checkbox" id="llm-inc-realized" checked> 交易績效（已實現損益、勝率、獲利因子、賺賠比、期望值）</label>
           <label class="llm-check"><input type="checkbox" id="llm-inc-expenses"> 收支狀況（今年收支分類、現金可撐幾個月）</label>
         </div>
         <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
