@@ -1410,7 +1410,7 @@ async function loadTransactions() {
 
     let cumPL = 0;
     tbody.innerHTML = list.map(t => {
-      if (t.realized_pl) cumPL += t.realized_pl;
+      cumPL += t.realized_pl_twd || 0; // TWD: US trades converted like on 已實現損益
       const escaped = (s) => (s || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
       return `
         <tr>
@@ -1421,7 +1421,7 @@ async function loadTransactions() {
           <td>${fmtNum(t.price, 2)}</td>
           <td>${fmt(t.fee, 0)}</td>
           <td>${t.tax ? fmt(t.tax, 0) : '--'}</td>
-          <td class="${plClass(t.realized_pl)}">${t.realized_pl ? fmtPL(t.realized_pl) : '--'}</td>
+          <td class="${plClass(t.realized_pl)}">${t.realized_pl ? fmtPLCur(t.realized_pl, t.currency) : '--'}</td>
           <td>${t.note || ''}</td>
           <td>
             ${rowBtn('edit', `editTransaction(${t.id}, '${escaped(t.symbol)}', '${t.market}', '${t.action}', ${t.shares}, ${t.price}, ${t.fee || 0}, '${t.date}', '${escaped(t.note)}', ${t.realized_pl || 0}, ${t.tax || 0})`)}
@@ -1434,6 +1434,7 @@ async function loadTransactions() {
     const plEl = document.getElementById('cumulative-realized-pl');
     plEl.textContent = fmtTWD(cumPL);
     plEl.className = plClass(cumPL);
+    document.getElementById('cumulative-realized-label').textContent = (sym || start || end) ? '篩選範圍內已實現損益' : '已實現損益合計';
 
   } catch (err) {
     showToast('載入交易紀錄失敗: ' + err.message, 'error');
