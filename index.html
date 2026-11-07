@@ -96,7 +96,7 @@
       <!-- This month's spending -->
       <div class="card" id="dash-month">
         <div class="card-header">
-          <h3>本月收支 <small class="text-muted" id="dash-month-range"></small></h3>
+          <h3>本月收支 <small class="card-meta" id="dash-month-range"></small></h3>
           <button type="button" class="btn btn-primary btn-sm" onclick="openExpenseModal()"><span class="i" data-icon="plus"></span>記一筆</button>
         </div>
         <div id="dash-month-body"></div>
@@ -123,7 +123,7 @@
         <div id="nw-years" class="nw-years"></div>
 
         <h4 class="nw-subtitle">資產快照</h4>
-        <p class="form-hint snap-hint">填實際現金餘額，股票市值自動擷取。快照之後的股票買賣與股利會自動推算進現金，不用每次交易都記。</p>
+        <p class="form-hint card-hint">填實際現金餘額，股票市值自動擷取。快照之後的股票買賣與股利會自動推算進現金，不用每次交易都記。</p>
         <div id="snapshot-latest" class="snap-latest"><div class="empty-state">載入中...</div></div>
         <button type="button" id="snapshot-toggle" class="btn btn-outline btn-sm snap-toggle" onclick="toggleSnapshotHistory()" aria-controls="snapshot-history" aria-expanded="false" hidden>全部紀錄</button>
         <div id="snapshot-history" class="snap-history" hidden></div>
@@ -170,7 +170,7 @@
       <div id="subtab-holdings" class="subtab-content active">
         <div class="card">
           <div class="card-header">
-            <h3>股票持倉</h3>
+            <h3>股票持倉 <small class="card-meta" id="quote-fetched-at"></small></h3>
             <div class="header-actions" data-tour="holdings-actions">
               <div class="chart-type-toggle" id="holdings-view" role="group" aria-label="檢視方式">
                 <button type="button" class="chart-type-btn" data-view="table" onclick="setHoldingsView('table')">表格</button>
@@ -180,7 +180,6 @@
                 <span class="i refresh-icon" data-icon="refresh"></span>更新報價
               </button>
               <button class="btn btn-primary btn-sm" onclick="openHoldingModal()"><span class="i" data-icon="plus"></span>匯入持倉</button>
-              <span class="quote-time" id="quote-fetched-at"></span>
             </div>
           </div>
           <div class="table-wrap">
@@ -292,7 +291,7 @@
           <div class="card-header">
             <h3 title="每一天往回看整整一年（365 天）的時間加權報酬，連成一條線。&#10;不只看今年或近一年，而是看「任何一天開始抱一年」的結果分布。&#10;大盤用含息還原價，美股換算成台幣。">滾動一年報酬 ⓘ</h3>
           </div>
-          <p class="form-hint pf-hint">每個點是「到那天為止的一整年」賺了幾 %。只看近一年容易被最近的行情騙到；這裡看的是任何時候抱一年，最好、最差、通常是多少。</p>
+          <p class="form-hint card-hint">每個點是「到那天為止的一整年」賺了幾 %。只看近一年容易被最近的行情騙到；這裡看的是任何時候抱一年，最好、最差、通常是多少。</p>
           <div class="chart-container-md"><canvas id="chart-rolling" aria-label="滾動一年報酬走勢"></canvas></div>
           <div class="table-wrap">
             <table class="perf-risk-table">
@@ -400,9 +399,8 @@
         <div class="card">
           <div class="card-header">
             <h3>補登歷史交易</h3>
-            <small class="text-muted">一般買賣請直接在「持倉總覽」操作</small>
           </div>
-          <p class="form-hint" style="margin:0 0 12px">補登過去的買賣後，持倉（股數、均價）和已實現損益會依日期順序自動重算，不用另外改持倉。</p>
+          <p class="form-hint card-hint">一般買賣請直接在「持倉總覽」操作。這裡補登過去的買賣後，持倉（股數、均價）和已實現損益會依日期順序自動重算，不用另外改持倉。</p>
           <form id="tx-form" class="form-grid" onsubmit="submitTransaction(event)">
             <div class="form-group">
               <label>股票代號</label>
@@ -432,7 +430,7 @@
               <input type="number" name="tax" value="0" min="0" step="any">
             </div>
             <div class="form-group form-group-wide">
-              <label><input type="checkbox" name="auto_fee" checked> 台股自動估算手續費／證交稅（手續費與稅金皆為 0 時）</label>
+              <label class="inline-check"><input type="checkbox" name="auto_fee" checked> 台股自動估算手續費／證交稅（手續費與稅金皆為 0 時）</label>
             </div>
             <div class="form-group">
               <label>日期</label>
@@ -495,13 +493,13 @@
           <div class="card-header">
             <h3>記錄股利</h3>
             <div class="header-actions">
-              <small class="text-muted">股利是現金收入，不會併入收支紀錄，避免重複計算</small>
               <button type="button" class="btn btn-outline btn-sm" id="div-suggest-btn" onclick="loadDividendSuggestions()">從 Yahoo 查詢股利</button>
             </div>
           </div>
+          <p class="form-hint card-hint">股利是現金收入，不會併入收支紀錄，避免重複計算。</p>
           <div id="div-suggest" style="display:none">
-            <p class="form-hint" style="margin:0 0 12px">依你的買賣紀錄與 Yahoo 的除息資料估算。日期為<strong>除息日</strong>（實際入帳通常晚數週，匯入後可編輯）；美股預扣 30%、台股單筆 ≥ NT$20,000 扣 2.11% 補充保費皆為估計，請對照券商入帳金額。</p>
-            <p class="form-hint" style="margin:0 0 12px">
+            <p class="form-hint card-hint">依你的買賣紀錄與 Yahoo 的除息資料估算。日期為<strong>除息日</strong>（實際入帳通常晚數週，匯入後可編輯）；美股預扣 30%、台股單筆 ≥ NT$20,000 扣 2.11% 補充保費皆為估計，請對照券商入帳金額。</p>
+            <p class="form-hint card-hint">
               <label>起算日（早於此日的除息不列出）：<input type="date" id="div-suggest-since" class="input-sm" onchange="renderDividendSuggestions()"></label>
               若某檔的持股數明顯偏高，通常是「匯入持倉」的買入日期不是實際買進日，可到交易紀錄修正日期，或在這裡設起算日。
             </p>
@@ -574,7 +572,7 @@
           <div class="card-header">
             <h3 title="每年實收的股利拆成各檔股票（美金依現行匯率換算台幣）。&#10;股利變多時，可以看出是哪幾檔帶來的：加碼、配息提高，或是某檔 ETF 的配息政策改變。">股利來源 ⓘ</h3>
           </div>
-          <p class="form-hint pf-hint" id="div-sources-hint"></p>
+          <p class="form-hint card-hint" id="div-sources-hint"></p>
           <div id="div-sources-legend" class="chart-legend lt-legend"></div>
           <div id="div-sources-rows"></div>
         </div>
@@ -635,7 +633,7 @@
           <div class="card-header">
             <h3>持股權重</h3>
           </div>
-          <p class="form-hint pf-hint">依市值排序。長條是現在的權重，細線是用成本算的權重：長條超過細線代表漲得比其他檔多、變重了。</p>
+          <p class="form-hint card-hint">依市值排序。長條是現在的權重，細線是用成本算的權重：長條超過細線代表漲得比其他檔多、變重了。</p>
           <div id="pf-weights"><div class="empty-state">載入中...</div></div>
         </div>
 
@@ -648,7 +646,7 @@
             </div>
           </div>
           <div id="lt-compare" class="lt-compare"></div>
-          <p class="form-hint pf-hint" id="lt-hint"></p>
+          <p class="form-hint card-hint" id="lt-hint"></p>
           <div id="lt-legend" class="chart-legend lt-legend"></div>
           <div id="lt-rows"><div class="empty-state">載入中...</div></div>
           <button type="button" class="btn btn-outline btn-sm lt-more" id="lt-more" hidden onclick="toggleLookThroughAll()"></button>
@@ -659,7 +657,7 @@
             <h3 title="假設所有股票一起跌這麼多，現金和其他資產不變。&#10;只是粗估：沒算匯率，各檔實際跌幅也會不同。">股市大跌時 ⓘ</h3>
           </div>
           <div id="stress-rows" class="stress-rows"></div>
-          <p class="form-hint pf-hint" id="stress-hint"></p>
+          <p class="form-hint card-hint" id="stress-hint"></p>
         </div>
 
       </div>
@@ -709,7 +707,7 @@
             </div>
           </div>
           <div id="exp-cat-list" class="cat-rank"></div>
-          <p class="form-hint" style="margin:8px 0 0">點分類可篩選下方明細。</p>
+          <p class="form-hint chart-note">點分類可篩選下方明細。</p>
         </div>
         <div class="card">
           <div class="card-header">
@@ -720,7 +718,7 @@
             </div>
           </div>
           <div class="chart-container"><canvas id="chart-exp-monthly" aria-label="每月收入與支出長條圖"></canvas></div>
-          <p class="form-hint" style="margin:8px 0 0">點長條可切換到該月份。</p>
+          <p class="form-hint chart-note">點長條可切換到該月份。</p>
         </div>
       </div>
 
@@ -752,7 +750,7 @@
           <h3>代管帳戶</h3>
           <button class="btn btn-primary btn-sm" onclick="openManagedAccountModal()">+ 新增帳戶</button>
         </div>
-        <p class="form-hint" style="margin:0 0 12px">追蹤代他人保管的資金（兄弟姐妹、親友委託投資等）。這些帳戶的數值不會出現在「總覽」中，僅在本頁面獨立統計。</p>
+        <p class="form-hint card-hint">追蹤代他人保管的資金（兄弟姐妹、親友委託投資等）。這些帳戶的數值不會出現在「總覽」中，僅在本頁面獨立統計。</p>
         <div id="managed-account-tabs" class="sub-tabs"></div>
         <div id="managed-empty-state" class="empty-state" style="padding:32px">尚無代管帳戶，點上方「+ 新增帳戶」開始</div>
       </div>
@@ -815,7 +813,7 @@
               </tbody>
             </table>
           </div>
-          <p class="form-hint" style="margin:8px 0 0">已實現損益: <strong id="mng-realized">--</strong></p>
+          <p class="form-hint chart-note">已實現損益: <strong id="mng-realized">--</strong></p>
         </div>
 
         <!-- Snapshots -->
@@ -824,7 +822,7 @@
             <h3>快照紀錄</h3>
             <button class="btn btn-primary btn-sm" onclick="takeManagedSnapshot()">記錄當前快照</button>
           </div>
-          <p class="form-hint" style="margin:0 0 12px">一鍵凍結此帳戶當下的現金、持倉市值與損益（含即時匯率），只屬於這個帳戶。</p>
+          <p class="form-hint card-hint">一鍵凍結此帳戶當下的現金、持倉市值與損益（含即時匯率），只屬於這個帳戶。</p>
           <div class="chart-container-md" style="margin-bottom:20px"><canvas id="chart-mng-snapshot"></canvas></div>
           <div class="table-wrap">
             <table>
@@ -903,7 +901,7 @@
           <div class="card-header">
             <h3>現金紀錄</h3>
           </div>
-          <p class="form-hint" style="margin:0 0 12px">收到更多錢就「存入」，領出/退還就「提領」。刪除紀錄會自動回沖現金。</p>
+          <p class="form-hint card-hint">收到更多錢就「存入」，領出/退還就「提領」。刪除紀錄會自動回沖現金。</p>
           <div class="table-wrap">
             <table>
               <thead>
@@ -938,7 +936,7 @@
         </button>
         <div class="profile-summary" id="profile-summary"></div>
         <div class="profile-form" id="profile-form" hidden>
-          <p class="form-hint" style="margin:0 0 4px">只有你知道的資料，填了會一起放進提示詞，AI 就不用猜或每次問。都可以不填；改完自動儲存。</p>
+          <p class="form-hint card-hint">只有你知道的資料，填了會一起放進提示詞，AI 就不用猜或每次問。都可以不填；改完自動儲存。</p>
           <div class="settings-row">
             <div><strong>出生年份</strong><p class="form-hint" id="pf-age-hint">用來判斷投資期限</p></div>
             <label class="settings-input"><input type="number" class="input-sm" data-pf="birth_year" min="1900" step="1" placeholder="例如 1996"> 年</label>
@@ -972,7 +970,7 @@
               <div id="pf-big-rows"></div>
               <div class="profile-big-actions">
                 <button type="button" class="btn btn-outline btn-sm" onclick="addBigExpense()">＋ 新增</button>
-                <label class="other-toggle"><input type="checkbox" id="pf-big-none" onchange="setNoBigExpense(this.checked)"> 未來 5 年沒有</label>
+                <label class="inline-check"><input type="checkbox" id="pf-big-none" onchange="setNoBigExpense(this.checked)"> 未來 5 年沒有</label>
               </div>
             </div>
           </div>
@@ -988,7 +986,7 @@
         <div class="card-header">
           <h3>選擇分析資料</h3>
         </div>
-        <p class="form-hint" style="margin:0 0 12px">勾選你想要提供給 AI 的資料範圍，再產生 Prompt</p>
+        <p class="form-hint card-hint">勾選你想要提供給 AI 的資料範圍，再產生 Prompt</p>
         <div class="llm-checkboxes">
           <label class="llm-check"><input type="checkbox" id="llm-inc-assets" checked> 資產總覽（淨資產、配置比例、每年成長來自股價／股利／存入）</label>
           <label class="llm-check"><input type="checkbox" id="llm-inc-portfolio" checked> 投資組合（持股、集中度、ETF 穿透、股利、報酬率與大盤比較、XIRR）</label>
@@ -1005,7 +1003,7 @@
         <div class="card-header">
           <h3>產生的 Prompt</h3>
         </div>
-        <p class="form-hint" style="margin:0 0 8px">先按「複製提示詞」，或直接點一個 AI：會開新分頁，同時幫你複製好。提示詞短的話會自動帶進 ChatGPT／Claude 的對話框；長的帶不進去，在對話框貼上即可（電腦 Ctrl+V，手機長按貼上）。</p>
+        <p class="form-hint card-hint">先按「複製提示詞」，或直接點一個 AI：會開新分頁，同時幫你複製好。提示詞短的話會自動帶進 ChatGPT／Claude 的對話框；長的帶不進去，在對話框貼上即可（電腦 Ctrl+V，手機長按貼上）。</p>
         <div class="ai-actions" data-ai="analysis"></div>
         <textarea id="generated-prompt" rows="12"></textarea>
       </div>
@@ -1015,11 +1013,11 @@
         <div class="card-header">
           <h3>AI 匯入</h3>
         </div>
-        <p class="form-hint" style="margin:0 0 12px">把別處的資料（記帳 App 的截圖或月報表、券商對帳單、銀行餘額截圖）交給你常用的 AI 整理成固定格式，再貼回來匯入。提示詞只有格式說明；你的資料是你自己貼給 AI 的，本網站不會送出。</p>
+        <p class="form-hint card-hint">把別處的資料（記帳 App 的截圖或月報表、券商對帳單、銀行餘額截圖）交給你常用的 AI 整理成固定格式，再貼回來匯入。提示詞只有格式說明；你的資料是你自己貼給 AI 的，本網站不會送出。</p>
         <div class="llm-checkboxes" id="ai-import-kinds"></div>
         <div id="ai-import-steps">
           <p class="import-step">1. 選一個 AI 開啟，接著貼上你的資料或附上截圖</p>
-          <p class="form-hint" style="margin:0 0 8px">先按「複製提示詞」，或直接點一個 AI：會開新分頁，同時幫你複製好。提示詞短的話會自動帶進 ChatGPT／Claude 的對話框；長的帶不進去，在對話框貼上即可（電腦 Ctrl+V，手機長按貼上）。</p>
+          <p class="form-hint card-hint">先按「複製提示詞」，或直接點一個 AI：會開新分頁，同時幫你複製好。提示詞短的話會自動帶進 ChatGPT／Claude 的對話框；長的帶不進去，在對話框貼上即可（電腦 Ctrl+V，手機長按貼上）。</p>
           <div class="ai-actions" data-ai="import"></div>
           <p class="import-step">2. 把 AI 的回覆整段貼在這裡</p>
           <textarea id="ai-import-text" rows="6" placeholder="AI 回覆的 JSON（含 ```json 標記或前後說明文字都可以）"></textarea>
@@ -1053,8 +1051,8 @@
 
       <div class="card">
         <div class="card-header"><h3><span class="i" data-icon="briefcase"></span>其他資產</h3></div>
-        <p class="form-hint other-hint">房子、車子、勞退、保單解約金等不常變動的資產。自己填目前大約的價值，偶爾更新就好；之後記的快照會一起記下當時的總額。</p>
-        <label class="other-toggle"><input type="checkbox" id="other-include" onchange="saveSetting('include_other_assets', this.checked ? '1' : '0')"> 計入總覽的淨資產（含走勢與年度成長）</label>
+        <p class="form-hint card-hint">房子、車子、勞退、保單解約金等不常變動的資產。自己填目前大約的價值，偶爾更新就好；之後記的快照會一起記下當時的總額。</p>
+        <label class="inline-check"><input type="checkbox" id="other-include" onchange="saveSetting('include_other_assets', this.checked ? '1' : '0')"> 計入總覽的淨資產（含走勢與年度成長）</label>
         <div id="other-list"></div>
         <form id="other-form" class="other-form" onsubmit="submitOtherAsset(event)">
           <input type="hidden" name="other_id">
@@ -1302,7 +1300,7 @@
           <input type="number" name="fee" value="0" min="0" step="any">
         </div>
         <div class="form-group">
-          <label><input type="checkbox" name="auto_fee" checked> 台股自動估算手續費／證交稅（手續費為 0 時）</label>
+          <label class="inline-check"><input type="checkbox" name="auto_fee" checked> 台股自動估算手續費／證交稅（手續費為 0 時）</label>
         </div>
         <div class="form-group">
           <label>日期</label>

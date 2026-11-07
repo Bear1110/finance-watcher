@@ -96,6 +96,38 @@ node --test                  # 單元測試（FIFO、TWR、代管帳戶、股利
 
 推到 GitHub 後，在倉庫 Settings → Pages 選擇從 `main` 分支根目錄發布。
 
+## UI 準則
+
+`test/ui.test.mjs` 會檢查標題列和提示行的規則。
+
+### 卡片標題列（`.card-header`）
+
+```
+┌──────────────────────────────────────────────────────────┐
+│ 標題 ⓘ 狀態小字             [切換][篩選] [次要按鈕] [主要按鈕] │  ← .card-header
+│ 這張卡是什麼、怎麼用的一行說明                                │  ← p.form-hint.card-hint
+│ 內容…                                                     │
+│ 內容下方的補充（選用）                                       │  ← p.form-hint.chart-note
+```
+
+- **左邊是標題** `<h3>`：名詞定義、公式放在 h3 的 `title` 並加「ⓘ」（手機點了也會顯示，見 `initTapTips`）；會變的狀態（報價時間、日期區間、筆數）放在 h3 裡，用 `<small class="card-meta">`。
+- **右邊只放控制項**：切換、篩選、按鈕、圖表圖例，包在 `<div class="header-actions">`。
+- **按鈕順序**：切換／篩選 → 次要（`btn btn-outline btn-sm`）→ 主要（`btn btn-primary btn-sm`，一張卡最多一個，放最右）。成對的動作（買入／賣出）維持自然順序。AI 匯入是 outline 按鈕加 `sparkles` 圖示。
+- **說明行**：標題列正下方 `<p class="form-hint card-hint">`；內容下方的補充用 `form-hint chart-note`。不要用 inline `style` 調間距，也不要另外取 `xxx-hint` 的 class（真的要微調就用 id）。
+
+### 數字、顏色、圖表、表單
+
+- 數字卡片：`.dash-stats` 網格 + `.stat-card`（`.stat-label` / `.stat-value` / `.stat-sub`），用 `setStat(id, html, sub)` 寫入。一排 4 張；分組時上方加 `.stats-group-label`。
+- 金額與百分比用 `fmtTWD` / `fmtPL` / `fmtPct` / `fmtWan`（隱私模式自動遮蔽），正負色用 `plSpan(v, fmt)` / `plClass(v)`，不要自己 `toLocaleString`。
+- 長條用 `.source-bar.cat-track`；多個來源堆疊加 `.lt-stack`，顏色 `--lt-0`…`--lt-5`（`--lt-5` 是「其他」）。列表的一列用 `.pf-row`（`.pf-row-head` / `.pf-row-sub`）。
+- % 折線圖用 `pctLineChart` / `pctLine`，大盤線顏色用 `BENCH_COLORS`。
+- 單一勾選框（勾選＋一句說明）用 `<label class="inline-check">`；一組選項清單用 `.llm-check`。
+
+### 文字
+
+- 說明寫「使用者能做什麼、這個數字代表什麼」，不寫實作細節。
+- 數字附單位與比較基準（「比上月同期」「佔淨資產」）；估算或假設要寫出來。
+
 ## 待辦
 
 - [x] 建 OAuth 用戶端 ID，填進 `js/config.js`（專案 finance-watcher-513403）

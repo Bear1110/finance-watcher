@@ -1017,7 +1017,7 @@ async function loadHoldings() {
     // Show quote fetch time
     const fetchedEl = document.getElementById('quote-fetched-at');
     if (fetchedEl && stockData.quote_fetched_at) {
-      fetchedEl.textContent = `報價更新: ${stockData.quote_fetched_at}`;
+      fetchedEl.textContent = `報價 ${stockData.quote_fetched_at}`;
     }
 
   } catch (err) {
@@ -1819,8 +1819,8 @@ function perfCardHtml(view) {
   return `<div class="card">
     <div class="card-header">
       <h3 title="${PERF_TITLE}">投資績效（時間加權報酬）ⓘ</h3>
-      <small class="text-muted"><span data-perf="note"></span>${view === 'main' ? '<span id="perf-check-badge"></span>' : ''}</small>
     </div>
+    <p class="form-hint card-hint"><span data-perf="note"></span>${view === 'main' ? '<span id="perf-check-badge"></span>' : ''}</p>
     <div class="chart-controls perf-controls">
       <div class="chart-type-toggle" data-perf="periods"></div>
       <select data-perf="bench" class="input-sm" onchange="renderPerfChart(PERF_VIEWS.${view}.period, '${view}')" title="比較基準用含息還原價（股利再投入），美股換算成台幣">
@@ -3532,7 +3532,7 @@ function renderReplacePlan(plan) {
   const on = _aiImportMode === 'replace';
   const syms = plan.symbols.map(s => escapeHtml(s.symbol)).join('、');
   let html = `<div class="replace-box">
-    <label class="llm-check"><input type="checkbox" ${on ? 'checked' : ''} onchange="setAIImportMode(this.checked)"> 以對帳單取代這幾檔股票的交易</label>
+    <label class="inline-check"><input type="checkbox" ${on ? 'checked' : ''} onchange="setAIImportMode(this.checked)"> 以對帳單取代這幾檔股票的交易</label>
     <p class="form-hint">把 ${syms} 在下面各自期間內的舊交易換成這份對帳單；期間開始前的持股用一筆「匯入持倉」補上（由目前持股倒推）。
     同一檔股票如果在別的券商帳戶也有交易，請不要勾：那些交易會一起被刪掉。</p>`;
   if (on) {
