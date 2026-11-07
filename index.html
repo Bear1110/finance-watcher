@@ -725,6 +725,10 @@
         <div class="card-header">
           <h3>收支明細</h3>
           <div class="header-actions">
+            <select id="exp-sort" data-segmented aria-label="排序" onchange="renderExpenseTable(expMonth())">
+              <option value="date">依日期</option>
+              <option value="amount">依金額</option>
+            </select>
             <button type="button" id="exp-cat-chip" class="filter-chip" style="display:none" onclick="setCategoryFilter(null)" title="清除分類篩選"></button>
             <button class="btn btn-outline btn-sm" onclick="openAIImport('expenses')"><span class="i" data-icon="sparkles"></span>AI 匯入</button>
           </div>

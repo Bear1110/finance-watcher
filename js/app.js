@@ -3259,8 +3259,9 @@ function expTotals(records) {
 }
 
 /**
- * The 收支明細 list: the selected month / year, or every record matching the search box. Grouped by
- * day (header: date, weekday, the day's totals); each row: category with note, amount, actions.
+ * The 收支明細 list: the selected month / year, or every record matching the search box. By date:
+ * grouped by day (header: date, weekday, the day's totals); by amount: one list, largest first, the
+ * date under the category. Each row: category with note, amount; tap to edit.
  */
 function renderExpenseTable(month) {
   const prefix = month ? `${expYear()}-${String(month).padStart(2, '0')}` : String(expYear());
@@ -3275,18 +3276,25 @@ function renderExpenseTable(month) {
     list.innerHTML = `<div class="empty-state">${words.length ? '找不到符合的紀錄' : month ? '這個月尚無紀錄' : '此年度尚無紀錄'}</div>`;
     return;
   }
+  const dateText = (date) => `${words.length ? `${date.slice(0, 4)}/` : ''}${dayLabel(date)}`;
+  const row = (e, meta) => `
+      <button type="button" class="exp-row exp-${e.type || 'expense'}" onclick="editExpense(${e.id})" aria-label="編輯 ${escapeAttr(catLabel(e.category))}">
+        <span class="e-cat">${escapeHtml(catDisplay(e.category))}${meta ? `<span class="e-meta">${escapeHtml(meta)}</span>` : ''}</span>
+        <span class="e-amt">${expAmountCell(e)}</span>
+      </button>`;
+  if (document.getElementById('exp-sort').value === 'amount') {
+    list.innerHTML = filtered.sort((a, b) => b.amount_twd - a.amount_twd)
+      .map(e => row(e, [dateText(e.date), e.note].filter(Boolean).join(' · '))).join('');
+    return;
+  }
   const days = new Map(); // date -> records, newest first (the API's order)
   for (const e of filtered) {
     if (!days.has(e.date)) days.set(e.date, []);
     days.get(e.date).push(e);
   }
   list.innerHTML = [...days].map(([date, recs]) => `
-      <div class="exp-day"><span>${words.length ? `${date.slice(0, 4)}/` : ''}${dayLabel(date)}</span><span>${expTotals(recs)}</span></div>` +
-    recs.map(e => `
-      <button type="button" class="exp-row exp-${e.type || 'expense'}" onclick="editExpense(${e.id})" aria-label="編輯 ${escapeAttr(catLabel(e.category))}">
-        <span class="e-cat">${escapeHtml(catDisplay(e.category))}${e.note ? `<span class="e-meta">${escapeHtml(e.note)}</span>` : ''}</span>
-        <span class="e-amt">${expAmountCell(e)}</span>
-      </button>`).join('')).join('');
+      <div class="exp-day"><span>${dateText(date)}</span><span>${expTotals(recs)}</span></div>` +
+    recs.map(e => row(e, e.note)).join('')).join('');
 }
 
 // ============================================================
