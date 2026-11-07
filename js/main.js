@@ -251,7 +251,7 @@ function reloadApp() {
   location.reload();
 }
 watchForUpdate(() => {
-  const editing = [...document.querySelectorAll('.modal-overlay')].some((m) => m.style.display !== 'none');
+  const editing = !!document.querySelector('dialog.modal-overlay[open]');
   if (!editing) return reloadApp();
   window.showToast?.('有新版本可用', 'info', { id: 'update-toast', action: { label: '重新整理', run: reloadApp } });
 });

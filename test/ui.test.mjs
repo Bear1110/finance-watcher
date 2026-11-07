@@ -32,6 +32,14 @@ test('UI: a select with a few fixed options is shown as buttons (data-segmented)
   }
 });
 
+test('UI: modals are native <dialog>s (Esc, focus kept inside, page behind inert)', () => {
+  for (const [file, src] of sources) {
+    for (const m of src.matchAll(/<(\w+)\b[^>]*class="[^"]*\bmodal-overlay\b/g)) {
+      assert.equal(m[1], 'dialog', `${file}:${lineOf(src, m.index)} modal-overlay on a <${m[1]}>: use <dialog class="modal-overlay"> with openModal/closeModal`);
+    }
+  }
+});
+
 test('UI: hints use form-hint with card-hint / chart-note, no inline margins or one-off *-hint classes', () => {
   for (const [file, src] of sources) {
     for (const m of src.matchAll(/class="([^"]*\bform-hint\b[^"]*)"\s+style=/g)) {

@@ -121,6 +121,7 @@ node --test                  # 單元測試（FIFO、TWR、代管帳戶、股利
 - 金額與百分比用 `fmtTWD` / `fmtPL` / `fmtPct` / `fmtWan`（隱私模式自動遮蔽），正負色用 `plSpan(v, fmt)` / `plClass(v)`，不要自己 `toLocaleString`。
 - 長條用 `.source-bar.cat-track`；多個來源堆疊加 `.lt-stack`，顏色 `--lt-0`…`--lt-5`（`--lt-5` 是「其他」）。列表的一列用 `.pf-row`（`.pf-row-head` / `.pf-row-sub`）。
 - % 折線圖用 `pctLineChart` / `pctLine`，大盤線顏色用 `BENCH_COLORS`。
+- 彈出視窗用 `<dialog class="modal-overlay">` 包 `.modal`，開關一律用 `openModal(id)` / `closeModal(id)`（瀏覽器內建：Esc 關閉、焦點留在視窗裡、背景不能操作）。開著的視窗在瀏覽器最上層，z-index 蓋不過它：要浮在視窗上面的東西（訊息、點 ⓘ 的說明小框）做成 `popover` 並用 `raise(el)` 拉到最前面。
 - 單一勾選框（勾選＋一句說明）用 `<label class="inline-check">`；一組選項清單用 `.llm-check`。
 - **少用下拉選單**：固定的少數選項（5 個以內、名稱短，例如市場、買賣、幣別、比較大盤）直接顯示成一排按鈕：在 `<select>` 加 `data-segmented` 即可（照常用 `onchange`、`.value`；按鈕字太長就給 `<option data-short="短名">`；程式重建選項後呼叫 `segmentSelect(sel)`）。會隨資料增加的清單（年份篩選）用 `data-segmented="6"`：前 6 個是按鈕，其餘收進「更多 ▾」（`data-more` 改文字，例如「更早」）。選項很多又沒有常用的幾個（幣別清單、分類）、或像收支頁那樣有前後箭頭的月份／年份，才用下拉；真的要保留下拉就加 `data-keep-select`。圖表的檢視切換（期間、市場、表格／卡片）沿用 `.chart-type-toggle` 按鈕組。
 

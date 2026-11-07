@@ -51,7 +51,7 @@
 </head>
 <body>
   <!-- Toast Container -->
-  <div id="toast-container"></div>
+  <div id="toast-container" popover="manual"></div>
 
   <!-- Top Navigation -->
   <nav id="main-nav">
@@ -1174,7 +1174,7 @@
   <!-- ==================== MODALS ==================== -->
 
   <!-- Snapshot Modal -->
-  <div id="modal-snapshot" class="modal-overlay" style="display:none">
+  <dialog id="modal-snapshot" class="modal-overlay">
     <div class="modal">
       <div class="modal-header">
         <h3 id="snapshot-modal-title">新增資產快照</h3>
@@ -1230,10 +1230,10 @@
         </div>
       </form>
     </div>
-  </div>
+  </dialog>
 
   <!-- Holding Modal -->
-  <div id="modal-holding" class="modal-overlay" style="display:none">
+  <dialog id="modal-holding" class="modal-overlay">
     <div class="modal">
       <div class="modal-header">
         <h3>匯入持倉</h3>
@@ -1271,10 +1271,10 @@
         </div>
       </form>
     </div>
-  </div>
+  </dialog>
 
   <!-- Trade Modal (Buy/Sell from Holdings) -->
-  <div id="modal-trade" class="modal-overlay" style="display:none">
+  <dialog id="modal-trade" class="modal-overlay">
     <div class="modal">
       <div class="modal-header">
         <h3 id="trade-modal-title">買入</h3>
@@ -1315,10 +1315,10 @@
       </form>
       <div id="trade-result" class="tx-result-box" style="display:none"></div>
     </div>
-  </div>
+  </dialog>
 
   <!-- Managed Account Modal -->
-  <div id="modal-managed-account" class="modal-overlay" style="display:none">
+  <dialog id="modal-managed-account" class="modal-overlay">
     <div class="modal">
       <div class="modal-header">
         <h3 id="managed-account-modal-title">新增代管帳戶</h3>
@@ -1350,10 +1350,10 @@
         </div>
       </form>
     </div>
-  </div>
+  </dialog>
 
   <!-- Managed Trade Modal -->
-  <div id="modal-managed-trade" class="modal-overlay" style="display:none">
+  <dialog id="modal-managed-trade" class="modal-overlay">
     <div class="modal">
       <div class="modal-header">
         <h3 id="managed-trade-modal-title">買入</h3>
@@ -1399,10 +1399,10 @@
         </div>
       </form>
     </div>
-  </div>
+  </dialog>
 
   <!-- Managed Cash Modal -->
-  <div id="modal-managed-cash" class="modal-overlay" style="display:none">
+  <dialog id="modal-managed-cash" class="modal-overlay">
     <div class="modal">
       <div class="modal-header">
         <h3 id="managed-cash-modal-title">存入現金</h3>
@@ -1436,10 +1436,10 @@
         </div>
       </form>
     </div>
-  </div>
+  </dialog>
 
   <!-- 收支: add / edit (opened by the + button or by tapping a record) -->
-  <div id="modal-expense" class="modal-overlay" style="display:none">
+  <dialog id="modal-expense" class="modal-overlay">
     <div class="modal">
       <div class="modal-header">
         <h3 id="expense-modal-title">新增紀錄</h3>
@@ -1495,7 +1495,7 @@
         </div>
       </form>
     </div>
-  </div>
+  </dialog>
 
   <!-- Floating add button, shown only on the 收支 tab (body[data-tab]) -->
   <button type="button" class="fab" data-tour="add-expense" onclick="openExpenseModal()" aria-label="新增收支紀錄" title="新增收支紀錄"><span data-icon="plus"></span></button>

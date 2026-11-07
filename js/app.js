@@ -367,12 +367,14 @@ function initTapTips() {
   const bubble = document.createElement('div');
   bubble.id = 'tip-bubble';
   bubble.setAttribute('role', 'tooltip');
+  bubble.setAttribute('popover', 'manual');
   bubble.hidden = true;
   document.body.appendChild(bubble);
   let anchor = null;
   const hide = () => {
     if (bubble.hidden) return;
     bubble.hidden = true;
+    if (bubble.matches?.(':popover-open')) bubble.hidePopover();
     anchor = null;
   };
 
@@ -386,6 +388,7 @@ function initTapTips() {
     anchor = el;
     bubble.textContent = el.title;
     bubble.hidden = false;
+    raise(bubble); // above an open dialog when the tip is inside one
     placeNear(bubble, el.getBoundingClientRect(), 8, 8);
   });
   addEventListener('scroll', hide, { passive: true, capture: true });
@@ -479,19 +482,30 @@ function onTabActivated(tab) {
 // SECTION: Modal Helpers
 // ============================================================
 
+// Modals are native <dialog>s opened with showModal() (Esc, focus kept inside, page behind inert).
+// They sit in the browser's top layer, above any z-index: whatever must float over them (toasts,
+// the tap-tip bubble) is a popover that raise() puts back on top.
+
+/** Puts a popover element at the front of the top layer; a no-op where popovers aren't supported. */
+function raise(el) {
+  if (!el.showPopover) return;
+  if (el.matches(':popover-open')) el.hidePopover();
+  el.showPopover();
+}
+
 function openModal(id) {
-  document.getElementById(id).style.display = 'flex';
+  const d = document.getElementById(id);
+  if (!d.open) d.showModal();
+  raise(document.getElementById('toast-container')); // messages from the form show above it
 }
 
 function closeModal(id) {
-  document.getElementById(id).style.display = 'none';
+  document.getElementById(id).close();
 }
 
-// Close modals on overlay click
+// A click on the dimmed area (the dialog itself, outside its .modal box) closes it
 document.addEventListener('click', (e) => {
-  if (e.target.classList.contains('modal-overlay')) {
-    e.target.style.display = 'none';
-  }
+  if (e.target.matches('dialog.modal-overlay[open]')) e.target.close();
 });
 
 // ============================================================
