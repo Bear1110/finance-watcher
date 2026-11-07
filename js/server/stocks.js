@@ -82,6 +82,7 @@ export async function listHoldings() {
     if (q) {
       d.current_price = q.price;
       d.exchange = q.exchange;
+      d.type = q.type;
       d.day_change_twd = toTWD(q.change * h.shares, h.currency, rate);
       d.day_change_pct = q.change_percent;
       d.market_value = q.price * h.shares;

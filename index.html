@@ -595,6 +595,21 @@
           <div id="pf-weights"><div class="empty-state">載入中...</div></div>
         </div>
 
+        <div class="card" id="lt-card">
+          <div class="card-header">
+            <h3 title="把 ETF 拆成它的成分股（Yahoo 提供的前十大持股），&#10;再跟直接買的股票合併，看實際押在哪些公司上。">穿透持股 ⓘ</h3>
+            <div class="chart-type-toggle">
+              <button type="button" class="chart-type-btn active" data-lt-mode="all" onclick="setLookThroughMode('all')">全部股票</button>
+              <button type="button" class="chart-type-btn" data-lt-mode="etf" onclick="setLookThroughMode('etf')">只看 ETF</button>
+            </div>
+          </div>
+          <div id="lt-compare" class="lt-compare"></div>
+          <p class="form-hint pf-hint" id="lt-hint"></p>
+          <div id="lt-legend" class="chart-legend lt-legend"></div>
+          <div id="lt-rows"><div class="empty-state">載入中...</div></div>
+          <button type="button" class="btn btn-outline btn-sm lt-more" id="lt-more" hidden onclick="toggleLookThroughAll()"></button>
+        </div>
+
       </div>
     </section>
 

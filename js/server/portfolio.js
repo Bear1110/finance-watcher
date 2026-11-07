@@ -11,6 +11,12 @@ import { dividendsBySymbol } from './dividends.js';
 /** Concentration by market-value weight (%): '' | 'warn' (≥ 25) | 'danger' (≥ 40). */
 export const concentrationLevel = (pct) => (pct >= 40 ? 'danger' : pct >= 25 ? 'warn' : '');
 
+/** 等效持股: 1 ÷ Σ(weight²) over weights in %; equals the count when all weigh the same. */
+export const effectiveCount = (weights) => {
+  const hhi = weights.reduce((s, w) => s + (w / 100) ** 2, 0);
+  return hhi > 0 ? 1 / hhi : 0;
+};
+
 
 /**
  * holdings: as /api/stocks returns them; ttmTWD: { symbol: trailing-12-month dividends in TWD };
@@ -46,7 +52,7 @@ export function portfolioStats({ holdings, ttmTWD, cash, rate, other = 0 }) {
   return {
     rows,
     top3: rows.slice(0, 3).reduce((s, r) => s + r.weight, 0),
-    effective: 1 / rows.reduce((s, r) => s + (r.weight / 100) ** 2, 0),
+    effective: effectiveCount(rows.map((r) => r.weight)),
     usd: { stock: usdStock, cash: cash ? usdCash : null, pct: netWorth > 0 ? (usdStock + usdCash) / netWorth * 100 : null },
     dividends: { ttm, yield_cost: yieldOn(ttm, totalCost) },
     split: { tw, us: totalValue - tw },

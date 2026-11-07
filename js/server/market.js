@@ -82,10 +82,11 @@ const GOOGLE_EXCHANGE = {
   NYQ: 'NYSE', PCX: 'NYSEARCA', ASE: 'NYSEAMERICAN', BTS: 'BATS',
 };
 
-function makeQuote(symbol, price, prevClose, currency, name, exchange) {
+function makeQuote(symbol, price, prevClose, currency, name, exchange, type) {
   const q = {
     symbol, price, change: 0, change_percent: 0,
     currency: currency || '', name: name || '', exchange: GOOGLE_EXCHANGE[exchange] || '',
+    type: type || '', // Yahoo instrumentType: 'EQUITY' | 'ETF' | 'MUTUALFUND' | …; '' when unknown (no proxy)
     fetched_at: new Date().toISOString(),
   };
   if (prevClose > 0) {
@@ -101,7 +102,7 @@ async function fetchQuoteYahoo(symbol) {
   const res = yr.chart?.result?.[0];
   if (!res) throw new Error(`no results for ${symbol}`);
   const m = res.meta;
-  return makeQuote(symbol, m.regularMarketPrice, m.chartPreviousClose, m.currency, m.shortName, m.exchangeName);
+  return makeQuote(symbol, m.regularMarketPrice, m.chartPreviousClose, m.currency, m.shortName, m.exchangeName, m.instrumentType);
 }
 
 export async function fetchQuote(symbol) {
@@ -280,4 +281,34 @@ export async function fetchDividendHistory(symbol, since) {
   evs.sort((a, b) => (a.ex_date < b.ex_date ? -1 : a.ex_date > b.ex_date ? 1 : 0));
   dividendCache.set(key, { at: Date.now(), evs });
   return evs;
+}
+
+// ---------------------------------------------------------------- ETF holdings
+
+const HOLDINGS_TTL_MS = 6 * 60 * 60 * 1000;
+const holdingsCache = new Map(); // symbol -> { at, info }
+
+/**
+ * Yahoo's top holdings for symbol (quoteSummary topHoldings, usually the top 10):
+ * { is_fund, holdings: [{ symbol, name, weight }], bond } with weights (and bond, the fund's
+ * bond share) as fractions of the fund. is_fund is false for a plain stock.
+ */
+export async function fetchFundHoldings(symbol) {
+  const e = holdingsCache.get(symbol);
+  if (e && Date.now() - e.at < HOLDINGS_TTL_MS) return e.info;
+  const body = await yahooGetJSON(`/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=quoteType,topHoldings`, `${symbol} holdings`);
+  const res = body.quoteSummary?.result?.[0];
+  if (!res) throw new Error(body.quoteSummary?.error?.description || `no holdings for ${symbol}`);
+  const type = res.quoteType?.quoteType || '';
+  const th = res.topHoldings;
+  const raw = (v) => (typeof v?.raw === 'number' ? v.raw : 0);
+  const info = {
+    is_fund: (type === 'ETF' || type === 'MUTUALFUND') && !!th,
+    holdings: (th?.holdings || [])
+      .filter((x) => x.symbol && raw(x.holdingPercent) > 0)
+      .map((x) => ({ symbol: x.symbol, name: x.holdingName || '', weight: raw(x.holdingPercent) })),
+    bond: raw(th?.bondPosition),
+  };
+  holdingsCache.set(symbol, { at: Date.now(), info });
+  return info;
 }

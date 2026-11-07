@@ -1992,6 +1992,47 @@ body[data-tab="expenses"] .fab { display: flex; }
 }
 .pf-row-sub { font-size: 0.8rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 
+/* --- 組合分析 › 穿透持股: one bar segment per source (direct + each ETF) --- */
+:root {
+  --lt-direct: var(--accent);
+  --lt-0: #d97330;
+  --lt-1: #a78bfa;
+  --lt-2: #2dd4bf;
+  --lt-3: #f472b6;
+  --lt-4: #fbbf24;
+  --lt-5: #94a3b8;
+}
+.lt-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.5rem 1.5rem; margin-bottom: 10px; }
+.lt-compare-item { font-variant-numeric: tabular-nums; }
+.lt-compare-label { font-size: 0.8rem; color: var(--text-secondary); }
+.lt-compare-value { font-size: 1.05rem; font-weight: 600; color: var(--text-heading); }
+.lt-compare-value .lt-arrow { color: var(--text-muted); margin: 0 0.35rem; font-weight: 400; }
+.lt-legend { margin: 0 0 10px; }
+.lt-name { font-size: 0.8rem; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.lt-badge {
+  flex: none;
+  font-size: 0.72rem;
+  padding: 0 0.35rem;
+  border-radius: 3px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+.lt-badge-direct { background: var(--accent-subtle); color: var(--accent); }
+.lt-stack { margin: 0.4rem 0 0.35rem; }
+.lt-stack span { border-radius: 0; }
+.lt-stack span + span { box-shadow: inset 1px 0 0 var(--bg-card); }
+.lt-src { white-space: nowrap; }
+.lt-src::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin-right: 4px;
+  background: var(--c);
+}
+.lt-more { margin-top: 8px; }
+
 /* --- Settings › 生活費 / 其他資產 --- */
 .settings-input { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--text-secondary); }
 .settings-input input { width: 8em; }

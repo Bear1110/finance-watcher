@@ -14,7 +14,8 @@
 | `stocks.js` | 持倉、交易、已實現損益 |
 | `assets.js` / `expenses.js` / `dividends.js` / `managed.js` / `settings.js` / `reports.js` / `llm.js` / `export.js` | 各功能頁 |
 | `twr.js` / `twr_calc.js` / `performance.js` / `datacheck.js` | 投資績效（TWR / XIRR）與資料檢查 |
-| `market.js` | 報價、匯率、歷史股價、股利歷史 |
+| `market.js` | 報價、匯率、歷史股價、股利歷史、ETF 前十大成分股 |
+| `portfolio.js` / `lookthrough.js` | 組合分析：集中度、美元佔比；穿透持股（ETF 拆成分股，跟直接持有合併並記下來源） |
 | `aiimport.js` | AI 匯入：產生只有格式說明的提示詞、寬鬆解析 AI 回覆、預覽與判斷重複、整批寫入 |
 
 ## 資料與同步
@@ -49,14 +50,14 @@
 
 ## 行情
 
-Yahoo Finance 沒有 CORS，瀏覽器不能直接呼叫。`market.js` 的所有請求都是 Yahoo chart API，經過代理轉送：
+Yahoo Finance 沒有 CORS，瀏覽器不能直接呼叫。`market.js` 的請求經過代理轉送：大多是 Yahoo chart API（`/v8/finance/chart`），穿透持股另用 `quoteSummary` 的 `topHoldings`（`/v10/finance/quoteSummary`，Yahoo 要 cookie + crumb，由 Worker 代拿；只允許 `quoteType`、`topHoldings` 兩個模組）。Worker 改過要重新部署：
 
 1. Cloudflare 後台 → Workers → 建立 → 貼上 `worker/yahoo-proxy.js` → 部署
 2. 把 `ALLOWED_ORIGINS` 改成自己的 GitHub Pages 網域
 3. 網址填進 `js/config.js` 的 `DEFAULT_YAHOO_PROXY`
 
 沒有代理時：即時報價與 USD/TWD 匯率改用試算表 `quotes` 分頁的 `GOOGLEFINANCE` 公式（需登入）；
-投資績效、股利建議、資料檢查的漏記股利項目無法使用，會顯示說明。部分台股 ETF 在 `GOOGLEFINANCE` 可能查不到報價（已知限制，平常走代理不受影響）。
+投資績效、股利建議、資料檢查的漏記股利項目、穿透持股無法使用，會顯示說明。部分台股 ETF 在 `GOOGLEFINANCE` 可能查不到報價（已知限制，平常走代理不受影響）。
 
 ## Google Cloud 設定
 

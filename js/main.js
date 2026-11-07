@@ -13,6 +13,7 @@ import { BACKUP_FORMAT, BACKUP_GROUPS } from './server/settings.js';
 import './server/assets.js';
 import './server/stocks.js';
 import './server/portfolio.js';
+import './server/lookthrough.js';
 import './server/overview.js';
 import './server/other_assets.js';
 import './server/twr.js';

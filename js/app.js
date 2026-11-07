@@ -1366,6 +1366,7 @@ const CONCENTRATION = { warn: ['偏高', 'risk-warn'], danger: ['高度集中', 
 
 /** 組合分析: numbers come from /api/stocks/portfolio (js/server/portfolio.js); this only renders. */
 async function loadPortfolioAnalysis() {
+  loadLookThrough(); // separate: it needs the Yahoo proxy and can fail on its own
   try {
     const p = await api('/api/stocks/portfolio');
     if (!p) {
@@ -1425,6 +1426,132 @@ function renderPortfolioWeights(rows) {
       <div class="pf-row-sub">${sub}</div>
     </div>`;
   }).join('');
+}
+
+// ---- 穿透持股: numbers from /api/stocks/lookthrough (js/server/lookthrough.js); this only renders.
+
+const LT_ROWS = 15; // rows shown before 顯示全部
+let _lt = null;
+let _ltMode = 'all'; // 'all' | 'etf'
+let _ltAll = false;
+try { if (localStorage.getItem('lookThroughMode') === 'etf') _ltMode = 'etf'; } catch (e) { /* ignore */ }
+
+/** Taiwan symbols without the .TW / .TWO suffix. */
+const ltLabel = (s) => s.replace(/\.TWO?\b/g, '');
+
+async function loadLookThrough() {
+  try {
+    _lt = await api('/api/stocks/lookthrough');
+  } catch (err) {
+    _lt = null;
+    ['lt-compare', 'lt-legend', 'lt-hint'].forEach(id => { document.getElementById(id).innerHTML = ''; });
+    document.getElementById('lt-rows').innerHTML = `<div class="empty-state">查不到 ETF 成分股：${escapeHtml(err.message)}</div>`;
+    document.getElementById('lt-more').hidden = true;
+    return;
+  }
+  renderLookThrough();
+}
+
+function setLookThroughMode(mode) {
+  _ltMode = mode;
+  try { localStorage.setItem('lookThroughMode', mode); } catch (e) { /* ignore */ }
+  renderLookThrough();
+}
+
+function toggleLookThroughAll() {
+  _ltAll = !_ltAll;
+  renderLookThrough();
+}
+
+function renderLookThrough() {
+  document.querySelectorAll('#lt-card [data-lt-mode]').forEach(b => b.classList.toggle('active', b.dataset.ltMode === _ltMode));
+  const box = document.getElementById('lt-rows');
+  const more = document.getElementById('lt-more');
+  const p = _lt;
+  if (!p) {
+    box.innerHTML = '<div class="empty-state">尚無持股（或還沒抓到報價）</div>';
+    more.hidden = true;
+    return;
+  }
+  const etfMode = _ltMode === 'etf';
+  const pct = (w) => `${w.toFixed(1)}%`;
+  // Source colors: direct, then each ETF in size order (cycling)
+  const colors = new Map([['direct', 'var(--lt-direct)'], ...p.etfs.map((e, i) => [e.symbol, `var(--lt-${i % 6})`])]);
+  const ltColor = (src) => colors.get(src) || 'var(--lt-5)';
+
+  // Before → after
+  const a = p.after;
+  const item = (label, before, after, cls = '') => `<div class="lt-compare-item">
+    <div class="lt-compare-label">${label}</div>
+    <div class="lt-compare-value"><span>${before}</span><span class="lt-arrow">→</span><span class="${cls}">${after}</span></div>
+  </div>`;
+  const topFlag = a && CONCENTRATION[a.top.level];
+  document.getElementById('lt-compare').innerHTML = p.etfs.length && a ? [
+    item('最大單一持股（穿透前 → 後）', `${escapeHtml(ltLabel(p.before.top.symbol))} ${pct(p.before.top.weight)}`,
+      `${escapeHtml(ltLabel(a.top.symbol))} ${pct(a.top.weight)}`, topFlag ? topFlag[1] : ''),
+    item('等效持股（穿透前 → 後）', `${p.before.effective.toFixed(1)} 檔`, `${a.effective.toFixed(1)} 檔`),
+  ].join('') : '';
+
+  const hints = [];
+  if (!p.etfs.length) hints.push('目前沒有持有 ETF，穿透結果跟上面的持股權重一樣。');
+  else {
+    hints.push(etfMode
+      ? `只拆 ETF 的 ${fmtTWD(p.etf_total)}：這些 ETF 合起來等於押在哪些公司。「另有直接持有」表示你也自己買了這檔。`
+      : `ETF ${fmtTWD(p.etf_total)} 拆成成分股，再加上直接持有的 ${fmtTWD(p.direct_total)}。長條顏色是這筆錢的來源。`);
+    hints.push('Yahoo 只提供各 ETF 的前十大持股，其餘歸在「其他成分股」，等效持股不計這一列。');
+  }
+  if (p.unresolved.length) hints.push(`查不到 ${p.unresolved.map(s => escapeHtml(ltLabel(s))).join('、')} 的成分股，暫以本身計算。`);
+  document.getElementById('lt-hint').innerHTML = hints.join('<br>');
+
+  const legend = (etfMode ? [] : [['direct', '直接持有']])
+    .concat(p.etfs.map(e => [e.symbol, `${ltLabel(e.symbol)}（前十大佔 ${pct(e.listed * 100)}）`]));
+  document.getElementById('lt-legend').innerHTML = p.etfs.length ? legend.map(([src, label]) =>
+    `<span class="legend-item"><span class="legend-dot" style="background:${ltColor(src)}"></span>${escapeHtml(label)}</span>`).join('') : '';
+
+  const rows = p.rows
+    .map(r => ({ r, value: etfMode ? r.from_etf : r.value, weight: etfMode ? r.etf_weight : r.weight }))
+    .filter(x => x.value > 0)
+    .sort((x, y) => (x.r.lumped - y.r.lumped) || (y.value - x.value)); // the ETF view ranks by ETF money
+  if (!rows.length) {
+    box.innerHTML = '<div class="empty-state">沒有持有 ETF</div>';
+    more.hidden = true;
+    return;
+  }
+  const named = rows.filter(x => !x.r.lumped);
+  const shown = (_ltAll ? named : named.slice(0, LT_ROWS)).concat(rows.filter(x => x.r.lumped));
+  const scale = Math.max(...rows.map(x => x.value));
+
+  box.innerHTML = shown.map(({ r, value, weight }) => {
+    const sources = (etfMode || !(r.direct > 0) ? [] : [['direct', r.direct]])
+      .concat(Object.entries(r.via).sort((x, y) => y[1] - x[1]));
+    const isStock = !r.lumped;
+    const mkt = MKT[r.market];
+    const flag = etfMode ? null : CONCENTRATION[r.level];
+    let badge = '';
+    if (isStock && etfMode && r.direct > 0) badge = `<span class="lt-badge lt-badge-direct" title="另外直接持有 ${fmtTWD(r.direct)}">另有直接持有</span>`;
+    else if (isStock && !etfMode && r.from_etf > 0 && !(r.direct > 0)) badge = '<span class="lt-badge">僅 ETF</span>';
+    // Held directly under another listing (TSM for 2330): name every listing held
+    const heldElsewhere = r.held_as.some(s => s !== r.key);
+    const srcText = (src) => (src === 'direct' ? `直接${heldElsewhere ? ` ${r.held_as.map(ltLabel).join('＋')}` : ''}` : ltLabel(src));
+    const sub = sources.map(([src, v]) =>
+      `<span class="lt-src" style="--c:${ltColor(src)}">${escapeHtml(srcText(src))} ${fmtTWD(v)}</span>`).join(' · ');
+    return `<div class="pf-row${mkt ? ` pf-mkt-${mkt.cls}` : ''}">
+      <div class="pf-row-head">
+        <span class="pf-sym">${escapeHtml(isStock ? ltLabel(r.key) : r.name)}</span>
+        ${mkt ? `<span class="pf-mkt">${mkt.short}</span>` : ''}
+        ${isStock && r.name ? `<span class="lt-name" title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</span>` : ''}
+        ${badge}
+        ${flag ? `<span class="pf-flag ${flag[1]}">${flag[0]}</span>` : ''}
+        <span class="pf-weight">${pct(weight)}</span>
+      </div>
+      <div class="source-bar cat-track lt-stack" aria-hidden="true" style="width:${value / scale * 100}%">${sources.map(([src, v]) =>
+        `<span style="width:${v / value * 100}%;background:${ltColor(src)}"></span>`).join('')}</div>
+      <div class="pf-row-sub">${fmtTWD(value)}${r.from_etf > 0 ? `：${sub}` : r.kind === 'unresolved' ? '（查不到成分股）' : ''}</div>
+    </div>`;
+  }).join('');
+
+  more.hidden = named.length <= LT_ROWS;
+  more.textContent = _ltAll ? `只顯示前 ${LT_ROWS} 檔` : `顯示全部 ${named.length} 檔`;
 }
 
 // ============================================================
