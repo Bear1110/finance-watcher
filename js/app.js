@@ -27,7 +27,9 @@ function fmt(n, decimals = 0) {
 /** Format a number with commas, never masked (prices, rates) */
 function fmtNum(n, decimals = 0) {
   if (n == null || isNaN(n)) return '--';
-  return Number(n).toLocaleString('en-US', {
+  const f = 10 ** decimals;
+  const v = Math.round(Number(n) * f) / f || 0; // −0.4 → 0, not "-0"
+  return v.toLocaleString('en-US', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
@@ -48,7 +50,8 @@ function fmtUSD(n) {
 /** Format percentage */
 function fmtPct(n) {
   if (n == null || isNaN(n)) return '--';
-  return (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
+  const v = Math.round(n * 100) / 100 || 0; // −0.001 → +0.00%, not "-0.00%"
+  return (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
 }
 
 /** Get CSS class for positive/negative */
@@ -515,10 +518,11 @@ async function loadDashboard() {
   }
 }
 
+/** The most important alert shows; the others fold under「還有 N 項提醒」so 淨資產 stays near the top. */
 function renderAlerts(alerts) {
   const el = document.getElementById('dash-alerts');
   el.hidden = !alerts.length;
-  el.innerHTML = alerts.map(a => {
+  const one = a => {
     const action = CHECK_ACTIONS[a.action];
     return `<div class="dash-alert dash-alert-${a.level}">
       <span class="dash-alert-icon" aria-hidden="true">${CHECK_ICONS[a.level]}</span>
@@ -526,7 +530,10 @@ function renderAlerts(alerts) {
       ${action ? `<button type="button" class="btn btn-outline btn-sm" onclick="CHECK_ACTIONS['${a.action}'][1]()">${action[0]}</button>` : ''}
       ${checkItemsHtml(a, true)}
     </div>`;
-  }).join('');
+  };
+  const [first, ...rest] = alerts;
+  el.innerHTML = !first ? '' : one(first) + (rest.length
+    ? `<details class="dash-alerts-more"><summary>還有 ${rest.length} 項提醒</summary>${rest.map(one).join('')}</details>` : '');
 }
 
 /** Net worth, this year's change by source, what it is made of, today's move. */
@@ -1196,7 +1203,7 @@ function renderRplYearButtons() {
   if (!el) return;
   const items = ['ALL', ..._rplYears];
   el.innerHTML = items.map(y =>
-    `<button class="rpl-filter-btn${y === _rplYear ? ' active' : ''}" onclick="filterRealizedYear('${y}')">${y === 'ALL' ? '全部年度' : y}</button>`
+    `<button type="button" class="chart-type-btn${y === _rplYear ? ' active' : ''}" onclick="filterRealizedYear('${y}')">${y === 'ALL' ? '全部年度' : y}</button>`
   ).join('');
 }
 
@@ -1207,10 +1214,6 @@ function filterRealizedYear(year) {
 
 function filterRealizedPL(market) {
   _rplFilter = market;
-  // Update button states
-  document.querySelectorAll('.rpl-filter-btn[data-market]').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.market === market);
-  });
   renderRealizedSummary();
 }
 
@@ -1225,9 +1228,11 @@ function renderTradeQuality(ts) {
   const pfCls = pf < 1 ? 'negative' : pf >= 2 ? 'positive' : '';
   setStat('rpl-pf',
     !any ? '--' : pf == null ? '<span class="positive">無虧損</span>' : `<span class="${pfCls}">${pf.toFixed(2)}</span>`,
-    any ? `總賺 ${fmt(ts.gross_profit)} ÷ 總賠 ${fmt(ts.gross_loss)}` : '');
+    !any ? '' : ts.losses ? `總賺 ${fmt(ts.gross_profit)} ÷ 總賠 ${fmt(ts.gross_loss)}` : '還沒有賠錢的交易');
+  const win = ts.wins ? `<span class="positive">+${fmt(ts.avg_win)}</span>` : '--';
+  const loss = ts.losses ? `<span class="negative">−${fmt(ts.avg_loss)}</span>` : '--';
   setStat('rpl-payoff',
-    any ? `<span class="positive">+${fmt(ts.avg_win)}</span> <span class="text-muted">/</span> <span class="negative">−${fmt(ts.avg_loss)}</span>` : '--',
+    any ? `${win} <span class="text-muted">/</span> ${loss}` : '--',
     ts.payoff != null ? `賺賠比 ${ts.payoff.toFixed(2)}${ts.payoff < 1 ? '：平均賺的比賠的少' : ''}` : '');
   setStat('rpl-exp',
     ts.trades ? plSpan(ts.expectancy, fmtPL) : '--',
@@ -3311,7 +3316,7 @@ async function loadProfile() {
   form.querySelectorAll('[data-pf-chips]').forEach((box) => {
     const key = box.dataset.pfChips;
     box.innerHTML = _profile.choices[key].map(([v, label]) =>
-      `<button type="button" class="rpl-filter-btn chip-sm${p[key] === v ? ' active' : ''}" data-v="${v}" onclick="pickProfileChip('${key}', '${v}')">${label}</button>`).join('');
+      `<button type="button" class="chip-btn chip-sm${p[key] === v ? ' active' : ''}" data-v="${v}" onclick="pickProfileChip('${key}', '${v}')">${label}</button>`).join('');
   });
   document.getElementById('pf-big-none').checked = Array.isArray(p.big_expenses) && p.big_expenses.length === 0;
   document.getElementById('pf-big-rows').innerHTML = (p.big_expenses || []).map(bigExpenseRow).join('');

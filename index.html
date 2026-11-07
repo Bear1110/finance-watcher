@@ -227,15 +227,15 @@
 
       <!-- 績效 Sub-tab: how the holdings did over time -->
       <div id="subtab-performance" class="subtab-content">
-        <div class="card perf-guide">
-          <h3>怎麼看這一頁</h3>
+        <details class="card perf-guide">
+          <summary><h3>怎麼看這一頁？</h3></summary>
           <ul>
             <li><b>我的錢一年大約賺幾 %？</b> → 累計年化報酬（XIRR），可以想成存款利率；正的就是整體有賺。</li>
             <li><b>實際賺了多少錢？</b> → 市值與損益走勢、報酬率下面的 NT$ 金額。</li>
             <li><b>股票本身表現好不好、有沒有贏大盤？</b> → 投資績效的 %、月報酬。它只看持股本身的漲跌（含股利、匯率），不受你什麼時候加碼影響。</li>
           </ul>
           <p class="form-hint">% 和金額對不上通常是時機：大筆錢在下跌前才進場，股票本身可能還是漲的（% 為正），你的錢卻是虧的（金額為負）。</p>
-        </div>
+        </details>
 
         <div class="card">
           <div class="card-header">
@@ -304,15 +304,16 @@
 
       <!-- Realized P&L Sub-tab -->
       <div id="subtab-realized" class="subtab-content">
-        <!-- Market Filter -->
-        <div class="rpl-filter">
-          <button class="rpl-filter-btn active" data-market="ALL" onclick="filterRealizedPL('ALL')">全部</button>
-          <button class="rpl-filter-btn" data-market="US" onclick="filterRealizedPL('US')">美股</button>
-          <button class="rpl-filter-btn" data-market="TW" onclick="filterRealizedPL('TW')">台股</button>
+        <!-- Market and year filters -->
+        <div class="chart-controls rpl-controls">
+          <select id="rpl-market" data-segmented aria-label="市場" onchange="filterRealizedPL(this.value)">
+            <option value="ALL">全部</option>
+            <option value="TW">台股</option>
+            <option value="US">美股</option>
+          </select>
+          <div class="chart-type-toggle" id="rpl-year-filter" role="group" aria-label="年度"></div>
         </div>
-        <!-- Year Filter -->
-        <div class="rpl-filter" id="rpl-year-filter"></div>
-                <div class="stats-group-label">損益</div>
+        <div class="stats-group-label">損益</div>
         <div class="dash-stats">
           <div class="stat-card">
             <div class="stat-label">已實現損益</div>

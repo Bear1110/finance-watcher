@@ -793,14 +793,8 @@ select option {
   border-top: 1px dashed var(--border-color);
 }
 
-/* --- Realized P&L stats --- */
-.rpl-filter {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 20px;
-}
-
-.rpl-filter-btn {
+/* --- Choice chips (關於你) --- */
+.chip-btn {
   padding: 8px 20px;
   border-radius: 8px;
   border: 1px solid var(--border-color);
@@ -811,12 +805,12 @@ select option {
   transition: all 0.2s;
 }
 
-.rpl-filter-btn:hover {
+.chip-btn:hover {
   border-color: var(--accent);
   color: var(--text-primary);
 }
 
-.rpl-filter-btn.active {
+.chip-btn.active {
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);
@@ -928,6 +922,7 @@ select option {
 
 .chart-controls {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
 }
@@ -1134,10 +1129,8 @@ select option {
 }
 
 /* --- Dashboard performance (TWR) --- */
-.perf-controls {
-  margin-bottom: 8px;
-  flex-wrap: wrap;
-}
+.perf-controls { margin-bottom: 8px; }
+.rpl-controls { margin-bottom: 16px; }
 
 .perf-table thead th.perf-period-th {
   cursor: pointer;
@@ -1354,10 +1347,8 @@ body { overflow-x: clip; }
   /* --- Control strips scroll sideways instead of wrapping off-screen --- */
   .sub-tabs,
   .chart-type-toggle,
-  .rpl-filter,
   .type-toggle,
-  .snapshot-mode-toggle,
-  .chart-controls {
+  .snapshot-mode-toggle {
     max-width: 100%;
     overflow-x: auto;
     flex-wrap: nowrap;
@@ -1365,13 +1356,11 @@ body { overflow-x: clip; }
   }
   .sub-tabs::-webkit-scrollbar,
   .chart-type-toggle::-webkit-scrollbar,
-  .rpl-filter::-webkit-scrollbar,
   .type-toggle::-webkit-scrollbar,
-  .snapshot-mode-toggle::-webkit-scrollbar,
-  .chart-controls::-webkit-scrollbar { display: none; }
+  .snapshot-mode-toggle::-webkit-scrollbar { display: none; }
   .sub-tab-btn,
   .chart-type-btn,
-  .rpl-filter-btn,
+  .chip-btn,
   .type-btn,
   .toggle-sm,
   .chart-controls > select { flex-shrink: 0; white-space: nowrap; }
@@ -1557,8 +1546,11 @@ body[data-tab="expenses"] .fab { display: flex; }
 .fab:active { transform: scale(0.94); }
 .fab svg { width: 26px; height: 26px; }
 
-/* Keep the last table rows reachable above the button */
+/* Keep the last table rows reachable above the button, and the amounts clear of it */
 #tab-expenses { padding-bottom: 72px; }
+@media (min-width: 600px) {
+  body[data-tab="expenses"] #tab-expenses { padding-right: max(0px, 64px - max(0px, (100vw - 1400px) / 2)); }
+}
 
 @media (max-width: 599px) {
   .fab {
@@ -2075,6 +2067,9 @@ body[data-tab="expenses"] .fab { display: flex; }
 .dash-alert-text { flex: 1; min-width: 0; }
 .dash-alert .btn { flex: none; }
 .dash-alert .check-items { flex-basis: 100%; margin: 0 0 0 1.6rem; }
+.dash-alerts-more > summary { cursor: pointer; font-size: 0.85rem; color: var(--text-secondary); padding: 2px 4px; }
+.dash-alerts-more[open] > summary { margin-bottom: 8px; }
+.dash-alerts-more > .dash-alert + .dash-alert { margin-top: 8px; }
 .check-items p { margin: 6px 0 0; }
 
 .hero-year { margin-top: 6px; font-size: 1.05rem; font-weight: 600; color: var(--text-secondary); }
@@ -2104,7 +2099,9 @@ body[data-tab="expenses"] .fab { display: flex; }
 @media (max-width: 599px) {
 }
 
-.perf-guide h3 { font-size: 1rem; margin-bottom: 8px; color: var(--text-heading); }
+.perf-guide > summary { cursor: pointer; list-style-position: inside; }
+.perf-guide > summary h3 { display: inline; font-size: 1rem; color: var(--text-heading); }
+.perf-guide[open] > summary { margin-bottom: 8px; }
 .perf-guide ul { margin: 0 0 8px; padding-left: 1.1rem; line-height: 1.7; font-size: 0.9rem; color: var(--text-secondary); }
 .perf-guide b { color: var(--text-primary); }
 .perf-guide .form-hint { margin: 0; }
