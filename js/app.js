@@ -77,6 +77,9 @@ function fmtWan(n) {
   return n >= 10000 ? `${+(n / 10000).toFixed(n >= 1e6 ? 0 : 1)} 萬` : fmtNum(n);
 }
 
+/** +12.5 萬 / −3,000: a change in 萬. */
+const signedWan = (v) => (v < 0 ? '−' : '+') + fmtWan(Math.abs(v));
+
 /** A large expense ahead (關於你): 2029 買房 300 萬. */
 const bigExpenseLabel = (e) => `${e.year} ${escapeHtml(e.what || '支出')} ${fmtWan(e.amount)}`;
 
@@ -279,6 +282,8 @@ const SELECT_VALUE = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype
  * The select stays (hidden) as the source of truth, so forms, `onchange`, edit forms setting
  * `.value` and form.reset() all keep working. Call again after replacing the options.
  * Button text: the option's data-short, else its text (the full text becomes the tooltip).
+ * A list that grows (years): `data-segmented="6"` shows the first 6 options as buttons and folds
+ * the rest into a 「更多 ▾」 dropdown (label from data-more), which shows a picked value on itself.
  */
 function segmentSelect(sel) {
   let box = sel._seg;
@@ -289,12 +294,13 @@ function segmentSelect(sel) {
     if (sel.getAttribute('aria-label')) box.setAttribute('aria-label', sel.getAttribute('aria-label'));
     sel.after(box);
     sel.style.display = 'none';
-    box.addEventListener('click', (e) => {
-      const b = e.target.closest('button');
-      if (!b || b.dataset.v === sel.value) return; // like a select: no change event when nothing changed
-      sel.value = b.dataset.v;
+    const pick = (v) => {
+      if (v === sel.value) return; // like a select: no change event when nothing changed
+      sel.value = v;
       sel.dispatchEvent(new Event('change', { bubbles: true }));
-    });
+    };
+    box.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) pick(b.dataset.v); });
+    box.addEventListener('change', (e) => { e.stopPropagation(); pick(e.target.value); }); // the 更多 list
     // Code that sets .value directly (edit forms) moves the highlight too
     Object.defineProperty(sel, 'value', {
       configurable: true,
@@ -302,19 +308,33 @@ function segmentSelect(sel) {
       set(v) { SELECT_VALUE.set.call(this, v); syncSegments(this); },
     });
   }
-  box.innerHTML = [...sel.options].map(o => {
+  const options = [...sel.options];
+  const limit = Number(sel.dataset.segmented) || options.length;
+  const folded = options.length > limit + 1 ? options.slice(limit) : []; // one extra isn't worth a list
+  box.innerHTML = options.slice(0, options.length - folded.length).map(o => {
     const short = o.dataset.short;
     return `<button type="button" role="radio" class="chart-type-btn" data-v="${escapeAttr(o.value)}"${short ? ` title="${escapeAttr(o.textContent)}"` : ''}>${escapeHtml(short || o.textContent)}</button>`;
-  }).join('');
+  }).join('') + (folded.length ? `<label class="chart-type-btn seg-more"><span></span>
+    <select aria-label="${escapeAttr(sel.dataset.more || '更多')}"><option value="" disabled>${escapeHtml(sel.dataset.more || '更多')}</option>${
+      folded.map(o => `<option value="${escapeAttr(o.value)}">${escapeHtml(o.textContent)}</option>`).join('')}</select></label>` : '');
   syncSegments(sel);
 }
 
 function syncSegments(sel) {
-  sel._seg?.querySelectorAll('button').forEach(b => {
+  const box = sel._seg;
+  if (!box) return;
+  box.querySelectorAll('button').forEach(b => {
     const on = b.dataset.v === sel.value;
     b.classList.toggle('active', on);
     b.setAttribute('aria-checked', String(on));
   });
+  const more = box.querySelector('.seg-more');
+  if (!more) return;
+  const list = more.querySelector('select');
+  const picked = [...list.options].some(o => o.value && o.value === sel.value);
+  more.classList.toggle('active', picked);
+  more.firstElementChild.textContent = `${picked ? sel.selectedOptions[0].textContent : sel.dataset.more || '更多'} ▾`;
+  list.value = picked ? sel.value : '';
 }
 
 /** Every `select[data-segmented]` under root (like applyIcons). */
@@ -1199,12 +1219,10 @@ async function loadRealizedSummary() {
 }
 
 function renderRplYearButtons() {
-  const el = document.getElementById('rpl-year-filter');
-  if (!el) return;
-  const items = ['ALL', ..._rplYears];
-  el.innerHTML = items.map(y =>
-    `<button type="button" class="chart-type-btn${y === _rplYear ? ' active' : ''}" onclick="filterRealizedYear('${y}')">${y === 'ALL' ? '全部年度' : y}</button>`
-  ).join('');
+  const sel = document.getElementById('rpl-year-filter');
+  sel.innerHTML = ['ALL', ..._rplYears].map(y => `<option value="${y}">${y === 'ALL' ? '全部年度' : y}</option>`).join('');
+  segmentSelect(sel);
+  sel.value = _rplYear;
 }
 
 function filterRealizedYear(year) {
@@ -2372,18 +2390,24 @@ async function loadDividends() {
   try {
     _dividends = await api('/api/dividends');
     const sel = document.getElementById('div-year-filter');
-    if (sel) {
-      const prev = sel.value;
-      const years = [...new Set(_dividends.map(d => d.date.slice(0, 4)))].sort().reverse();
-      sel.innerHTML = '<option value="">全部年度</option>' + years.map(y => `<option value="${y}">${y}</option>`).join('');
-      if (years.includes(prev)) sel.value = prev;
-    }
+    const prev = sel.value;
+    const years = [...new Set(_dividends.map(d => d.date.slice(0, 4)))].sort().reverse();
+    sel.innerHTML = '<option value="">全部年度</option>' + years.map(y => `<option value="${y}">${y}</option>`).join('');
+    segmentSelect(sel);
+    sel.value = years.includes(prev) ? prev : '';
     const form = document.getElementById('div-form');
     if (form && !form.querySelector('[name="date"]').value) form.querySelector('[name="date"]').value = todayStr();
     renderDividends();
   } catch (err) {
     showToast('載入股利失敗: ' + err.message, 'error');
   }
+}
+
+/** 「比前一年 +X：哪幾檔」 under a 股利來源 year; nothing for the first year. */
+function changeLine(y, drivers) {
+  if (y.change == null) return '';
+  if (Math.abs(y.change) < 1) return '<br>和前一年一樣';
+  return `<br>比前一年 <span class="${plClass(y.change)}">${signedWan(y.change)}</span>${drivers ? `：${drivers}` : ''}`;
 }
 
 /** 股利來源 (js/server/dividends.js dividendSources): each year split by stock, and what moved it. */
@@ -2403,15 +2427,14 @@ async function loadDividendSources() {
     .map(s => `<span class="legend-item"><span class="legend-dot" style="background:${color(s)}"></span>${escapeHtml(s)}</span>`).join('');
 
   const max = Math.max(...r.years.map(y => y.total));
-  const wan = v => (v < 0 ? '−' : '+') + fmtWan(Math.abs(v));
   document.getElementById('div-sources-rows').innerHTML = r.years.map(y => {
-    const drivers = y.drivers.map(x => `${escapeHtml(x.symbol)} <span class="${plClass(x.delta)}">${wan(x.delta)}</span>`).join('、');
+    const drivers = y.drivers.map(x => `${escapeHtml(x.symbol)} <span class="${plClass(x.delta)}">${signedWan(x.delta)}</span>`).join('、');
     return `<div class="pf-row">
       <div class="pf-row-head"><strong>${y.year}</strong><span class="pf-weight">${fmtTWD(y.total)}</span></div>
       <div class="source-bar cat-track lt-stack" aria-hidden="true" style="width:${y.total / max * 100}%">${y.parts.map(p =>
         `<span style="width:${p.amount / y.total * 100}%;background:${color(p.symbol)}" title="${escapeAttr(p.symbol)} ${fmtTWD(p.amount)}"></span>`).join('')}</div>
       <div class="pf-row-sub">${y.parts.slice(0, 3).map(p => `${escapeHtml(p.symbol)} ${(p.amount / y.total * 100).toFixed(0)}%`).join(' · ')}${
-        y.change != null ? `<br>比前一年 <span class="${plClass(y.change)}">${wan(y.change)}</span>${drivers ? `：${drivers}` : ''}` : ''}</div>
+        changeLine(y, drivers)}</div>
     </div>`;
   }).join('');
 

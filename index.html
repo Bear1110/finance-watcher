@@ -311,7 +311,7 @@
             <option value="TW">台股</option>
             <option value="US">美股</option>
           </select>
-          <div class="chart-type-toggle" id="rpl-year-filter" role="group" aria-label="年度"></div>
+          <select id="rpl-year-filter" data-segmented="6" data-more="更早" aria-label="年度" onchange="filterRealizedYear(this.value)"></select>
         </div>
         <div class="stats-group-label">損益</div>
         <div class="dash-stats">
@@ -578,7 +578,7 @@
           <div class="card-header">
             <h3>股利紀錄</h3>
             <div class="header-actions">
-              <select id="div-year-filter" onchange="renderDividends()" class="input-sm"></select>
+              <select id="div-year-filter" data-segmented="6" data-more="更早" aria-label="年度" onchange="renderDividends()"></select>
             </div>
           </div>
           <div class="table-wrap">
