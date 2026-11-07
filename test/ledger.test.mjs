@@ -115,9 +115,12 @@ test('GET /api/transactions/summary groups sells by symbol', async () => {
   const all = await call('GET', '/api/transactions/summary');
   assert.deepEqual(all.years, ['2026', '2025']);
   assert.equal(all.by_stock[0].total_trades, 2);
-  assert.equal(all.overall.win_rate, 50);
+  assert.equal(all.trade_stats.ALL.win_rate, 50);
+  assert.equal(all.trade_stats.ALL.trades, 2);
+  assert.equal(all.trade_stats.TW.profit_factor, 1);
+  assert.equal(all.trade_stats.US.trades, 0);
   const y = await call('GET', '/api/transactions/summary?year=2025');
-  assert.equal(y.overall.total_trades, 1);
+  assert.equal(y.trade_stats.ALL.trades, 1);
   assert.equal(y.overall.best_trade.pct, 10);
 });
 

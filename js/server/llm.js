@@ -136,8 +136,12 @@ function realizedSection(data) {
   if (!(data.realized && data.realized.by_stock.length > 0)) return null;
   let sb = '';
   const o = data.realized.overall;
-  sb += `- 總交易次數: ${o.total_trades} 筆\n`;
-  sb += `- 勝率: ${f(o.win_rate, 1)}% (${o.winning_trades} 勝 / ${o.losing_trades} 負${o.flat_trades ? ` / ${o.flat_trades} 平` : ''})\n`;
+  const ts = data.realized.trade_stats.ALL;
+  sb += `- 總交易次數: ${ts.trades} 筆\n`;
+  sb += `- 勝率: ${f(ts.win_rate, 1)}% (${ts.wins} 勝 / ${ts.losses} 負${ts.flat ? ` / ${ts.flat} 平` : ''})\n`;
+  sb += `- 獲利因子 (Profit Factor = 總獲利 ÷ 總虧損): ${ts.profit_factor == null ? '無虧損交易' : f(ts.profit_factor, 2)}（總獲利 NT$ ${money(ts.gross_profit)} / 總虧損 NT$ ${money(ts.gross_loss)}）\n`;
+  sb += `- 平均獲利 / 平均虧損: NT$ ${money(ts.avg_win)} / NT$ ${money(ts.avg_loss)}${ts.payoff == null ? '' : `（賺賠比 ${f(ts.payoff, 2)}）`}\n`;
+  sb += `- 每筆期望值 (Expectancy): NT$ ${smoney(ts.expectancy)}\n`;
   sb += `- 總已實現損益 (TWD): ${money(o.total_realized_pl_twd)}\n\n`;
   sb += '### 各股交易績效\n\n';
   sb += '| 股票 | 市場 | 交易次數 | 已實現損益 | 平均報酬率 | 最佳% | 最差% |\n';

@@ -40,7 +40,7 @@ test('prompt: 已實現 section uses the same summary as the 已實現損益 pag
     { id: 3, symbol: 'AAA', market: 'TW', currency: 'TWD', action: 'SELL', shares: 1, price: 10, fee: 0, tax: 0, date: '2026-01-04', realized_pl: -2 },
   ] });
   const realized = summarizeRealized();
-  assert.deepEqual([realized.overall.winning_trades, realized.overall.losing_trades, realized.overall.flat_trades], [1, 1, 1]);
+  assert.deepEqual([realized.trade_stats.ALL.wins, realized.trade_stats.ALL.losses, realized.trade_stats.ALL.flat], [1, 1, 1]);
   const p = generateFinancialPrompt({ sections: new Set(['realized']), rate: 30, realized, warnings: [], expenses: [] });
   assert.match(p, /勝率: 33\.3% \(1 勝 \/ 1 負 \/ 1 平\)/);
   assert.match(p, /\| AAA \| TW \| 3 \| NT\$ 3 \|/);

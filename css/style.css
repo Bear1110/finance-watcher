@@ -949,7 +949,8 @@ select option {
 
 .dash-stats .stat-card { min-width: 0; }
 
-.dash-stats .stat-sub {
+.dash-stats .stat-sub,
+.realized-stats .stat-sub {
   margin-top: 6px;
   font-size: 0.78rem;
   color: var(--text-muted);

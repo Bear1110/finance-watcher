@@ -1132,6 +1132,27 @@ function filterRealizedPL(market) {
   renderRealizedSummary();
 }
 
+/** 獲利因子、平均賺／平均賠、每筆期望值: how big the wins are next to the losses, not just how many. */
+function renderTradeQuality(ts) {
+  const set = (id, html, sub) => {
+    document.getElementById(id).innerHTML = html;
+    document.getElementById(id + '-sub').innerHTML = sub;
+  };
+  const any = ts.wins || ts.losses; // only flat trades (or none): nothing to compare
+  // Profit factor: < 1 loses money overall, 1–1.5 thin, ≥ 2 strong
+  const pf = ts.profit_factor;
+  const pfCls = pf < 1 ? 'negative' : pf >= 2 ? 'positive' : '';
+  set('rpl-pf',
+    !any ? '--' : pf == null ? '<span class="positive">無虧損</span>' : `<span class="${pfCls}">${pf.toFixed(2)}</span>`,
+    any ? `總賺 ${fmtTWD(ts.gross_profit)} ÷ 總賠 ${fmtTWD(ts.gross_loss)}` : '');
+  set('rpl-payoff',
+    any ? `<span class="positive">${fmtTWD(ts.avg_win)}</span> / <span class="negative">${fmtTWD(ts.avg_loss)}</span>` : '--',
+    ts.payoff != null ? `賺賠比 ${ts.payoff.toFixed(2)}${ts.payoff < 1 ? '：平均賺的比賠的少' : ''}` : '');
+  set('rpl-exp',
+    ts.trades ? `<span class="${plClass(ts.expectancy)}">${fmtPL(ts.expectancy)}</span>` : '--',
+    ts.trades ? `勝率 ${ts.win_rate.toFixed(0)}% × 平均賺 − 敗率 × 平均賠` : '');
+}
+
 function renderRealizedSummary() {
   if (!_rplData) return;
 
@@ -1139,7 +1160,6 @@ function renderRealizedSummary() {
   const stocks = _rplFilter === 'ALL' ? allStocks : allStocks.filter(s => s.market === _rplFilter);
 
   // Recalculate stats for filtered data
-  let totalTrades = 0, winTrades = 0, loseTrades = 0;
   let totalPLTwd = 0, totalCostTwd = 0;
   let bestTrade = null, worstTrade = null;
 
@@ -1147,9 +1167,6 @@ function renderRealizedSummary() {
   const rate = _rplData.overall?.usd_twd_rate || 32;
 
   stocks.forEach(s => {
-    totalTrades += s.total_trades;
-    // Count wins/losses per stock (approximate: if total_realized_pl > 0, consider trades mostly winning)
-    // Better: use per-trade data. For now, estimate from avg.
     const plTwd = toTWD(s.total_realized_pl, s.currency, rate);
     totalPLTwd += plTwd;
     totalCostTwd += toTWD(s.total_cost, s.currency, rate);
@@ -1163,22 +1180,8 @@ function renderRealizedSummary() {
     }
   });
 
-  // Use overall win/lose if showing all, otherwise estimate
-  let flatTrades = 0;
-  if (_rplFilter === 'ALL' && _rplData.overall) {
-    winTrades = _rplData.overall.winning_trades || 0;
-    loseTrades = _rplData.overall.losing_trades || 0;
-    flatTrades = _rplData.overall.flat_trades || 0;
-  } else {
-    // Estimate: count stocks with positive vs negative total P&L (rough)
-    stocks.forEach(s => {
-      if (s.total_realized_pl > 0) winTrades += s.total_trades;
-      else if (s.total_realized_pl < 0) loseTrades += s.total_trades;
-      else flatTrades += s.total_trades;
-    });
-  }
-
-  const winRate = totalTrades > 0 ? (winTrades / totalTrades) * 100 : 0;
+  // Per-trade figures for the selected market (js/server/stocks.js tradeStats)
+  const ts = _rplData.trade_stats[_rplFilter];
 
   // Render stats cards
   const totalPct = totalCostTwd > 0 ? (totalPLTwd / totalCostTwd) * 100 : 0;
@@ -1186,9 +1189,9 @@ function renderRealizedSummary() {
     `<span class="${plClass(totalPLTwd)}">${fmtTWD(totalPLTwd)}</span> ` +
     `<span class="${plClass(totalPct)}" style="font-size:0.6em">(${fmtPct(totalPct)})</span>`;
   document.getElementById('rpl-trades').textContent =
-    `${totalTrades} 筆 (勝${winTrades}/負${loseTrades}${flatTrades ? '/平' + flatTrades : ''})`;
-  document.getElementById('rpl-winrate').textContent =
-    `${winRate.toFixed(1)}%`;
+    `${ts.trades} 筆 (勝${ts.wins}/負${ts.losses}${ts.flat ? '/平' + ts.flat : ''})`;
+  document.getElementById('rpl-winrate').textContent = `${ts.win_rate.toFixed(1)}%`;
+  renderTradeQuality(ts);
 
   const divTwd = (_rplData.dividends || [])
     .filter(d => _rplFilter === 'ALL' || d.market === _rplFilter)

@@ -250,8 +250,36 @@ async function deleteTransaction(req) {
 }
 
 /**
- * 已實現損益 of the self account, optionally for one year ('' = all): per stock, overall win rate,
- * best / worst trade, and dividends. Shared by the 已實現損益 page and the AI prompt.
+ * Trade quality from each SELL's realized P&L (TWD): win rate alone hides how big the wins and
+ * losses are. profit_factor = gross profit ÷ gross loss (null: no losses); payoff = average win ÷
+ * average loss; expectancy = average P&L per trade.
+ */
+export function tradeStats(pls) {
+  const wins = pls.filter((v) => v > 0);
+  const losses = pls.filter((v) => v < 0);
+  const grossProfit = wins.reduce((s, v) => s + v, 0);
+  const grossLoss = -losses.reduce((s, v) => s + v, 0);
+  const avgWin = wins.length ? grossProfit / wins.length : 0;
+  const avgLoss = losses.length ? grossLoss / losses.length : 0;
+  return {
+    trades: pls.length,
+    wins: wins.length,
+    losses: losses.length,
+    flat: pls.length - wins.length - losses.length,
+    win_rate: pls.length ? round2(wins.length / pls.length * 100) : 0,
+    gross_profit: round2(grossProfit),
+    gross_loss: round2(grossLoss),
+    avg_win: round2(avgWin),
+    avg_loss: round2(avgLoss),
+    payoff: avgWin > 0 && avgLoss > 0 ? round2(avgWin / avgLoss) : null,
+    profit_factor: grossLoss > 0 ? round2(grossProfit / grossLoss) : null,
+    expectancy: pls.length ? round2((grossProfit - grossLoss) / pls.length) : 0,
+  };
+}
+
+/**
+ * 已實現損益 of the self account, optionally for one year ('' = all): per stock, trade stats per market
+ * (tradeStats), best / worst trade, and dividends. Shared by the 已實現損益 page and the AI prompt.
  */
 export function summarizeRealized(yearFilter = '') {
   const sells = db.where('stock_transactions', (t) => t.action === 'SELL' && t.account_id == null)
@@ -275,14 +303,11 @@ export function summarizeRealized(yearFilter = '') {
   const byStock = [];
   let overallPLUSD = 0;
   let overallPLTWD = 0;
-  let overallTrades = 0;
-  let winningTrades = 0;
-  let losingTrades = 0;
-  let flatTrades = 0;
   let bestOverallPct = -Number.MAX_VALUE;
   let worstOverallPct = Number.MAX_VALUE;
   let bestTrade = { symbol: '', pl: 0, pct: 0 };
   let worstTrade = { symbol: '', pl: 0, pct: 0 };
+  const tradePLs = { ALL: [], TW: [], US: [] }; // each SELL's realized P&L in TWD
 
   for (const sym of symbolOrder) {
     const trades = symbolTrades.get(sym);
@@ -313,9 +338,9 @@ export function summarizeRealized(yearFilter = '') {
         }
       }
 
-      if (t.realized_pl > 0) winningTrades++;
-      else if (t.realized_pl < 0) losingTrades++;
-      else flatTrades++;
+      const plTWD = toTWD(t.realized_pl, t.currency, rate);
+      tradePLs.ALL.push(plTWD);
+      (tradePLs[t.market] || tradePLs.US).push(plTWD);
     }
 
     const avgReturnPct = totalCost > 0 ? (totalRealizedPL / totalCost) * 100 : 0;
@@ -340,10 +365,7 @@ export function summarizeRealized(yearFilter = '') {
     } else {
       overallPLTWD += totalRealizedPL;
     }
-    overallTrades += trades.length;
   }
-
-  const winRate = overallTrades > 0 ? winningTrades / overallTrades * 100 : 0;
 
   // SUM(amount) GROUP BY symbol, market, currency ORDER BY symbol
   const groups = new Map();
@@ -363,14 +385,11 @@ export function summarizeRealized(yearFilter = '') {
       total_realized_pl_usd: round2(overallPLUSD),
       total_realized_pl_twd: round2(overallPLTWD),
       usd_twd_rate: rate,
-      total_trades: overallTrades,
-      winning_trades: winningTrades,
-      losing_trades: losingTrades,
-      flat_trades: flatTrades,
-      win_rate: round2(winRate),
       best_trade: bestTrade,
       worst_trade: worstTrade,
     },
+    // Trade counts, win rate and trade quality per market (ALL / TW / US)
+    trade_stats: Object.fromEntries(Object.entries(tradePLs).map(([m, pls]) => [m, tradeStats(pls)])),
     years: [...yearSet].sort().reverse(),
   };
 }
