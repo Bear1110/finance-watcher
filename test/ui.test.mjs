@@ -14,8 +14,7 @@ test('UI: a card header holds the title (with meta) and controls, no loose text'
       const rest = m[1].replace(/<h3[\s\S]*?<\/h3>/, '');
       // Text inside buttons, toggles, legends and filters is fine: check only the header's own children
       const own = rest.replace(/<(button|select|label|a)\b[\s\S]*?<\/\1>/g, '')
-        .replace(/<span class="legend-item">[\s\S]*?<\/span>[^<]*<\/span>/g, '') // legend: dot + label
-        .replace(/<span class="filter-sep">[^<]*<\/span>/g, ''); // the ~ between two dates
+        .replace(/<span class="legend-item">[\s\S]*?<\/span>[^<]*<\/span>/g, ''); // legend: dot + label
       const text = own.match(/<small\b|<p\b/) || own.replace(/<[^>]+>/g, '').replace(/\$\{[^}]*\}/g, '').trim();
       assert.ok(!text, `${file}:${lineOf(src, m.index)} card header has text outside the title: ${String(text).slice(0, 40)}`);
     }

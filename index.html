@@ -395,71 +395,20 @@
       </div>
 
       <!-- Transactions Sub-tab -->
-      <!-- Snapshots Sub-tab -->
       <div id="subtab-transactions" class="subtab-content">
         <div class="card">
           <div class="card-header">
-            <h3>補登歷史交易</h3>
-          </div>
-          <p class="form-hint card-hint">一般買賣請直接在「持倉總覽」操作。這裡補登過去的買賣後，持倉（股數、均價）和已實現損益會依日期順序自動重算，不用另外改持倉。</p>
-          <form id="tx-form" class="form-grid" onsubmit="submitTransaction(event)">
-            <div class="form-group">
-              <label>股票代號</label>
-              <input type="text" name="symbol" required placeholder="e.g. 2330.TW">
-            </div>
-            <div class="form-group">
-              <label>操作</label>
-              <select name="action" required data-segmented aria-label="買賣">
-                <option value="BUY">買入</option>
-                <option value="SELL">賣出</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>股數</label>
-              <input type="number" name="shares" required min="0" step="any">
-            </div>
-            <div class="form-group">
-              <label>價格</label>
-              <input type="number" name="price" required min="0" step="any">
-            </div>
-            <div class="form-group">
-              <label>手續費</label>
-              <input type="number" name="fee" value="0" min="0" step="any">
-            </div>
-            <div class="form-group">
-              <label>證交稅</label>
-              <input type="number" name="tax" value="0" min="0" step="any">
-            </div>
-            <div class="form-group form-group-wide">
-              <label class="inline-check"><input type="checkbox" name="auto_fee" checked> 台股自動估算手續費／證交稅（手續費與稅金皆為 0 時）</label>
-            </div>
-            <div class="form-group">
-              <label>日期</label>
-              <input type="date" name="date" required>
-            </div>
-            <div class="form-group form-group-wide">
-              <label>備註</label>
-              <input type="text" name="note" placeholder="選填">
-            </div>
-            <div class="form-group">
-              <button type="submit" class="btn btn-primary">送出交易</button>
-            </div>
-          </form>
-          <div id="tx-result" class="tx-result-box" style="display:none"></div>
-        </div>
-
-        <!-- Filters -->
-        <div class="card">
-          <div class="card-header">
-            <h3>交易紀錄</h3>
-            <div class="header-actions filter-row">
-              <input type="text" id="tx-filter-symbol" placeholder="篩選代號" class="input-sm">
-              <input type="date" id="tx-filter-start" class="input-sm">
-              <span class="filter-sep">~</span>
-              <input type="date" id="tx-filter-end" class="input-sm">
-              <button class="btn btn-outline btn-sm" onclick="loadTransactions()">篩選</button>
+            <h3>交易紀錄 <small class="card-meta" id="tx-count"></small></h3>
+            <div class="header-actions">
+              <select id="tx-year-filter" data-segmented="6" data-more="更早" aria-label="年度" onchange="renderTransactions()"></select>
               <button class="btn btn-outline btn-sm" onclick="openAIImport('transactions')"><span class="i" data-icon="sparkles"></span>AI 匯入</button>
+              <button class="btn btn-primary btn-sm" onclick="openTxModal()">+ 補登交易</button>
             </div>
+          </div>
+          <p class="form-hint card-hint">平常買賣在「持倉總覽」按買入／賣出就好；這裡補登過去的交易，點一筆可以修改或刪除。持倉和已實現損益會依日期自動重算。</p>
+          <div class="list-search">
+            <input type="search" id="tx-search" placeholder="搜尋代號、備註、日期" aria-label="搜尋交易紀錄" oninput="onTxSearch()">
+            <div class="list-search-summary" id="tx-search-summary" hidden></div>
           </div>
           <div class="table-wrap">
             <table>
@@ -467,18 +416,16 @@
                 <tr>
                   <th>日期</th>
                   <th>股票</th>
-                  <th>操作</th>
+                  <th>買賣</th>
                   <th>股數</th>
                   <th>價格</th>
-                  <th>手續費</th>
-                  <th>證交稅</th>
+                  <th title="手續費＋證交稅">費用</th>
                   <th>已實現損益</th>
                   <th>備註</th>
-                  <th>操作</th>
                 </tr>
               </thead>
               <tbody id="tx-body">
-                <tr><td colspan="10" class="empty-state">載入中...</td></tr>
+                <tr><td colspan="8" class="empty-state">載入中...</td></tr>
               </tbody>
             </table>
           </div>
@@ -733,9 +680,9 @@
             <button class="btn btn-outline btn-sm" onclick="openAIImport('expenses')"><span class="i" data-icon="sparkles"></span>AI 匯入</button>
           </div>
         </div>
-        <div class="exp-search">
+        <div class="list-search">
           <input type="search" id="exp-search" placeholder="搜尋備註、分類、幣別、金額（不限月份）" aria-label="搜尋收支紀錄" oninput="onExpenseSearch()">
-          <div class="exp-search-summary" id="exp-search-summary" hidden></div>
+          <div class="list-search-summary" id="exp-search-summary" hidden></div>
         </div>
         <div class="expense-list" id="expense-list">
           <div class="empty-state">載入中...</div>
@@ -1318,6 +1265,62 @@
         </div>
       </form>
       <div id="trade-result" class="tx-result-box" style="display:none"></div>
+    </div>
+  </dialog>
+
+  <!-- 交易紀錄: add a past trade / edit one (補登交易 button or a row's edit) -->
+  <dialog id="modal-tx" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="tx-modal-title">補登交易</h3>
+        <button type="submit" form="tx-form" class="btn btn-primary btn-sm modal-header-save">儲存</button>
+        <button class="modal-close" onclick="closeModal('modal-tx')">&times;</button>
+      </div>
+      <form id="tx-form" onsubmit="submitTransaction(event)">
+        <div class="form-group">
+          <label>買賣</label>
+          <select name="action" required data-segmented aria-label="買賣">
+            <option value="BUY">買入</option>
+            <option value="SELL">賣出</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>股票代號</label>
+          <input type="text" name="symbol" required placeholder="例如 2330.TW、AAPL" autocapitalize="characters">
+        </div>
+        <div class="form-group">
+          <label>日期</label>
+          <input type="date" name="date" required>
+        </div>
+        <div class="form-group">
+          <label>股數</label>
+          <input type="number" name="shares" required min="0" step="any" inputmode="decimal">
+        </div>
+        <div class="form-group">
+          <label>每股價格</label>
+          <input type="number" name="price" required min="0" step="any" inputmode="decimal">
+        </div>
+        <div class="form-group">
+          <label>手續費</label>
+          <input type="number" name="fee" value="0" min="0" step="any" inputmode="decimal">
+        </div>
+        <div class="form-group">
+          <label>證交稅</label>
+          <input type="number" name="tax" value="0" min="0" step="any" inputmode="decimal">
+        </div>
+        <div class="form-group">
+          <label class="inline-check"><input type="checkbox" name="auto_fee" checked> 台股自動估算手續費／證交稅（兩者都填 0 時）</label>
+        </div>
+        <div class="form-group">
+          <label>備註</label>
+          <input type="text" name="note" placeholder="選填">
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary modal-footer-save">儲存</button>
+          <button type="submit" class="btn btn-outline" id="tx-continue-btn" data-continue="1" title="儲存後保留股票與日期，繼續記下一筆">儲存並再記一筆</button>
+          <button type="button" class="btn btn-danger" id="tx-delete-btn" onclick="deleteTransaction()">刪除</button>
+        </div>
+      </form>
     </div>
   </dialog>
 

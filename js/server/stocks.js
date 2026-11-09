@@ -143,17 +143,11 @@ async function deleteHolding(req) {
   });
 }
 
+/** Own-account transactions, newest first; ?limit=N for the latest N (the page filters and searches itself). */
 function listTransactions(req) {
-  const q = req.query;
-  const sym = q.get('symbol') || '';
-  const from = q.get('from') || '';
-  const to = q.get('to') || '';
-  const txns = db.where('stock_transactions', (t) => t.account_id == null
-    && (!sym || t.symbol === sym)
-    && (!from || t.date >= from)
-    && (!to || t.date <= to));
+  const txns = db.where('stock_transactions', (t) => t.account_id == null);
   txns.sort((a, b) => cmp(b.date, a.date) || cmp(b.created_at, a.created_at));
-  const limit = Number(q.get('limit')) || txns.length;
+  const limit = Number(req.query.get('limit')) || txns.length;
   return txns.slice(0, limit).map(txnJSON);
 }
 

@@ -479,16 +479,6 @@ textarea {
   margin-top: 1rem;
 }
 
-.filter-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.filter-sep {
-  color: var(--text-muted);
-}
-
 select option {
   background: var(--bg-card);
   color: var(--text-primary);
@@ -1136,9 +1126,6 @@ body:has(dialog.modal-overlay[open]) { overflow: hidden; }
   }
   .form-grid {
     grid-template-columns: 1fr 1fr;
-  }
-  .filter-row {
-    flex-wrap: wrap;
   }
 }
 
@@ -1868,9 +1855,10 @@ body[data-tab="expenses"] .fab { display: flex; }
 .cat-chip.active { font-weight: 600; } /* colors: shared with .filter-chip */
 
 /* --- 收支明細: search box, day headers --- */
-.exp-search { margin-bottom: 8px; }
-.exp-search input { width: 100%; }
-.exp-search-summary { margin-top: 6px; font-size: 0.85rem; color: var(--text-secondary); }
+/* Search box above a list (收支明細, 交易紀錄) */
+.list-search { margin-bottom: 8px; }
+.list-search input { width: 100%; }
+.list-search-summary { margin-top: 6px; font-size: 0.85rem; color: var(--text-secondary); }
 .exp-day {
   display: flex;
   justify-content: space-between;
@@ -2177,3 +2165,6 @@ body[data-tab="expenses"] .fab { display: flex; }
   .stress-row { grid-template-columns: 5.5em minmax(0, 1fr); }
   .stress-value { grid-column: 1 / -1; }
 }
+
+/* 交易紀錄: tap a row to edit / delete it in the modal (cursor: the [title] rule) */
+.tx-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

@@ -285,6 +285,24 @@ const SELECT_VALUE = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype
  * A list that grows (years): `data-segmented="6"` shows the first 6 options as buttons and folds
  * the rest into a 「更多 ▾」 dropdown (label from data-more), which shows a picked value on itself.
  */
+/** Year buttons for a list: 全部 + every year in `dates` (newest first); keeps the chosen year if it's still there. */
+function fillYearFilter(sel, dates, allLabel = '全部') {
+  const prev = sel.value;
+  const years = [...new Set(dates.map(d => (d || '').slice(0, 4)).filter(Boolean))].sort().reverse();
+  sel.innerHTML = `<option value="">${allLabel}</option>` + years.map(y => `<option value="${y}">${y}</option>`).join('');
+  segmentSelect(sel);
+  sel.value = years.includes(prev) ? prev : '';
+}
+
+/** A search box's words, lowercased (every one must match). */
+const searchWords = (inputId) => document.getElementById(inputId).value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+
+/** Call fn once calls stop for `ms` (search boxes re-render when typing pauses). */
+function debounce(fn, ms = 150) {
+  let timer = null;
+  return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms); };
+}
+
 function segmentSelect(sel) {
   let box = sel._seg;
   if (!box) {
@@ -1359,111 +1377,153 @@ function renderRealizedSummary() {
 // SECTION: Transactions
 // ============================================================
 
+let _txAll = []; // own-account transactions, newest first (the API's order)
+let _txEditing = null; // the record open in the modal, null when adding
+let _txSaved = false;  // saved since the modal opened: refresh holdings once it closes
+
+/** 補登交易 (no id) or edit a row: same modal, delete only when editing. */
+function openTxModal(id) {
+  const form = document.getElementById('tx-form');
+  const t = _txEditing = id != null ? _txAll.find(x => x.id === id) : null;
+  form.reset();
+  // Editing keeps the stored fee/tax (auto_fee off)
+  fillForm(form, t ? { ...t, fee: t.fee || 0, tax: t.tax || 0, auto_fee: false } : { action: 'BUY', date: todayStr() });
+  document.getElementById('tx-modal-title').textContent = t ? `編輯交易 · ${t.symbol}` : '補登交易';
+  document.getElementById('tx-continue-btn').style.display = t ? 'none' : '';
+  document.getElementById('tx-delete-btn').style.display = t ? '' : 'none';
+  openModal('modal-tx');
+  if (!t) form.querySelector('[name="symbol"]').focus();
+}
+
+/** After saving: the list right away; holdings and realized P&L once, when the modal closes. */
+function onTxSaved() {
+  _txSaved = true;
+  loadTransactions();
+}
+
+document.getElementById('modal-tx')?.addEventListener('close', () => {
+  if (!_txSaved) return;
+  _txSaved = false;
+  loadHoldings();
+  loadRealizedSummary();
+});
+
 async function submitTransaction(e) {
   e.preventDefault();
   const form = e.target;
+  const val = (name) => form.querySelector(`[name="${name}"]`).value;
   const data = {
-    symbol: form.querySelector('[name="symbol"]').value.trim().toUpperCase(),
-    action: form.querySelector('[name="action"]').value,
-    shares: Number(form.querySelector('[name="shares"]').value),
-    price: Number(form.querySelector('[name="price"]').value),
-    fee: Number(form.querySelector('[name="fee"]').value) || 0,
-    tax: Number(form.querySelector('[name="tax"]').value) || 0,
+    symbol: val('symbol').trim().toUpperCase(),
+    action: val('action'),
+    shares: Number(val('shares')),
+    price: Number(val('price')),
+    fee: Number(val('fee')) || 0,
+    tax: Number(val('tax')) || 0,
     auto_fee: form.querySelector('[name="auto_fee"]').checked,
-    date: form.querySelector('[name="date"]').value,
-    note: form.querySelector('[name="note"]').value,
+    date: val('date'),
+    note: val('note'),
   };
-
-  const editId = form.dataset.editId;
+  const old = _txEditing;
 
   try {
-    let result;
-    if (editId) {
-      // Edit mode - PUT
-      data.market = form.dataset.editMarket || 'US';
-      data.realized_pl = Number(form.dataset.editRealizedPl) || 0;
-      result = await api(`/api/transactions/${editId}`, { method: 'PUT', body: JSON.stringify(data) });
-      showToast('交易已更新', 'success');
+    if (old) {
+      data.market = old.market;
+      data.realized_pl = old.realized_pl || 0;
+      const result = await api(`/api/transactions/${old.id}`, { method: 'PUT', body: JSON.stringify(data) });
+      showToast('交易已更新，持倉與已實現損益已重新計算', 'success');
       showLedgerWarnings(result);
-      cancelTransactionEdit();
     } else {
-      // New transaction - POST
-      result = await api('/api/transactions', { method: 'POST', body: JSON.stringify(data) });
-      showToast('交易已記錄', 'success');
-
-      // Show realized P&L for sell transactions
-      const resultBox = document.getElementById('tx-result');
-      if (data.action === 'SELL' && result && result.realized_pl != null) {
-        resultBox.style.display = 'block';
-        resultBox.className = 'tx-result-box success';
-        resultBox.innerHTML = `賣出完成！已實現損益: <strong class="${plClass(result.realized_pl)}">${fmtTWD(result.realized_pl)}</strong>`;
-        setTimeout(() => { resultBox.style.display = 'none'; }, 8000);
-      } else {
-        resultBox.style.display = 'block';
-        resultBox.className = 'tx-result-box info';
-        resultBox.textContent = '買入交易已記錄';
-        setTimeout(() => { resultBox.style.display = 'none'; }, 4000);
-      }
-
-      form.reset();
-      form.querySelector('[name="date"]').value = todayStr();
+      const result = await api('/api/transactions', { method: 'POST', body: JSON.stringify(data) });
+      const pl = data.action === 'SELL' && result && result.realized_pl != null
+        ? `，已實現損益 ${fmtPLCur(result.realized_pl, result.currency)}` : '';
+      showToast(`已記錄 ${data.symbol} ${data.action === 'BUY' ? '買入' : '賣出'} ${fmt(data.shares)} 股${pl}`, 'success');
     }
-
-    loadTransactions();
-    loadHoldings();
-    loadRealizedSummary();
+    onTxSaved();
+    if (!old && e.submitter?.dataset.continue) {
+      // Keep the stock, action and date; clear the rest for the next one
+      fillForm(form, { shares: '', price: '', fee: 0, tax: 0, note: '' });
+      form.querySelector('[name="shares"]').focus();
+    } else {
+      closeModal('modal-tx');
+    }
   } catch (err) {
-    showToast('交易記錄失敗: ' + err.message, 'error');
+    showToast('儲存失敗: ' + err.message, 'error');
+  }
+}
+
+async function deleteTransaction() {
+  if (!_txEditing || !confirm('確定要刪除此筆交易嗎？')) return;
+  try {
+    const result = await api(`/api/transactions/${_txEditing.id}`, { method: 'DELETE' });
+    showToast('交易已刪除，持倉與已實現損益已重新計算', 'success');
+    showLedgerWarnings(result);
+    onTxSaved();
+    closeModal('modal-tx');
+  } catch (err) {
+    showToast('刪除失敗: ' + err.message, 'error');
   }
 }
 
 async function loadTransactions() {
   try {
-    let url = '/api/transactions';
-    const params = new URLSearchParams();
-    const sym = document.getElementById('tx-filter-symbol').value.trim();
-    const start = document.getElementById('tx-filter-start').value;
-    const end = document.getElementById('tx-filter-end').value;
-    if (sym) params.set('symbol', sym);
-    if (start) params.set('from', start);
-    if (end) params.set('to', end);
-    const qs = params.toString();
-    if (qs) url += '?' + qs;
-
-    const transactions = await api(url);
-    const list = Array.isArray(transactions) ? transactions : [];
-    const tbody = document.getElementById('tx-body');
-
-    if (list.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="10" class="empty-state">尚無交易紀錄</td></tr>';
-      return;
-    }
-
-    tbody.innerHTML = list.map(t => {
-      const escaped = (s) => (s || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
-      return `
-        <tr>
-          <td>${t.date || '--'}</td>
-          <td><strong>${t.symbol || '--'}</strong></td>
-          <td><span class="${t.action === 'BUY' ? 'tag-buy' : 'tag-sell'}">${t.action === 'BUY' ? '買' : '賣'}</span></td>
-          <td>${fmt(t.shares)}</td>
-          <td>${fmtNum(t.price, 2)}</td>
-          <td>${fmt(t.fee, 0)}</td>
-          <td>${t.tax ? fmt(t.tax, 0) : '--'}</td>
-          <td class="${plClass(t.realized_pl)}">${t.realized_pl ? fmtPLCur(t.realized_pl, t.currency) : '--'}</td>
-          <td>${t.note || ''}</td>
-          <td>
-            ${rowBtn('edit', `editTransaction(${t.id}, '${escaped(t.symbol)}', '${t.market}', '${t.action}', ${t.shares}, ${t.price}, ${t.fee || 0}, '${t.date}', '${escaped(t.note)}', ${t.realized_pl || 0}, ${t.tax || 0})`)}
-            ${rowBtn('delete', `deleteTransaction(${t.id})`)}
-          </td>
-        </tr>
-      `;
-    }).join('');
-
-
+    const list = await api('/api/transactions');
+    _txAll = Array.isArray(list) ? list : [];
+    fillYearFilter(document.getElementById('tx-year-filter'), _txAll.map(t => t.date));
+    renderTransactions();
   } catch (err) {
     showToast('載入交易紀錄失敗: ' + err.message, 'error');
   }
+}
+
+const onTxSearch = debounce(() => renderTransactions());
+
+/** Search: every word must appear in the symbol, note, date or 買／賣 (台股 / 美股 too). */
+function txMatches(t, words) {
+  const text = [t.symbol, t.note, t.date, t.action === 'BUY' ? '買入' : '賣出', t.market === 'TW' ? '台股' : '美股']
+    .join(' ').toLowerCase();
+  return words.every(w => text.includes(w));
+}
+
+function renderTransactions() {
+  const year = document.getElementById('tx-year-filter').value;
+  const words = searchWords('tx-search');
+  const inYear = _txAll.filter(t => !year || (t.date || '').startsWith(year));
+  const list = words.length ? inYear.filter(t => txMatches(t, words)) : inYear;
+  document.getElementById('tx-count').textContent = _txAll.length ? `${year ? `${year} 年 ` : ''}${inYear.length} 筆` : '';
+
+  const summary = document.getElementById('tx-search-summary');
+  summary.hidden = !words.length;
+  if (words.length) {
+    const buys = list.filter(t => t.action === 'BUY').length;
+    const sells = list.length - buys;
+    // One stock: how many shares the shown records add up to (bought − sold)
+    const net = new Set(list.map(t => t.symbol)).size === 1
+      ? list.reduce((s, t) => s + (t.action === 'BUY' ? t.shares : -t.shares), 0) : null;
+    summary.textContent = [`找到 ${list.length} 筆`, buys && sells ? `買 ${buys} · 賣 ${sells}` : '',
+      net != null ? `合計${net >= 0 ? '買進' : '賣出'} ${fmt(Math.abs(net))} 股` : ''].filter(Boolean).join(' · ');
+  }
+
+  const tbody = document.getElementById('tx-body');
+  if (list.length === 0) {
+    const msg = words.length ? '找不到符合的交易' : _txAll.length ? '這一年沒有交易' : '尚無交易紀錄。平常買賣在「持倉總覽」記；過去的交易按「+ 補登交易」或用 AI 匯入對帳單';
+    tbody.innerHTML = `<tr><td colspan="8" class="empty-state">${msg}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = list.map(t => {
+    const fees = (t.fee || 0) + (t.tax || 0);
+    const feeTitle = t.tax ? ` title="手續費 ${fmt(t.fee, 0)}＋證交稅 ${fmt(t.tax, 0)}"` : '';
+    return `
+        <tr class="tx-row" tabindex="0" title="點一下編輯或刪除" onclick="openTxModal(${t.id})" onkeydown="if (event.key === 'Enter') openTxModal(${t.id})">
+          <td>${t.date || '--'}</td>
+          <td><strong>${escapeHtml(t.symbol || '--')}</strong></td>
+          <td><span class="${t.action === 'BUY' ? 'tag-buy' : 'tag-sell'}">${t.action === 'BUY' ? '買' : '賣'}</span></td>
+          <td>${fmt(t.shares)}</td>
+          <td>${fmtNum(t.price, 2)}</td>
+          <td${feeTitle}>${fees ? fmt(fees, 0) : '--'}</td>
+          <td class="${plClass(t.realized_pl)}">${t.realized_pl ? fmtPLCur(t.realized_pl, t.currency) : '--'}</td>
+          <td>${escapeHtml(t.note || '')}</td>
+        </tr>`;
+  }).join('');
 }
 
 // ============================================================
@@ -1774,12 +1834,18 @@ async function submitTrade(e) {
 // ---- Shared edit mode for forms that double as "add" and "edit" ----
 // Fills the named fields, remembers the record id (plus any extra edit*
 // dataset entries), relabels submit and adds a cancel button.
-function enterEditMode(form, { id, values, extra = {}, submitLabel, onCancel }) {
+/** Set named form fields (checkboxes take a boolean); keys with no field (a record's id…) are skipped. */
+function fillForm(form, values) {
   Object.entries(values).forEach(([name, v]) => {
     const el = form.querySelector(`[name="${name}"]`);
+    if (!el) return;
     if (el.type === 'checkbox') el.checked = !!v;
     else el.value = v;
   });
+}
+
+function enterEditMode(form, { id, values, extra = {}, submitLabel, onCancel }) {
+  fillForm(form, values);
   form.dataset.editId = id;
   Object.entries(extra).forEach(([key, v]) => { form.dataset[key] = v; });
 
@@ -1805,35 +1871,6 @@ function exitEditMode(form, submitLabel) {
   form.querySelector('[name="date"]').value = todayStr();
   form.querySelector('button[type="submit"]').textContent = submitLabel;
   document.getElementById(form.id + '-cancel-btn')?.remove();
-}
-
-function editTransaction(id, symbol, market, action, shares, price, fee, date, note, realizedPl, tax) {
-  enterEditMode(document.getElementById('tx-form'), {
-    id,
-    // auto_fee off: editing keeps the stored fee/tax
-    values: { symbol, action, shares, price, fee, tax: tax || 0, auto_fee: false, date, note },
-    extra: { editRealizedPl: realizedPl, editMarket: market },
-    submitLabel: '更新交易',
-    onCancel: cancelTransactionEdit,
-  });
-}
-
-function cancelTransactionEdit() {
-  exitEditMode(document.getElementById('tx-form'), '新增交易');
-}
-
-async function deleteTransaction(id) {
-  if (!confirm('確定要刪除此筆交易嗎？')) return;
-  try {
-    const result = await api(`/api/transactions/${id}`, { method: 'DELETE' });
-    showToast('交易已刪除，持倉與已實現損益已重新計算', 'success');
-    showLedgerWarnings(result);
-    loadTransactions();
-    loadHoldings();
-    loadRealizedSummary();
-  } catch (err) {
-    showToast('刪除失敗: ' + err.message, 'error');
-  }
 }
 
 // Server reports SELLs that lost their BUY records after an edit/delete
@@ -2403,12 +2440,7 @@ async function loadDividends() {
   loadDividendSources();
   try {
     _dividends = await api('/api/dividends');
-    const sel = document.getElementById('div-year-filter');
-    const prev = sel.value;
-    const years = [...new Set(_dividends.map(d => d.date.slice(0, 4)))].sort().reverse();
-    sel.innerHTML = '<option value="">全部年度</option>' + years.map(y => `<option value="${y}">${y}</option>`).join('');
-    segmentSelect(sel);
-    sel.value = years.includes(prev) ? prev : '';
+    fillYearFilter(document.getElementById('div-year-filter'), _dividends.map(d => d.date), '全部年度');
     const form = document.getElementById('div-form');
     if (form && !form.querySelector('[name="date"]').value) form.querySelector('[name="date"]').value = todayStr();
     renderDividends();
@@ -3238,11 +3270,7 @@ function expAmountCell(e) {
 }
 
 /** The search box re-renders once typing pauses (the list can be every record). */
-let _expSearchTimer = null;
-function onExpenseSearch() {
-  clearTimeout(_expSearchTimer);
-  _expSearchTimer = setTimeout(() => renderExpenseTable(expMonth()), 150);
-}
+const onExpenseSearch = debounce(() => renderExpenseTable(expMonth()));
 
 /** Search: every word must appear in the note, category or currency (code / name / aliases), or equal the amount. */
 function expenseMatches(e, words) {
@@ -3265,7 +3293,7 @@ function expTotals(records) {
  */
 function renderExpenseTable(month) {
   const prefix = month ? `${expYear()}-${String(month).padStart(2, '0')}` : String(expYear());
-  const words = document.getElementById('exp-search').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const words = searchWords('exp-search');
   const filtered = _expAll.filter(e => e.date && (words.length ? expenseMatches(e, words) : e.date.startsWith(prefix)) &&
     (_expCatFilter === null || (e.category || '') === _expCatFilter));
   const summary = document.getElementById('exp-search-summary');
@@ -3882,10 +3910,6 @@ document.addEventListener('DOMContentLoaded', () => {
   initSegmented();
   initExpenseDefaults();
   renderAISites();
-
-  // Set default date on transaction form
-  const txDateInput = document.querySelector('#tx-form [name="date"]');
-  if (txDateInput) txDateInput.value = todayStr();
 
   // Load dashboard data
   loadDashboard();
