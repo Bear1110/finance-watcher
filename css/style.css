@@ -1933,6 +1933,10 @@ body[data-tab="expenses"] .fab { display: flex; }
 /* a typed sum's result under the field (initCalcInputs) */
 .calc-out { display: block; margin-top: 4px; font-variant-numeric: tabular-nums; color: var(--accent); }
 .calc-out.calc-err { color: var(--red); }
+/* ＋ − × ÷ for the phone number pad, which has no operators; a mouse + keyboard doesn't need them */
+.calc-ops { display: flex; gap: 6px; margin-top: 6px; }
+.calc-ops .btn { min-width: 44px; font-size: 1rem; }
+@media (hover: hover) and (pointer: fine) { .calc-ops { display: none; } }
 .snap-row > summary {
   display: flex;
   align-items: baseline;

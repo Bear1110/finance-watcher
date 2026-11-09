@@ -10,6 +10,7 @@
 | `db.js` | 記憶體資料表 + localStorage、待同步紀錄 |
 | `router.js` + 各模組的 `route()` | `/api` 路由 |
 | `util.js` | 共用的請求解析、回應、日期與數字格式 |
+| `amount.js` | 讀使用者打或貼上的金額：去掉幣別符號、全形轉半形、算式（`120000+35000`，資產快照現金的 `data-calc` 欄位）；畫面即時結果、存檔和 AI 匯入共用 |
 | `ledger.js` / `lots.js` | 自有帳戶交易的 FIFO 重播（持倉、已實現損益）；`lots.js` 是批次規則，績效的逐日持有成本也用它 |
 | `stocks.js` | 持倉、交易、已實現損益 |
 | `assets.js` / `expenses.js` / `dividends.js` / `managed.js` / `settings.js` / `reports.js` / `llm.js` / `export.js` | 各功能頁 |

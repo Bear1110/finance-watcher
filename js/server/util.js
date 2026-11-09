@@ -103,30 +103,6 @@ export async function refreshAndPersistRate() {
   }
 }
 
-/**
- * A typed sum like "120,000+35000-2*500" → 154000: + − × ÷ with × ÷ first, no brackets. Commas,
- * spaces, full-width characters (中文輸入法) and ×÷ are fine. null when it isn't such a sum
- * (or divides by zero); '' is null too.
- */
-const CALC_NUM = String.raw`(?:\d+\.?\d*|\.\d+)`;
-const CALC_RE = new RegExp(String.raw`^-?${CALC_NUM}(?:[-+*/]${CALC_NUM})*$`);
-const CALC_TERM = new RegExp(String.raw`(^-?|[-+*/])(${CALC_NUM})`, 'g');
-export function calcExpr(s) {
-  const t = String(s ?? '')
-    .replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)) // full-width → ASCII
-    .replace(/[,\s]/g, '').replace(/[−–]/g, '-').replace(/[×xX]/g, '*').replace(/÷/g, '/');
-  if (!CALC_RE.test(t)) return null;
-  let total = 0, term = 0;
-  for (const [, op, n] of t.matchAll(CALC_TERM)) {
-    const v = Number(n);
-    if (op === '*') term *= v;
-    else if (op === '/') term /= v;
-    else { total += term; term = op === '-' ? -v : v; }
-  }
-  total += term;
-  return Number.isFinite(total) ? Math.round(total * 1e8) / 1e8 : null; // 0.1+0.2 → 0.3
-}
-
 /** Round half away from zero (Math.round(-2.5) is -2). */
 export const goRound = (v) => (v < 0 ? -Math.round(-v) : Math.round(v));
 export const round4 = (v) => goRound(v * 1e4) / 1e4;

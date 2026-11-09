@@ -1156,11 +1156,11 @@
         <p class="form-hint" id="snapshot-cash-hint" hidden>現金已帶入推算值（上次快照＋之後的股票買賣與股利），請改成實際餘額。</p>
         <div class="form-group">
           <label>台幣現金 (NT$)</label>
-          <input type="text" name="cash_twd" required data-calc autocomplete="off" placeholder="可以打算式，例如 120000+35000+8000">
+          <input type="text" name="cash_twd" required data-calc inputmode="decimal" autocomplete="off" placeholder="可以打算式，例如 120000+35000+8000">
         </div>
         <div class="form-group">
           <label>美金現金 (US$)</label>
-          <input type="text" name="cash_usd" required data-calc autocomplete="off" placeholder="例如 1200+350.5">
+          <input type="text" name="cash_usd" required data-calc inputmode="decimal" autocomplete="off" placeholder="例如 1200+350.5">
         </div>
         <div id="snapshot-manual-fields" style="display:none">
           <div class="form-group">

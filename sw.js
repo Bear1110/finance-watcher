@@ -2,7 +2,7 @@
 // Google 的 API、登入、Yahoo 代理一律不經快取。
 // 採「網路優先」，一般部署會自動拿到新版；SHELL 清單有增減時請把 VERSION 加一。
 
-const VERSION = 'v10'; // 網站版本見 js/version.js
+const VERSION = 'v11'; // 網站版本見 js/version.js
 const CACHE = `finance-watcher-${VERSION}`;
 const SHELL = [
   './',
@@ -41,6 +41,7 @@ const SHELL = [
   'js/server/twr.js',
   'js/server/twr_calc.js',
   'js/server/util.js',
+  'js/server/amount.js',
   'manifest.webmanifest',
   // 只放頁面上會顯示的圖示；安裝用的 192／512／maskable／apple-touch 由瀏覽器自己抓
   'icons/favicon-32.png',

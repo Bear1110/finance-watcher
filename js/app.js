@@ -986,31 +986,60 @@ function editSnapshot(id) {
 /**
  * Money fields that take a typed sum (`<input data-calc>`, e.g. 120000+35000-500): the result shows
  * under the field as you type, and the form won't submit an unreadable or negative one. The sum is
- * worked out by util.js calcExpr, the same one the server uses when saving.
+ * worked out by amount.js calcInfo, the same one the server uses when saving. Phones get the number
+ * pad (inputmode="decimal") plus ＋ − × ÷ buttons under the field, since that pad has no operators.
  */
-function updateCalcInput(input) {
-  let out = input.nextElementSibling;
+const CALC_OPS = [['+', '+', '加'], ['-', '−', '減'], ['×', '×', '乘'], ['÷', '÷', '除']]; // [inserted, shown, name]
+
+function calcParts(input) {
+  let ops = input.nextElementSibling;
+  if (!ops?.matches('.calc-ops')) {
+    ops = document.createElement('div');
+    ops.className = 'calc-ops';
+    ops.innerHTML = CALC_OPS.map(([op, label, name]) =>
+      `<button type="button" class="btn btn-outline btn-sm" tabindex="-1" data-op="${op}" aria-label="${name}">${label}</button>`).join('');
+    // pointerdown: keep the focus (and the keyboard) in the field
+    ops.addEventListener('pointerdown', (e) => e.preventDefault());
+    ops.addEventListener('click', (e) => {
+      const op = e.target.closest('[data-op]')?.dataset.op;
+      if (!op) return;
+      const at = input.selectionStart ?? input.value.length;
+      input.setRangeText(op, at, input.selectionEnd ?? at, 'end');
+      input.focus();
+      updateCalcInput(input, true);
+    });
+    input.after(ops);
+  }
+  let out = ops.nextElementSibling;
   if (!out?.matches('.calc-out')) {
     out = document.createElement('small');
     out.className = 'form-hint calc-out';
     out.setAttribute('aria-live', 'polite');
-    input.after(out);
+    ops.after(out);
   }
+  return out;
+}
+
+/** typing: still in the field, so a trailing operator (the next term is coming) isn't shown as an error yet. */
+function updateCalcInput(input, typing = false) {
+  const out = calcParts(input);
   const raw = input.value.trim();
-  const v = window.calcExpr ? window.calcExpr(raw) : Number(raw);
-  const err = !raw ? '' : v == null ? '看不懂這個算式：只能用數字和 + − × ÷' : v < 0 ? '不能是負數' : '';
-  input.setCustomValidity(err);
-  out.hidden = !err && !/\d[^\d.,\s]+\d/.test(raw); // only for a sum: a plain number needs no echo
-  out.textContent = err || `= ${fmtNum(v, Number.isInteger(v) ? 0 : 2)}`;
+  const n = Number(raw); // fallback if amount.js didn't load: plain numbers only
+  const c = window.calcInfo ? window.calcInfo(raw) : { value: Number.isFinite(n) ? n : null, sum: false, open: false };
+  const err = !raw ? '' : c.value == null ? '看不懂這個算式：只能用數字和 + − × ÷（千分位逗號要三位一組）' : c.value < 0 ? '不能是負數' : '';
+  input.setCustomValidity(err); // still blocks saving while typing
+  const quiet = typing && c.open;
+  out.hidden = quiet || (!err && !c.sum); // a plain number needs no echo
+  out.textContent = err || `= ${fmtNum(c.value, Number.isInteger(c.value) ? 0 : 2)}`;
   out.classList.toggle('calc-err', !!err);
 }
 
 /** Calc fields set by code (open / edit a form) */
-const refreshCalcInputs = (root) => root.querySelectorAll('input[data-calc]').forEach(updateCalcInput);
+const refreshCalcInputs = (root) => root.querySelectorAll('input[data-calc]').forEach((i) => updateCalcInput(i));
 
 function initCalcInputs() {
-  document.addEventListener('input', (e) => { if (e.target.matches?.('input[data-calc]')) updateCalcInput(e.target); });
-  document.addEventListener('reset', (e) => setTimeout(() => refreshCalcInputs(e.target)));
+  document.addEventListener('input', (e) => { if (e.target.matches?.('input[data-calc]')) updateCalcInput(e.target, true); });
+  document.addEventListener('change', (e) => { if (e.target.matches?.('input[data-calc]')) updateCalcInput(e.target); });
 }
 
 async function submitSnapshot(e) {

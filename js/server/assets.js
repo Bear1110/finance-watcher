@@ -2,11 +2,14 @@
 
 import * as db from './db.js';
 import { route } from './router.js';
-import { badRequest, body, refreshAndPersistRate, cmp, storedUSDTWDRate, calcExpr } from './util.js';
+import { badRequest, body, refreshAndPersistRate, cmp, storedUSDTWDRate } from './util.js';
+import { calcExpr } from './amount.js';
 import { portfolioValues } from './stocks.js';
 import { performance } from './twr.js';
 import { otherAssetsTotal, includeOtherAssets } from './other_assets.js';
 
+/** Cash can be typed as a sum (the snapshot form's data-calc fields); the rest are plain numbers. */
+const CALC_FIELDS = ['cash_twd', 'cash_usd'];
 const FIELDS = ['cash_twd', 'cash_usd', 'stock_tw_value', 'stock_us_value', 'stock_value_twd', 'usd_twd_rate', 'total_asset'];
 
 const assetJSON = (s) => ({
@@ -21,9 +24,11 @@ function decode(req) {
   const b = body(req);
   const s = { date: b.date ? String(b.date) : '', note: b.note == null ? '' : String(b.note) };
   for (const f of FIELDS) {
+    if (!CALC_FIELDS.includes(f)) { s[f] = Number(b[f]) || 0; continue; }
     if (b[f] == null || b[f] === '') { s[f] = 0; continue; }
-    const v = calcExpr(b[f]); // a number, or a typed sum like "120000+35000"
+    const v = calcExpr(b[f]); // cash may be a typed sum like "120000+35000"
     if (v == null) throw badRequest(`看不懂「${b[f]}」：只能用數字和 + − × ÷`);
+    if (v < 0) throw badRequest(`現金不能是負數（「${b[f]}」= ${v}）`);
     s[f] = v;
   }
   if (b.other_assets != null) s.other_assets = Number(b.other_assets) || 0; // else: today's total on create, kept on edit

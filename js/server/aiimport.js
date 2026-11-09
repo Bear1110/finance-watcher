@@ -27,6 +27,7 @@ import { hasProxy } from './market.js';
 import { syncPriceHistory, performance } from './twr.js';
 import { autoFill, insertSnapshot } from './assets.js';
 import { addDays } from './twr_calc.js';
+import { stripCurrency } from './amount.js';
 
 const IMPORT_FORMAT = 'finance-watcher-import';
 const IMPORT_VERSION = 1;
@@ -42,11 +43,8 @@ function normDate(v) {
   return isDate(out) ? out : null;
 }
 
-/** "1,200", "NT$ 1200", "-350元" → number (sign kept), or NaN. */
-// Currency symbols (longest first, so US$ goes before $), separators and units are dropped
-const AMOUNT_JUNK = new RegExp([...EXPENSE_CURRENCIES.map((c) => c.symbol).sort((a, b) => b.length - a.length), '$', '＄', '￥', '元', '円', '股']
-  .map((t) => t.replace(/[$]/g, '\\$')).join('|') + '|[,\\s]', 'gi');
-const normAmount = (v) => (typeof v === 'number' ? v : Number(str(v).replace(AMOUNT_JUNK, '')));
+/** "1,200", "NT$ 1200", "-350元", "100股" → number (sign kept), or NaN. Currency symbols: amount.js, shared with the snapshot form. */
+const normAmount = (v) => (typeof v === 'number' ? v : Number(stripCurrency(v).replace(/股|[,\s]/g, '')));
 
 /** null / "" / undefined stay null; anything else is a number (NaN if unreadable). */
 const optAmount = (v) => (v == null || str(v) === '' ? null : normAmount(v));

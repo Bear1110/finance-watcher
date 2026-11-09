@@ -3,7 +3,8 @@
 
 import * as db from './server/db.js';
 import { route, handle } from './server/router.js';
-import { badRequest, body, calcExpr } from './server/util.js';
+import { badRequest, body } from './server/util.js';
+import { calcInfo } from './server/amount.js';
 import { VERSION } from './version.js';
 import { watchForUpdate } from './update.js';
 import * as sync from './cloud/sync.js';
@@ -233,7 +234,7 @@ Object.assign(window, {
 });
 
 window.localApiReady = Promise.resolve();
-window.calcExpr = calcExpr; // 算式欄位的即時結果（app.js initCalcInputs）跟存檔用同一個算法
+window.calcInfo = calcInfo; // 算式欄位的即時結果（app.js initCalcInputs）跟存檔用同一個算法
 
 document.getElementById('import-file')?.addEventListener('change', onImportFile);
 sync.onStatus(renderCloudStatus);
