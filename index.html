@@ -168,6 +168,8 @@
 
       <!-- Holdings Sub-tab -->
       <div id="subtab-holdings" class="subtab-content active">
+        <!-- Totals first: one card per market held, plus 合計 when both (renderHoldingsSummary) -->
+        <div class="dash-stats holdings-summary" id="holdings-summary" hidden></div>
         <div class="card">
           <div class="card-header">
             <h3>股票持倉 <small class="card-meta" id="quote-fetched-at"></small></h3>
@@ -181,6 +183,10 @@
               </button>
               <button class="btn btn-primary btn-sm" onclick="openHoldingModal()"><span class="i" data-icon="plus"></span>匯入持倉</button>
             </div>
+          </div>
+          <div class="list-search" id="holdings-search-wrap" hidden>
+            <div class="search-field"><input type="search" id="holdings-search" placeholder="搜尋代號或名稱" aria-label="搜尋持股" oninput="onHoldingsSearch()"><button type="button" class="search-clear" onclick="clearSearch(this)" aria-label="清除搜尋" title="清除搜尋"><span class="i" data-icon="x"></span></button></div>
+            <div class="list-search-summary" id="holdings-search-summary" hidden></div>
           </div>
           <div class="table-wrap">
             <table class="holdings-table">
@@ -201,25 +207,6 @@
               <tbody id="holdings-body">
                 <tr><td colspan="10" class="empty-state">載入中...</td></tr>
               </tbody>
-              <tfoot id="holdings-foot" style="display:none">
-                <tr>
-                  <td colspan="2" class="text-right c-sym"><strong>合計 (TWD)</strong></td>
-                  <td id="total-cost" class="c-cost"><strong>--</strong></td>
-                  <td id="total-day-change" class="c-day"></td>
-                  <td id="total-market-value" class="c-mv"><strong>--</strong></td>
-                  <td class="c-pl">
-                    <div id="total-unrealized-pl"><strong>--</strong></div>
-                    <div class="cell-sub" id="total-pl-pct"><strong>--</strong></div>
-                  </td>
-                  <td class="c-div">
-                    <div id="total-div"><strong>--</strong></div>
-                    <div class="cell-sub" id="total-div-return"><strong>--</strong></div>
-                  </td>
-                  <td id="total-yield-price" class="c-yp"><strong>--</strong></td>
-                  <td id="total-yield-cost" class="c-yc"><strong>--</strong></td>
-                  <td></td>
-                </tr>
-              </tfoot>
             </table>
           </div>
         </div>

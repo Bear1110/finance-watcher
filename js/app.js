@@ -1078,15 +1078,6 @@ function plCell(pl, pct, cur) {
   return `<td class="c-pl ${plClass(pl)}">${fmtPLCur(pl, cur)}<span class="cell-sub">${fmtPct(pct)}</span></td>`;
 }
 
-// Today's change in the 現價 column of subtotal/total rows: amount with % vs previous close underneath
-function dayChangeCell(chg, mv, cur, strong) {
-  const prev = mv - chg;
-  const amt = `今日 ${fmtPLCur(chg, cur)}`;
-  return `<td class="c-day ${plClass(chg)}" title="較前一交易日收盤">${strong ? `<strong>${amt}</strong>` : amt}` +
-    `<span class="cell-sub">${prev > 0 ? fmtPct(chg / prev * 100) : '--'}</span></td>`;
-}
-
-
 /**
  * The stock's page on Google Finance. Listed Taiwan stocks are CODE:TPE; Google has no
  * 上櫃 (.TWO) quotes, and a US quote needs the exchange (from the Yahoo quote), so those
@@ -1119,6 +1110,8 @@ function renderHoldingRow(s) {
   `;
 }
 
+let _holdings = []; // last /api/stocks holdings, for the search box
+
 async function loadHoldings() {
   try {
     const [stockData, divData] = await Promise.all([
@@ -1127,80 +1120,76 @@ async function loadHoldings() {
     ]);
     _divBySymbol = {};
     (divData.items || []).forEach(d => { _divBySymbol[d.symbol] = d; });
-    const list = (stockData && stockData.holdings) ? stockData.holdings : [];
-    const tbody = document.getElementById('holdings-body');
-    const tfoot = document.getElementById('holdings-foot');
-
-    if (list.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="10" class="empty-state">尚無持倉資料</td></tr>';
-      tfoot.style.display = 'none';
-      return;
-    }
-
-    const subtotal = (rows) => {
-      const cost = rows.reduce((sum, s) => sum + (s.avg_cost || 0) * (s.shares || 0), 0);
-      const mv = rows.reduce((sum, s) => sum + (s.market_value || 0), 0);
-      const pl = rows.reduce((sum, s) => sum + (s.unrealized_pl || 0), 0);
-      const pct = cost > 0 ? (pl / cost) * 100 : 0;
-      // Native-currency day change, from each holding's market value and % vs previous close
-      const day = rows.reduce((sum, s) => {
-        const p = s.day_change_pct || 0;
-        return sum + (s.market_value || 0) * p / (100 + p);
-      }, 0);
-      // Dividends of the symbols in this group, same currency as the group
-      const div = { total: 0, ttm: 0 };
-      rows.forEach(s => {
-        const d = _divBySymbol[s.symbol];
-        if (d) { div.total += d.total; div.ttm += d.ttm; }
-      });
-      return { cost, mv, pl, pct, day, dm: divMetrics(pl, cost, mv, div) };
-    };
-
-    const groups = [
-      { market: 'US', label: '\u{1F1FA}\u{1F1F8} 美股', subtotalLabel: '美股小計', cur: 'USD' },
-      { market: 'TW', label: '\u{1F1F9}\u{1F1FC} 台股', subtotalLabel: '台股小計', cur: 'TWD' },
-    ];
-    tbody.innerHTML = groups.map(g => {
-      const rows = list.filter(s => s.market === g.market);
-      if (rows.length === 0) return '';
-      const t = subtotal(rows);
-      return `<tr class="market-group-header"><td colspan="10">${g.label}</td></tr>` +
-        rows.map(renderHoldingRow).join('') +
-        `<tr class="market-subtotal"><td colspan="2" class="c-sym">${g.subtotalLabel}</td><td class="c-cost">${fmtCur(t.cost, g.cur)}</td>${dayChangeCell(t.day, t.mv, g.cur)}<td class="c-mv">${fmtCur(t.mv, g.cur)}</td>${plCell(t.pl, t.pct, g.cur)}${divCells(t.dm, g.cur)}<td></td></tr>`;
-    }).join('');
-
-    // TWD footer: USD dividends converted at the stored rate
-    const rate = divData.usd_twd_rate || 32;
-    const divTwd = { total: 0, ttm: 0 };
-    (divData.items || []).forEach(d => {
-      divTwd.total += toTWD(d.total, d.currency, rate);
-      divTwd.ttm += toTWD(d.ttm, d.currency, rate);
-    });
-    const totalDm = divMetrics(stockData.total_pl_twd, stockData.total_cost_twd, stockData.total_value_twd, divTwd);
-    document.getElementById('total-div').innerHTML = `<strong>${totalDm.total ? fmtTWD(totalDm.total) : '--'}</strong>`;
-    document.getElementById('total-div-return').innerHTML =
-      `<strong class="${plClass(totalDm.ret)}">${totalDm.ret == null ? '--' : fmtPct(totalDm.ret)}</strong>`;
-    document.getElementById('total-yield-price').innerHTML = `<strong>${fmtYield(totalDm.yieldPrice)}</strong>`;
-    document.getElementById('total-yield-cost').innerHTML = `<strong>${fmtYield(totalDm.yieldCost)}</strong>`;
-
-    document.getElementById('total-cost').innerHTML = `<strong>${fmtTWD(stockData.total_cost_twd)}</strong>`;
-    const dayTwd = list.reduce((sum, s) => sum + (s.day_change_twd || 0), 0);
-    document.getElementById('total-day-change').outerHTML =
-      dayChangeCell(dayTwd, stockData.total_value_twd, 'TWD', true).replace('<td ', '<td id="total-day-change" ');
-    document.getElementById('total-market-value').innerHTML = `<strong>${fmtTWD(stockData.total_value_twd)}</strong>`;
-    document.getElementById('total-unrealized-pl').innerHTML = `<strong class="${plClass(stockData.total_pl_twd)}">${fmtPL(stockData.total_pl_twd)}</strong>`;
-    document.getElementById('total-pl-pct').innerHTML = `<strong class="${plClass(stockData.total_pl_percent)}">${fmtPct(stockData.total_pl_percent)}</strong>`;
-    tfoot.style.display = '';
-
-    // Show quote fetch time
+    _holdings = (stockData && stockData.holdings) || [];
+    renderHoldingsSummary(stockData);
+    renderHoldingsTable();
     const fetchedEl = document.getElementById('quote-fetched-at');
-    if (fetchedEl && stockData.quote_fetched_at) {
-      fetchedEl.textContent = `報價 ${stockData.quote_fetched_at}`;
-    }
-
+    if (fetchedEl && stockData.quote_fetched_at) fetchedEl.textContent = `報價 ${stockData.quote_fetched_at}`;
   } catch (err) {
     showToast('載入持倉失敗: ' + err.message, 'error');
   }
+}
+
+const MARKET_LABEL = { TW: '台股', US: '美股' };
+const MARKET_FLAG = { TW: '\u{1F1F9}\u{1F1FC}', US: '\u{1F1FA}\u{1F1F8}' };
+const UNREALIZED_TIP = '台股已扣掉現在賣出要付的手續費（依設定的折扣）和證交稅（股票 0.3%、ETF 0.1%），和券商 App 的預估損益算法一樣';
+
+/** Totals above the table (js/server/stocks.js `markets`): a card per market held in its own currency, plus 合計 in NT$ when both. */
+function renderHoldingsSummary(data) {
+  const box = document.getElementById('holdings-summary');
+  const markets = data.markets || [];
+  box.hidden = !markets.length;
+  const card = ({ label, count, cur, value, cost, pl, plPct, day, dayPct, ret }) => `<div class="stat-card">
+      <div class="stat-label">${label} · ${count} 檔</div>
+      <div class="stat-value">${fmtCur(value, cur)}</div>
+      <div class="holdings-summary-parts">
+        <div><span title="${UNREALIZED_TIP}">未實現損益</span><strong class="${plClass(pl)}">${fmtPLCur(pl, cur)}</strong><small class="${plClass(plPct)}">${fmtPct(plPct)}</small></div>
+        <div><span title="較前一交易日收盤">今日</span><strong class="${plClass(day)}">${fmtPLCur(day, cur)}</strong><small class="${plClass(dayPct)}">${fmtPct(dayPct)}</small></div>
+        <div><span title="(未實現損益 + 這些持股累計已領股利) ÷ 投入金額">含股利報酬</span><strong class="${plClass(ret)}">${fmtPct(ret)}</strong><small>投入 ${fmtCur(cost, cur)}</small></div>
+      </div>
+    </div>`;
+  const cards = markets.map(m => card({
+    label: MARKET_LABEL[m.market], count: m.count, cur: m.currency, value: m.value, cost: m.cost,
+    pl: m.pl, plPct: m.pl_percent, day: m.day, dayPct: m.day_percent, ret: m.div_return_percent,
+  }));
+  if (markets.length > 1) {
+    cards.unshift(card({
+      label: '合計（台幣）', count: data.holdings.length, cur: 'TWD', value: data.total_value_twd, cost: data.total_cost_twd,
+      pl: data.total_pl_twd, plPct: data.total_pl_percent, day: data.total_day_twd, dayPct: data.total_day_percent,
+      ret: data.total_div_return_percent,
+    }));
+  }
+  box.classList.toggle('holdings-summary-1', cards.length === 1);
+  box.innerHTML = cards.join('');
+}
+
+const onHoldingsSearch = debounce(() => renderHoldingsTable());
+
+/** The holdings table (or cards), grouped by market when both, narrowed by the search box. */
+function renderHoldingsTable() {
+  const tbody = document.getElementById('holdings-body');
+  // The search box only shows once the list is long enough to need it
+  const searchable = _holdings.length >= 6;
+  document.getElementById('holdings-search-wrap').hidden = !searchable;
+  const words = searchable ? searchWords('holdings-search') : [];
+  const list = words.length
+    ? _holdings.filter(s => words.every(w => [s.symbol, stockName(s.symbol), MARKET_LABEL[s.market]].join(' ').toLowerCase().includes(w)))
+    : _holdings;
+  const summary = document.getElementById('holdings-search-summary');
+  summary.hidden = !words.length;
+  summary.textContent = `找到 ${list.length} 檔`;
+
+  if (!list.length) {
+    tbody.innerHTML = `<tr><td colspan="10" class="empty-state">${_holdings.length ? '找不到符合的股票' : '尚無持倉資料'}</td></tr>`;
+    return;
+  }
+  const both = new Set(_holdings.map(s => s.market)).size > 1;
+  tbody.innerHTML = ['US', 'TW'].map(market => {
+    const rows = list.filter(s => s.market === market);
+    if (!rows.length) return '';
+    return (both ? `<tr class="market-group-header"><td colspan="10">${MARKET_FLAG[market]} ${MARKET_LABEL[market]}</td></tr>` : '') +
+      rows.map(renderHoldingRow).join('');
+  }).join('');
 }
 
 function openHoldingModal() {
@@ -2273,7 +2262,7 @@ async function loadHoldingsTrend() {
   }
 }
 
-const TREND_SEG_LABEL = { ALL: '合計', TW: '台股', US: '美股' };
+const TREND_SEG_LABEL = { ALL: '合計', ...MARKET_LABEL };
 const compColor = (key) => COMP_PARTS.find(p => p.key === key).color;
 /** Series colors: 市值 per market (as in the 總覽 composition bar), 未實現 / 已實現 as the CVD-checked blue / orange pair */
 const trendColor = (key) => ({ ALL: '#4e8cff', TW: compColor('tw'), US: compColor('us') }[key] || seriesColor(key));

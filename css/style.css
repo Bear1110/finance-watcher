@@ -1777,7 +1777,7 @@ body[data-tab="expenses"] .fab { display: flex; }
    格子的位置由 app.js 的 c-* class 決定 --- */
 .holdings-table.as-cards { display: flex; flex-direction: column; gap: 10px; }
 /* cards flow into as many columns as fit (one column on phones) */
-.holdings-table.as-cards :is(tbody, tfoot) { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 10px; }
+.holdings-table.as-cards tbody { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 10px; }
 .holdings-table.as-cards tr:is(.market-group-header, :has(> .empty-state)) { grid-column: 1 / -1; }
 .holdings-table.as-cards thead { display: none; }
 .holdings-table.as-cards tr {
@@ -1806,7 +1806,7 @@ body[data-tab="expenses"] .fab { display: flex; }
 .holdings-table.as-cards :is(.c-mv, .c-pl) { font-size: 1.1rem; font-weight: 600; }
 .holdings-table.as-cards .c-sh { grid-area: sh; }
 .holdings-table.as-cards .c-cost { grid-area: cost; }
-.holdings-table.as-cards :is(.c-px, .c-day) { grid-area: px; }
+.holdings-table.as-cards .c-px { grid-area: px; }
 .holdings-table.as-cards .c-div { grid-area: div; }
 .holdings-table.as-cards .c-yp { grid-area: yp; }
 .holdings-table.as-cards .c-yc { grid-area: yc; }
@@ -1823,12 +1823,6 @@ body[data-tab="expenses"] .fab { display: flex; }
 /* 美股／台股 group headers become section titles between the cards */
 .holdings-table.as-cards tr.market-group-header { display: block; padding: 6px 2px; margin: 8px 0 -2px; border: none; background: none; }
 .holdings-table.as-cards tr.market-group-header:first-child { margin-top: 0; }
-/* 小計：只留市值、損益、今日；合計（tfoot）留全部 */
-.holdings-table.as-cards tr.market-subtotal { grid-template-areas: "sym px" "mv pl"; align-self: start; background: var(--accent-subtle); }
-.holdings-table.as-cards tr.market-subtotal :is(.c-cost, .c-div, .c-yp, .c-yc) { display: none; }
-.holdings-table.as-cards tr.market-subtotal .c-day { text-align: right; }
-.holdings-table.as-cards tfoot tr { grid-template-areas: "sym sym" "mv pl" "px cost" ". div" "yp yc"; border-color: var(--accent); }
-.holdings-table.as-cards tfoot .c-sym { text-align: left; }
 
 /* --- 收支 dialog: currency picker beside the amount, rate row for foreign currencies --- */
 .amount-row { display: flex; gap: 6px; }
@@ -2202,4 +2196,19 @@ body[data-tab="expenses"] .fab { display: flex; }
   font-size: 0.85em;
   font-weight: 400;
   color: var(--text-secondary);
+}
+
+/* 持倉 totals above the table: 合計 + 台股 + 美股, or one card when only one market */
+.holdings-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.holdings-summary.holdings-summary-1 { grid-template-columns: minmax(0, 1fr); }
+.holdings-summary-parts { display: flex; flex-wrap: wrap; gap: 10px 24px; margin-top: 10px; }
+.holdings-summary-parts > div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.holdings-summary-parts span { font-size: 0.75rem; color: var(--text-secondary); }
+.holdings-summary-parts strong { font-size: 0.95rem; font-variant-numeric: tabular-nums; }
+.holdings-summary-parts small { font-size: 0.75rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+@media (max-width: 900px) {
+  /* One card per row, its three numbers side by side */
+  .holdings-summary { grid-template-columns: minmax(0, 1fr); }
+  .holdings-summary-parts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .holdings-summary-parts strong { font-size: 0.85rem; overflow-wrap: anywhere; }
 }

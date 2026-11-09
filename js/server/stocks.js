@@ -5,6 +5,7 @@
 import * as db from './db.js';
 import { route } from './router.js';
 import { fetchQuotes, invalidateCache, lastFetchTime } from './market.js';
+import { dividendsBySymbol } from './dividends.js';
 import {
   HttpError, badRequest, body, storedUSDTWDRate, twFeeDiscount, toTWD, realizedTWD, fmtLocal, round2, cmp, sellCostBasis, sellReturnPct,
 } from './util.js';
@@ -75,34 +76,63 @@ export async function listHoldings() {
     total_value_twd: 0,
     total_pl_twd: 0,
     total_pl_percent: 0,
+    total_day_twd: 0,
+    total_day_percent: 0,
+    total_div_twd: 0,
+    total_div_return_percent: 0,
     realized_pl_twd: realizedPLTWD,
   };
+  // Per market in its own currency (持倉 page's 台股 / 美股 cards), only markets held
+  const markets = new Map();
+  // Dividends received from what is held (same currency as the holding), for 含股利報酬
+  const divs = new Map(dividendsBySymbol().map((x) => [`${x.symbol}\u0000${x.currency}`, x.total]));
 
   for (const h of holdings) {
     const d = holdingDetail(h);
     const q = quotes[h.symbol];
+    const day = q ? q.change * h.shares : 0; // native currency
+    const cost = h.avg_cost * h.shares;
+    const div = divs.get(`${h.symbol}\u0000${h.currency}`) || 0;
     if (q) {
       d.current_price = q.price;
       d.exchange = q.exchange;
       d.type = q.type;
-      d.day_change_twd = toTWD(q.change * h.shares, h.currency, rate);
+      d.day_change_twd = toTWD(day, h.currency, rate);
       d.day_change_pct = q.change_percent;
       d.market_value = q.price * h.shares;
       // Net of what selling now would cost (台股 fee + tax), like a broker app's 預估損益
       d.unrealized_pl = (q.price - h.avg_cost) * h.shares - estSellCost(h.market, h.symbol, h.shares, q.price, discount);
-      if (h.avg_cost > 0) d.pl_percent = d.unrealized_pl / (h.avg_cost * h.shares) * 100;
+      if (h.avg_cost > 0) d.pl_percent = d.unrealized_pl / cost * 100;
     }
-    d.cost_twd = toTWD(h.avg_cost * h.shares, h.currency, rate);
+    d.cost_twd = toTWD(cost, h.currency, rate);
     d.market_value_twd = toTWD(d.market_value, h.currency, rate);
     d.unrealized_pl_twd = toTWD(d.unrealized_pl, h.currency, rate);
 
     summary.total_cost_twd += d.cost_twd;
     summary.total_value_twd += d.market_value_twd;
     summary.total_pl_twd += d.unrealized_pl_twd;
+    summary.total_day_twd += d.day_change_twd;
+    summary.total_div_twd += toTWD(div, h.currency, rate);
     summary.holdings.push(d);
+
+    if (!markets.has(h.market)) markets.set(h.market, { market: h.market, currency: h.currency, count: 0, cost: 0, value: 0, pl: 0, day: 0, div: 0 });
+    const m = markets.get(h.market);
+    m.count++;
+    m.cost += cost;
+    m.value += d.market_value;
+    m.pl += d.unrealized_pl;
+    m.day += day;
+    m.div += div;
   }
 
-  if (summary.total_cost_twd > 0) summary.total_pl_percent = summary.total_pl_twd / summary.total_cost_twd * 100;
+  const pct = (part, base) => (base > 0 ? part / base * 100 : 0);
+  summary.total_pl_percent = pct(summary.total_pl_twd, summary.total_cost_twd);
+  summary.total_day_percent = pct(summary.total_day_twd, summary.total_value_twd - summary.total_day_twd); // vs previous close
+  summary.total_div_return_percent = pct(summary.total_pl_twd + summary.total_div_twd, summary.total_cost_twd);
+  summary.markets = ['TW', 'US'].filter((k) => markets.has(k)).map((k) => {
+    const m = markets.get(k);
+    return { ...m, pl_percent: pct(m.pl, m.cost), day_percent: pct(m.day, m.value - m.day), div_return_percent: pct(m.pl + m.div, m.cost) };
+  });
 
   const fetchedAt = lastFetchTime();
   return { ...summary, quote_fetched_at: fetchedAt ? fmtLocal(fetchedAt) : '' };
