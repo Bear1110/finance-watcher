@@ -244,6 +244,7 @@ const ICONS = {
   trash: '<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6M14 11v6"/>',
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/>',
   'chevron-left': '<path d="m15 18-6-6 6-6"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
   'chevron-right': '<path d="m9 18 6-6-6-6"/>',
   sparkles: '<path d="M12 3l1.9 5.8L20 10.7l-6.1 1.9L12 18.5l-1.9-5.9L4 10.7l6.1-1.9z"/><path d="M19 17v4M17 19h4"/>',
 };
@@ -2951,18 +2952,24 @@ function showExpenseModal(editing) {
   document.getElementById('expense-delete-btn').style.display = editing ? '' : 'none';
   loadRecentTags();
   renderExpenseTagChips();
-  // Opened from the dashboard before the 收支 page loaded (loadExpenses fills _expAll): fetch the
-  // records just for the recent tags
-  if (!_expAll.length) api('/api/expenses').then(r => { _expAll = r; loadRecentTags(); renderExpenseTagChips(); }, () => {});
+  // _expAll can be stale or empty when opened from the dashboard (loadExpenses fills it on the 收支
+  // page): re-read the records (local, fast) for the recent tags
+  api('/api/expenses').then(r => {
+    if (!Array.isArray(r)) return;
+    _expAll = r;
+    loadRecentTags();
+    renderExpenseTagChips();
+  }, () => {});
   openModal('modal-expense');
   document.querySelector('#expense-form [name="amount"]').focus();
 }
 
 // --- 收支 #tags: "#日本2026" in the note groups records (a trip, a project). Tapping a tag in the list
 // searches for it, which ignores the month, so a trip from 11/27 to 12/10 is one list with its totals.
-// Phone keyboards often type the full-width ＃; both count.
+// Phone keyboards often type the full-width ＃; both count. A tag ends at a space or punctuation
+// ("（#日本2026）" is #日本2026); text right after it without a space belongs to the tag.
 
-const TAG_RE = /[#＃]([^\s#＃,，、。;；]+)/g;
+const TAG_RE = /[#＃]([^\s#＃,，、。.;；:：!！?？()（）[\]【】「」『』《》<>"'“”]+)/g;
 const noteTags = (note) => [...String(note || '').matchAll(TAG_RE)].map(m => `#${m[1]}`);
 const sameTag = (a, b) => a.toLowerCase() === b.toLowerCase();
 const MAX_TAG_CHIPS = 8;
@@ -2997,12 +3004,21 @@ function renderExpenseTagChips() {
   }).join('');
 }
 
+/** The note without `tag` (and one space next to it); the rest of the text is left as typed. */
+function removeTag(note, tag) {
+  for (const m of [...note.matchAll(TAG_RE)].reverse()) { // from the end: earlier indexes stay valid
+    if (!sameTag(`#${m[1]}`, tag)) continue;
+    let a = m.index, b = a + m[0].length;
+    if (note[a - 1] === ' ') a--; else if (note[b] === ' ') b++;
+    note = note.slice(0, a) + note.slice(b);
+  }
+  return note.trim();
+}
+
 function toggleExpenseTag(tag) {
   const note = expField('note');
   const has = noteTags(note.value).some(t => sameTag(t, tag));
-  note.value = has
-    ? note.value.replace(TAG_RE, (m, t) => (sameTag(`#${t}`, tag) ? '' : m)).replace(/\s+/g, ' ').trim()
-    : `${note.value.trim()} ${tag}`.trim();
+  note.value = has ? removeTag(note.value, tag) : `${note.value.trim()} ${tag}`.trim();
   renderExpenseTagChips();
 }
 
@@ -3012,18 +3028,28 @@ function noteHTML(note) {
   let html = '', last = 0;
   for (const m of note.matchAll(TAG_RE)) {
     html += escapeHtml(note.slice(last, m.index)) +
-      `<span class="e-tag" data-tag="#${escapeAttr(m[1])}" onclick="searchExpenseTag(event, this.dataset.tag)" title="看這個標籤的所有紀錄">#${escapeHtml(m[1])}</span>`;
+      `<span class="e-tag" data-tag="#${escapeAttr(m[1])}" onclick="searchExpenseTag(event, this.dataset.tag)" title="看這個標籤的所有紀錄">${escapeHtml(m[0])}</span>`;
     last = m.index + m[0].length;
   }
   return html + escapeHtml(note.slice(last));
 }
 
+/** Tapping a tag: the whole trip, so a category picked in the ranking is cleared too. */
 function searchExpenseTag(event, tag) {
   event.stopPropagation();
   const input = document.getElementById('exp-search');
   input.value = tag;
+  if (_expCatFilter !== null) setCategoryFilter(null);
   renderExpenseTable(expMonth());
   input.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+/** The ✕ in a search box: empty it, re-run its search (oninput) and keep typing there. */
+function clearSearch(btn) {
+  const input = btn.previousElementSibling;
+  input.value = '';
+  input.dispatchEvent(new Event('input'));
+  input.focus();
 }
 
 function openExpenseModal() {
@@ -3410,7 +3436,7 @@ function expenseMatches(e, words) {
   const c = expCurrency(e.currency);
   const text = [e.note, catLabel(e.category), c.code, c.symbol, c.name, ...c.aliases].join(' ').toLowerCase();
   let tags; // parsed only for a #word
-  return words.every(w => (/^[#＃]/.test(w)
+  return words.every(w => (/^[#＃]./.test(w)
     ? (tags ??= noteTags(e.note).map(t => t.toLowerCase())).includes(`#${w.slice(1)}`)
     : text.includes(w) || Number(w.replace(/,/g, '')) === e.amount));
 }
@@ -3456,7 +3482,10 @@ function renderExpenseTable(month) {
     (_expCatFilter === null || (e.category || '') === _expCatFilter));
   const summary = document.getElementById('exp-search-summary');
   summary.hidden = !words.length;
-  if (words.length) summary.innerHTML = searchSummaryHTML(filtered);
+  if (words.length) {
+    summary.innerHTML = searchSummaryHTML(filtered) +
+      (_expCatFilter === null ? '' : `<div>只看「${escapeHtml(catLabel(_expCatFilter))}」分類，點上方「分類：… ✕」看全部</div>`);
+  }
   const list = document.getElementById('expense-list');
   if (filtered.length === 0) {
     list.innerHTML = `<div class="empty-state">${words.length ? '找不到符合的紀錄' : month ? '這個月尚無紀錄' : '此年度尚無紀錄'}</div>`;

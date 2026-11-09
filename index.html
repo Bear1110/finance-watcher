@@ -407,7 +407,7 @@
           </div>
           <p class="form-hint card-hint">平常買賣在「持倉總覽」按買入／賣出就好；這裡補登過去的交易，點一筆可以修改或刪除。持倉和已實現損益會依日期自動重算。</p>
           <div class="list-search">
-            <input type="search" id="tx-search" placeholder="搜尋代號、名稱、備註、日期" aria-label="搜尋交易紀錄" oninput="onTxSearch()">
+            <div class="search-field"><input type="search" id="tx-search" placeholder="搜尋代號、名稱、備註、日期" aria-label="搜尋交易紀錄" oninput="onTxSearch()"><button type="button" class="search-clear" onclick="clearSearch(this)" aria-label="清除搜尋" title="清除搜尋"><span class="i" data-icon="x"></span></button></div>
             <div class="list-search-summary" id="tx-search-summary" hidden></div>
           </div>
           <div class="table-wrap">
@@ -681,7 +681,7 @@
           </div>
         </div>
         <div class="list-search">
-          <input type="search" id="exp-search" placeholder="搜尋備註、#標籤、金額（不限月份）" aria-label="搜尋收支紀錄" oninput="onExpenseSearch()">
+          <div class="search-field"><input type="search" id="exp-search" placeholder="搜尋備註、#標籤、金額（不限月份）" aria-label="搜尋收支紀錄" oninput="onExpenseSearch()"><button type="button" class="search-clear" onclick="clearSearch(this)" aria-label="清除搜尋" title="清除搜尋"><span class="i" data-icon="x"></span></button></div>
           <div class="list-search-summary" id="exp-search-summary" hidden></div>
         </div>
         <div class="expense-list" id="expense-list">
@@ -1496,7 +1496,7 @@
           <input type="text" name="note" id="expense-note" placeholder="選填，可加 #標籤" oninput="renderExpenseTagChips()">
           <!-- one tap: recently used #tags (renderExpenseTagChips) -->
           <div class="cat-chips tag-chips" id="expense-tag-chips" aria-label="最近用過的標籤"></div>
-          <p class="form-hint" id="expense-tag-hint">在備註加上 #標籤（例如 #日本2026）可以把一趟旅行歸成一組，之後點標籤就能看整趟的花費，跨月份也算在一起。</p>
+          <p class="form-hint" id="expense-tag-hint">在備註加上 #標籤（例如 #日本2026）可以把一趟旅行歸成一組，之後點標籤就能看整趟的花費，跨月份也算在一起。標籤後面空一格再寫其他字。</p>
         </div>
         <div class="form-actions">
           <button type="submit" class="btn btn-primary modal-footer-save">儲存</button>

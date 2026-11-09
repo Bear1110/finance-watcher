@@ -1860,6 +1860,21 @@ body[data-tab="expenses"] .fab { display: flex; }
 /* Search box above a list (收支明細, 交易紀錄) */
 .list-search { margin-bottom: 8px; }
 .list-search input { width: 100%; }
+/* Our own ✕ (the browser's is tiny, has no pointer, and differs per browser); hidden while empty */
+.search-field { position: relative; }
+.search-field input { padding-right: 40px; }
+.search-field input::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
+.search-clear {
+  position: absolute; top: 50%; right: 4px; transform: translateY(-50%);
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border: none; border-radius: 50%;
+  background: none; color: var(--text-muted); cursor: pointer;
+  transition: color var(--transition);
+}
+.search-clear .i { margin: 0; }
+.search-clear:hover { color: var(--text-primary); } /* same look as the dialogs' ✕ (.modal-close) */
+.search-clear svg { width: 16px; height: 16px; }
+.search-field input:placeholder-shown + .search-clear { display: none; }
 .list-search-summary { margin-top: 6px; font-size: 0.85rem; color: var(--text-secondary); }
 .exp-day {
   display: flex;
