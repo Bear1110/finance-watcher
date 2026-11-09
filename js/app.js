@@ -1303,6 +1303,7 @@ async function loadRealizedSummary() {
     // Year list comes from the server unfiltered, so keep it when a year is selected
     if (_rplYear === 'ALL' || _rplYears.length === 0) _rplYears = _rplData.years || [];
     renderRplYearButtons();
+    renderRplMarketButtons();
     renderRealizedSummary();
   } catch (err) {
     showToast('載入已實現損益失敗: ' + err.message, 'error');
@@ -1314,6 +1315,15 @@ function renderRplYearButtons() {
   sel.innerHTML = ['ALL', ..._rplYears].map(y => `<option value="${y}">${y === 'ALL' ? '全部年度' : y}</option>`).join('');
   segmentSelect(sel);
   sel.value = _rplYear;
+}
+
+/** 全部／台股／美股 only when both markets have sales or dividends: with one market 全部 is the same thing */
+function renderRplMarketButtons() {
+  const markets = new Set([...(_rplData.by_stock || []), ...(_rplData.dividends || [])].map(r => r.market));
+  const sel = document.getElementById('rpl-market');
+  const single = markets.size < 2;
+  sel._seg.hidden = single; // the button row segmentSelect built at startup
+  if (single) sel.value = _rplFilter = 'ALL';
 }
 
 function filterRealizedYear(year) {
