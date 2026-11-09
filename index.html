@@ -681,7 +681,7 @@
           </div>
         </div>
         <div class="list-search">
-          <input type="search" id="exp-search" placeholder="搜尋備註、分類、幣別、金額（不限月份）" aria-label="搜尋收支紀錄" oninput="onExpenseSearch()">
+          <input type="search" id="exp-search" placeholder="搜尋備註、#標籤、金額（不限月份）" aria-label="搜尋收支紀錄" oninput="onExpenseSearch()">
           <div class="list-search-summary" id="exp-search-summary" hidden></div>
         </div>
         <div class="expense-list" id="expense-list">
@@ -1492,12 +1492,15 @@
           <input type="date" name="date" required onchange="onExpenseDateChange()">
         </div>
         <div class="form-group">
-          <label>備註</label>
-          <input type="text" name="note" placeholder="選填">
+          <label for="expense-note">備註</label>
+          <input type="text" name="note" id="expense-note" placeholder="選填，可加 #標籤" oninput="renderExpenseTagChips()">
+          <!-- one tap: recently used #tags (renderExpenseTagChips) -->
+          <div class="cat-chips tag-chips" id="expense-tag-chips" aria-label="最近用過的標籤"></div>
+          <p class="form-hint" id="expense-tag-hint">在備註加上 #標籤（例如 #日本2026）可以把一趟旅行歸成一組，之後點標籤就能看整趟的花費，跨月份也算在一起。</p>
         </div>
         <div class="form-actions">
           <button type="submit" class="btn btn-primary modal-footer-save">儲存</button>
-          <button type="submit" class="btn btn-outline" id="expense-continue-btn" data-continue="1" title="儲存後保留日期與類型，繼續記下一筆">儲存並再記一筆</button>
+          <button type="submit" class="btn btn-outline" id="expense-continue-btn" data-continue="1" title="儲存後保留日期、類型和 #標籤，繼續記下一筆">儲存並再記一筆</button>
           <button type="button" class="btn btn-danger" id="expense-delete-btn" onclick="deleteExpenseFromModal()">刪除</button>
         </div>
       </form>

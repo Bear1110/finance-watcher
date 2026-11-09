@@ -1911,6 +1911,9 @@ body[data-tab="expenses"] .fab { display: flex; }
 .exp-row:hover { background: var(--bg-card-hover); }
 .exp-row .e-cat { font-size: 0.95rem; min-width: 0; }
 .exp-row .e-meta { display: block; margin-top: 2px; font-size: 0.78rem; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exp-row .e-tag { color: var(--accent); cursor: pointer; }
+.exp-row .e-tag:hover { text-decoration: underline; }
+.tag-chips { margin-top: 8px; }
 .exp-row .e-amt { text-align: right; font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .exp-row .e-amt .cell-sub { font-size: 0.78rem; font-weight: 400; color: var(--text-secondary); opacity: 1; }
 .exp-income .e-amt { color: var(--green); }

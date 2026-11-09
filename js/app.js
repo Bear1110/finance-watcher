@@ -109,6 +109,8 @@ function fmtMoney(n, code) {
 
 /** YYYY-MM-DD → MM/DD */
 const shortDate = (d) => (d || '').slice(5).replace('-', '/');
+/** YYYY-MM-DD → YYYY/MM/DD */
+const fullDate = (d) => (d || '').replace(/-/g, '/');
 /** YYYY-MM-DD → MM/DD（三） */
 function dayLabel(d) {
   if (!d) return '';
@@ -2947,8 +2949,81 @@ function showExpenseModal(editing) {
   document.getElementById('expense-modal-title').textContent = editing ? '編輯紀錄' : '新增紀錄';
   document.getElementById('expense-continue-btn').style.display = editing ? 'none' : '';
   document.getElementById('expense-delete-btn').style.display = editing ? '' : 'none';
+  loadRecentTags();
+  renderExpenseTagChips();
+  // Opened from the dashboard before the 收支 page loaded (loadExpenses fills _expAll): fetch the
+  // records just for the recent tags
+  if (!_expAll.length) api('/api/expenses').then(r => { _expAll = r; loadRecentTags(); renderExpenseTagChips(); }, () => {});
   openModal('modal-expense');
   document.querySelector('#expense-form [name="amount"]').focus();
+}
+
+// --- 收支 #tags: "#日本2026" in the note groups records (a trip, a project). Tapping a tag in the list
+// searches for it, which ignores the month, so a trip from 11/27 to 12/10 is one list with its totals.
+// Phone keyboards often type the full-width ＃; both count.
+
+const TAG_RE = /[#＃]([^\s#＃,，、。;；]+)/g;
+const noteTags = (note) => [...String(note || '').matchAll(TAG_RE)].map(m => `#${m[1]}`);
+const sameTag = (a, b) => a.toLowerCase() === b.toLowerCase();
+const MAX_TAG_CHIPS = 8;
+
+/** Up to `max` distinct tags (any iterable), in order; case-insensitive, the first spelling wins. */
+function uniqueTags(tags, max = MAX_TAG_CHIPS) {
+  const seen = new Map();
+  for (const t of tags) {
+    if (seen.size >= max) break;
+    if (!seen.has(t.toLowerCase())) seen.set(t.toLowerCase(), t);
+  }
+  return [...seen.values()];
+}
+
+let _recentTags = []; // newest first; worked out when the dialog opens, not on every keystroke
+
+function loadRecentTags() {
+  // Lazy: uniqueTags stops reading once it has enough, so only the newest records are parsed
+  _recentTags = uniqueTags((function* () { for (const e of _expAll) yield* noteTags(e.note); })());
+}
+
+/** The dialog's tag chips: tags in the note (selected) + recently used ones; tap toggles. */
+function renderExpenseTagChips() {
+  const inNote = noteTags(expField('note').value);
+  const tags = uniqueTags([...inNote, ..._recentTags]);
+  const box = document.getElementById('expense-tag-chips');
+  box.hidden = !tags.length;
+  document.getElementById('expense-tag-hint').hidden = tags.length > 0;
+  box.innerHTML = tags.map(t => {
+    const on = inNote.some(x => sameTag(x, t));
+    return `<button type="button" class="cat-chip${on ? ' active' : ''}" aria-pressed="${on}" data-tag="${escapeAttr(t)}" onclick="toggleExpenseTag(this.dataset.tag)">${escapeHtml(t)}</button>`;
+  }).join('');
+}
+
+function toggleExpenseTag(tag) {
+  const note = expField('note');
+  const has = noteTags(note.value).some(t => sameTag(t, tag));
+  note.value = has
+    ? note.value.replace(TAG_RE, (m, t) => (sameTag(`#${t}`, tag) ? '' : m)).replace(/\s+/g, ' ').trim()
+    : `${note.value.trim()} ${tag}`.trim();
+  renderExpenseTagChips();
+}
+
+/** Note text with its #tags as tappable chips (inside the row button: the tap searches instead of editing). */
+function noteHTML(note) {
+  note = String(note || '');
+  let html = '', last = 0;
+  for (const m of note.matchAll(TAG_RE)) {
+    html += escapeHtml(note.slice(last, m.index)) +
+      `<span class="e-tag" data-tag="#${escapeAttr(m[1])}" onclick="searchExpenseTag(event, this.dataset.tag)" title="看這個標籤的所有紀錄">#${escapeHtml(m[1])}</span>`;
+    last = m.index + m[0].length;
+  }
+  return html + escapeHtml(note.slice(last));
+}
+
+function searchExpenseTag(event, tag) {
+  event.stopPropagation();
+  const input = document.getElementById('exp-search');
+  input.value = tag;
+  renderExpenseTable(expMonth());
+  input.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
 function openExpenseModal() {
@@ -2987,9 +3062,9 @@ async function submitExpense(e) {
       try { localStorage.setItem('expenseCurrency', data.currency); } catch (err) { /* ignore */ }
     }
     if (!id && e.submitter?.dataset.continue) {
-      // Keep type, category and date; clear the rest for the next entry
+      // Keep type, category, date and the note's #tags; clear the rest for the next entry
       form.querySelector('[name="amount"]').value = '';
-      form.querySelector('[name="note"]').value = '';
+      form.querySelector('[name="note"]').value = noteTags(data.note).join(' ');
       updateExpenseFxHint();
       form.querySelector('[name="amount"]').focus();
     } else {
@@ -3327,11 +3402,39 @@ function expAmountCell(e) {
 /** The search box re-renders once typing pauses (the list can be every record). */
 const onExpenseSearch = debounce(() => renderExpenseTable(expMonth()));
 
-/** Search: every word must appear in the note, category or currency (code / name / aliases), or equal the amount. */
+/**
+ * Search: every word must appear in the note, category or currency (code / name / aliases), or equal the
+ * amount; a #word must be one of the note's tags (#日本 doesn't match #日本2026 or a note just saying 日本).
+ */
 function expenseMatches(e, words) {
   const c = expCurrency(e.currency);
   const text = [e.note, catLabel(e.category), c.code, c.symbol, c.name, ...c.aliases].join(' ').toLowerCase();
-  return words.every(w => text.includes(w) || Number(w.replace(/,/g, '')) === e.amount);
+  let tags; // parsed only for a #word
+  return words.every(w => (/^[#＃]/.test(w)
+    ? (tags ??= noteTags(e.note).map(t => t.toLowerCase())).includes(`#${w.slice(1)}`)
+    : text.includes(w) || Number(w.replace(/,/g, '')) === e.amount));
+}
+
+/**
+ * Search results summary: count and totals, the date range (2026/11/27–12/10) and, when the spending
+ * has several categories, the top three ("住宿 NT$ 20,000 · 餐飲 NT$ 8,000 · 交通 NT$ 5,000").
+ */
+function searchSummaryHTML(records) {
+  if (!records.length) return '找到 0 筆';
+  const dates = records.map(e => e.date).sort();
+  const first = dates[0];
+  const last = dates.at(-1);
+  let range = fullDate(first);
+  if (last !== first) range += `–${last.startsWith(first.slice(0, 4)) ? shortDate(last) : fullDate(last)}`;
+  const byCat = new Map();
+  for (const e of records) {
+    if (e.type === 'income') continue;
+    const k = catLabel(e.category);
+    byCat.set(k, (byCat.get(k) || 0) + e.amount_twd);
+  }
+  const top = byCat.size > 1 ? [...byCat].sort((a, b) => b[1] - a[1]).slice(0, 3)
+    .map(([k, v]) => `${escapeHtml(k)} ${fmtTWD(v)}`).join(' · ') : '';
+  return `<div>${[`找到 ${records.length} 筆`, expTotals(records), range].filter(Boolean).join(' · ')}</div>${top ? `<div>${top}</div>` : ''}`;
 }
 
 /** Income / expense totals in TWD: "收入 +NT$ 1,500 · 支出 NT$ 1,283" (parts with nothing are left out). */
@@ -3353,7 +3456,7 @@ function renderExpenseTable(month) {
     (_expCatFilter === null || (e.category || '') === _expCatFilter));
   const summary = document.getElementById('exp-search-summary');
   summary.hidden = !words.length;
-  summary.textContent = `找到 ${filtered.length} 筆${filtered.length ? ` · ${expTotals(filtered)}` : ''}`;
+  if (words.length) summary.innerHTML = searchSummaryHTML(filtered);
   const list = document.getElementById('expense-list');
   if (filtered.length === 0) {
     list.innerHTML = `<div class="empty-state">${words.length ? '找不到符合的紀錄' : month ? '這個月尚無紀錄' : '此年度尚無紀錄'}</div>`;
@@ -3362,12 +3465,12 @@ function renderExpenseTable(month) {
   const dateText = (date) => `${words.length ? `${date.slice(0, 4)}/` : ''}${dayLabel(date)}`;
   const row = (e, meta) => `
       <button type="button" class="exp-row exp-${e.type || 'expense'}" onclick="editExpense(${e.id})" aria-label="編輯 ${escapeAttr(catLabel(e.category))}">
-        <span class="e-cat">${escapeHtml(catDisplay(e.category))}${meta ? `<span class="e-meta">${escapeHtml(meta)}</span>` : ''}</span>
+        <span class="e-cat">${escapeHtml(catDisplay(e.category))}${meta ? `<span class="e-meta">${meta}</span>` : ''}</span>
         <span class="e-amt">${expAmountCell(e)}</span>
       </button>`;
   if (document.getElementById('exp-sort').value === 'amount') {
     list.innerHTML = filtered.sort((a, b) => b.amount_twd - a.amount_twd)
-      .map(e => row(e, [dateText(e.date), e.note].filter(Boolean).join(' · '))).join('');
+      .map(e => row(e, [escapeHtml(dateText(e.date)), noteHTML(e.note)].filter(Boolean).join(' · '))).join('');
     return;
   }
   const days = new Map(); // date -> records, newest first (the API's order)
@@ -3377,7 +3480,7 @@ function renderExpenseTable(month) {
   }
   list.innerHTML = [...days].map(([date, recs]) => `
       <div class="exp-day"><span>${dateText(date)}</span><span>${expTotals(recs)}</span></div>` +
-    recs.map(e => row(e, e.note)).join('')).join('');
+    recs.map(e => row(e, noteHTML(e.note))).join('')).join('');
 }
 
 // ============================================================
