@@ -5,17 +5,22 @@
 import * as db from './db.js';
 import { route } from './router.js';
 import { fetchQuotes, fetchTWNames, hasProxy } from './market.js';
+import { marketForSymbol } from './util.js';
 
 const DAY_MS = 24 * 3600 * 1000;
 const NAME_TTL_MS = 30 * DAY_MS;
 
 /** '2330' for 2330.TW / 2330.TWO, null for other markets. */
-export const twCode = (symbol) => symbol.match(/^([0-9A-Z]+)\.TWO?$/i)?.[1].toUpperCase() ?? null;
+export const twCode = (symbol) => (marketForSymbol(symbol) === 'TW' ? symbol.replace(/\.TWO?$/, '') : null);
 
 /** Every cached name: { symbol: name } (the pages and the AI prompt use the same table). */
 export function allNames() {
   return Object.fromEntries(db.all('stock_names').filter((r) => r.name).map((r) => [r.symbol, r.name]));
 }
+
+/** Every symbol the user has records of (holdings, transactions incl. managed accounts, dividends). */
+export const ownSymbols = () =>
+  [...new Set(['stock_holdings', 'stock_transactions', 'dividends'].flatMap((t) => db.all(t).map((r) => r.symbol)))];
 
 function stale(symbol, now) {
   const r = db.findBy('stock_names', 'symbol', symbol);
@@ -23,33 +28,39 @@ function stale(symbol, now) {
   return now - Date.parse(r.fetched_at) > (r.name ? NAME_TTL_MS : DAY_MS);
 }
 
-/** Look up the symbols whose name is missing or old; failures just leave them for next time. */
+/**
+ * Look up the symbols whose name is missing or old. One with no name found is saved as '' (tried
+ * again after a day); a failed request saves nothing, so the next call tries again.
+ */
 export async function refreshNames(symbols) {
   if (!hasProxy()) return;
   const now = Date.now();
-  const todo = [...new Set(symbols)].filter((s) => s && stale(s, now));
-  if (!todo.length) return;
   const fetchedAt = new Date(now).toISOString();
   const save = (symbol, name) => db.upsert('stock_names', { symbol, name: name || '', fetched_at: fetchedAt });
-
-  const tw = todo.filter(twCode);
-  const other = todo.filter((s) => !twCode(s));
+  const tw = new Map(); // code -> symbol
+  const other = [];
+  for (const s of new Set(symbols)) {
+    if (!s || !stale(s, now)) continue;
+    const code = twCode(s);
+    if (code) tw.set(code, s); else other.push(s);
+  }
   await Promise.all([
-    tw.length && fetchTWNames(tw.map(twCode))
-      .then((names) => tw.forEach((s) => save(s, names[twCode(s)])))
+    tw.size && fetchTWNames([...tw.keys()])
+      .then((names) => tw.forEach((s, code) => save(s, names[code])))
       .catch((e) => console.warn('tw names', e.message)),
     other.length && fetchQuotes(other)
-      .then((quotes) => other.forEach((s) => { if (quotes[s]) save(s, quotes[s].name); }))
+      .then((quotes) => other.forEach((s) => save(s, quotes[s]?.name)))
       .catch((e) => console.warn('names', e.message)),
   ]);
 }
 
 /**
- * GET /api/stocks/names[?symbols=A,B]: every cached name { symbol: name }; with symbols, those are
- * looked up first when missing (the page asks for the ones it is about to show).
+ * GET /api/stocks/names: every cached name { symbol: name }. ?refresh=1 first looks up the user's own
+ * symbols that are missing or old; ?symbols=A,B those symbols (ETF holdings and others shown on a page).
  */
 route('GET', '/api/stocks/names', async (req) => {
   const symbols = (req.query.get('symbols') || '').split(',').map((s) => s.trim().toUpperCase()).filter(Boolean);
   if (symbols.length) await refreshNames(symbols);
+  else if (req.query.has('refresh')) await refreshNames(ownSymbols());
   return allNames();
 });

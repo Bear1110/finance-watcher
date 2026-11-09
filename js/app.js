@@ -296,44 +296,58 @@ function fillYearFilter(sel, dates, allLabel = '全部') {
 
 // ---- Stock names next to symbols ("2330 台積電"; js/server/names.js looks them up and caches them) ----
 let _stockNames = {}; // symbol -> name
-const _namesAsked = new Set(); // asked once per visit; a symbol with no name is not asked again
-const _namesQueue = new Set();
+const _namesAsked = new Set(); // shown symbols that had no name (looked up once per visit)
+
+/** Yahoo's .TW / .TWO suffixes mean 台股. */
+const isTW = (s) => /\.TWO?$/.test(s);
 
 /** 台股 code without the .TW / .TWO suffix (2330.TW → 2330); other symbols unchanged. */
 const symCode = (s) => String(s || '').replace(/\.TWO?\b/g, '');
 
 /**
- * The name of a symbol ('' until known). Unknown ones are looked up in one batch, then the current
- * tab redraws. `fallback`: a name already at hand (Yahoo's, for ETF holdings) — 台股 still get the Chinese one.
+ * Startup: the cached names before the first tab draws, then the user's own symbols that are
+ * missing or old are looked up in the background (the tab redraws if any name changed).
+ */
+async function loadStockNames() {
+  try {
+    _stockNames = await api('/api/stocks/names');
+  } catch (e) { return; }
+  api('/api/stocks/names?refresh=1').then(setStockNames, () => {});
+}
+
+/** New names from the server; redraws the current tab when one of them changes what is shown. */
+function setStockNames(names, symbols = Object.keys(names)) {
+  const changed = symbols.some(s => (names[s] || '') !== (_stockNames[s] || ''));
+  _stockNames = names;
+  if (changed) onTabActivated(document.body.dataset.tab || 'dashboard');
+}
+
+/**
+ * The name of a symbol ('' until known); an unknown one is looked up (in one batch with others).
+ * `fallback`: a name already at hand (Yahoo's, for ETF holdings) — 台股 still get the Chinese one.
  */
 function stockName(sym, fallback = '') {
   if (_stockNames[sym]) return _stockNames[sym];
-  if (sym && !_namesAsked.has(sym) && (!fallback || /\.TWO?$/.test(sym))) {
+  if (sym && !_namesAsked.has(sym) && (!fallback || isTW(sym))) {
     _namesAsked.add(sym);
-    _namesQueue.add(sym);
     requestStockNames();
   }
   return fallback;
 }
 
-const requestStockNames = debounce(async () => {
-  const syms = [..._namesQueue];
-  _namesQueue.clear();
-  try {
-    const names = await api(`/api/stocks/names?symbols=${encodeURIComponent(syms.join(','))}`);
-    const changed = Object.keys(names).some(k => names[k] !== _stockNames[k]);
-    _stockNames = names;
-    if (changed) onTabActivated(document.body.dataset.tab || 'dashboard');
-  } catch (e) { /* names are extra: the code alone still works */ }
+const requestStockNames = debounce(() => {
+  const syms = [..._namesAsked].filter(s => !_stockNames[s]);
+  api(`/api/stocks/names?symbols=${encodeURIComponent(syms.join(','))}`)
+    .then(names => setStockNames(names, syms), () => {}); // names are extra: the code alone still works
 }, 50);
 
 /** "2330 台積電" as plain text (toasts, titles, summaries); escape it where it goes into HTML. */
-const stockText = (sym, fallback) => [symCode(sym), stockName(sym, fallback)].filter(Boolean).join(' ');
+const stockText = (sym) => [symCode(sym), stockName(sym)].filter(Boolean).join(' ');
 
 /** The code, then the name small and gray (tables and lists). */
-function stockHTML(sym, fallback) {
-  const n = stockName(sym, fallback);
-  return `<span class="sym-code">${escapeHtml(symCode(sym) || '--')}</span>${n ? ` <span class="sym-name" title="${escapeAttr(n)}">${escapeHtml(n)}</span>` : ''}`;
+function stockHTML(sym) {
+  const n = stockName(sym);
+  return `${escapeHtml(symCode(sym) || '--')}${n ? ` <span class="sym-name" title="${escapeAttr(n)}">${escapeHtml(n)}</span>` : ''}`;
 }
 
 /** A search box's words, lowercased (every one must match). */
@@ -1073,7 +1087,7 @@ function dayChangeCell(chg, mv, cur, strong) {
  * fall back to a Google search, which shows the price card.
  */
 function quoteURL(s) {
-  const code = s.symbol.replace(/\.TWO?$/, '');
+  const code = symCode(s.symbol);
   if (s.symbol.endsWith('.TW')) return `https://www.google.com/finance/quote/${encodeURIComponent(code)}:TPE`;
   if (s.market === 'US' && s.exchange) return `https://www.google.com/finance/quote/${encodeURIComponent(code)}:${s.exchange}`;
   return `https://www.google.com/search?q=${encodeURIComponent(`${code} 股價`)}`;
@@ -1776,7 +1790,7 @@ function renderLookThrough() {
       <div class="pf-row-head">
         <span class="pf-sym">${escapeHtml(isStock ? symCode(r.key) : r.name)}</span>
         ${mkt ? `<span class="pf-mkt">${mkt.short}</span>` : ''}
-        ${isStock && ltName ? `<span class="lt-name" title="${escapeAttr(ltName)}">${escapeHtml(ltName)}</span>` : ''}
+        ${isStock && ltName ? `<span class="sym-name" title="${escapeAttr(ltName)}">${escapeHtml(ltName)}</span>` : ''}
         ${badge}
         ${flag ? `<span class="pf-flag ${flag[1]}">${flag[0]}</span>` : ''}
         <span class="pf-weight">${pct(weight)}</span>
@@ -2065,7 +2079,7 @@ async function loadPerformance(view = 'main') {
   const benchKept = benchSel.value;
   // Buttons show the ticker (0050, SPY…); the full name is the tooltip
   benchSel.innerHTML = '<option value="" data-short="不比較大盤">不比較大盤</option>' +
-    (data.benchmarks || []).map(b => `<option value="${b.symbol}" data-short="${escapeAttr(b.symbol.replace(/\.TWO?$/, ''))}">比較 ${b.label}</option>`).join('');
+    (data.benchmarks || []).map(b => `<option value="${b.symbol}" data-short="${escapeAttr(symCode(b.symbol))}">比較 ${b.label}</option>`).join('');
   segmentSelect(benchSel);
   benchSel.value = benchKept;
 
@@ -2569,7 +2583,7 @@ function updateDividendCurrency() {
   let market = form.querySelector('[name="market"]').value;
   if (!market) {
     const sym = form.querySelector('[name="symbol"]').value.trim().toUpperCase();
-    market = /\.TWO?$/.test(sym) || !sym ? 'TW' : 'US';
+    market = isTW(sym) || !sym ? 'TW' : 'US';
   }
   const label = market === 'TW' ? 'NT$' : 'US$';
   form.querySelectorAll('.div-cur').forEach(el => { el.textContent = label; });
@@ -3952,8 +3966,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initExpenseDefaults();
   renderAISites();
 
-  // Load dashboard data
-  loadDashboard();
+  // Load dashboard data (once the cached stock names are in, so it draws with them)
+  loadStockNames().finally(loadDashboard);
 
   initHoldingsView();
 

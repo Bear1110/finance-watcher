@@ -12,7 +12,7 @@ import { xirrHandler } from './performance.js';
 import { check } from './datacheck.js';
 import { expenseTWD } from './expenses.js';
 import { lookThroughData, REST, BOND } from './lookthrough.js';
-import { allNames } from './names.js';
+import { allNames, ownSymbols, refreshNames } from './names.js';
 import { getProfile, missing, LABELS, CHOICES, BIG_EXPENSE_YEARS } from './profile.js';
 
 // ---------------------------------------------------------------- data for the prompt
@@ -25,6 +25,7 @@ export async function generateAutoPrompt(sections) {
   const year = new Date().getFullYear();
   const soft = (p) => p.catch(() => null); // a missing quote proxy only drops that part
   const overviewP = soft(buildOverview());
+  const namesP = soft(refreshNames(ownSymbols())); // names not looked up yet, so the prompt has them like the pages
   const [built, perf, xirr, lookthrough] = await Promise.all([
     overviewP,
     set.has('portfolio') ? soft(performance()) : null,
@@ -35,6 +36,7 @@ export async function generateAutoPrompt(sections) {
   // The data check reads only the cached price history (no network); performance() above
   // refreshes it, so run the check after (without the portfolio section it uses what is cached).
   const checks = await soft(check());
+  await namesP;
   const { overview = null, stocks = null, portfolio = null } = built || {};
   return generateFinancialPrompt({
     sections: set,

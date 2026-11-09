@@ -86,8 +86,10 @@ async function twNames(codes, ctx) {
   const out = {};
   const rest = [];
   for (const c of codes) if (listed[c]) out[c] = listed[c]; else rest.push(c);
-  const found = await Promise.all(rest.slice(0, MAX_SINGLE).map((c) => singleName(c, ctx)));
-  rest.slice(0, MAX_SINGLE).forEach((c, i) => { if (found[i]) out[c] = found[i]; });
+  await Promise.all(rest.slice(0, MAX_SINGLE).map(async (c) => {
+    const name = await singleName(c, ctx);
+    if (name) out[c] = name;
+  }));
   return out;
 }
 

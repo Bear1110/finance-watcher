@@ -38,8 +38,8 @@ export function setQuoteFallback(fn) {
   quoteFallback = fn;
 }
 
-/** GET a Yahoo chart path (`/v8/finance/chart/SYM?...`) through the proxy. */
-async function yahooGetJSON(path, label) {
+/** GET a path on the proxy (Yahoo chart `/v8/finance/chart/SYM?...`, `/tw-names?...`) as JSON. */
+async function proxyGetJSON(path, label) {
   const base = proxyURL();
   if (!base) throw new MarketUnavailableError();
   let resp;
@@ -48,19 +48,12 @@ async function yahooGetJSON(path, label) {
   } catch (e) {
     throw new Error(`fetch ${label}: ${e.message}`);
   }
-  if (!resp.ok) throw new Error(`yahoo API returned ${resp.status} for ${label}`);
+  if (!resp.ok) throw new Error(`proxy returned ${resp.status} for ${label}`);
   return resp.json();
 }
 
 /** 台股中文名稱 { '2330': '台積電' } for the given codes, from the proxy's /tw-names (TWSE open data). */
-export async function fetchTWNames(codes) {
-  const base = proxyURL();
-  if (!base) throw new MarketUnavailableError();
-  const resp = await fetch(`${base}/tw-names?codes=${codes.map(encodeURIComponent).join(',')}`,
-    { signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined });
-  if (!resp.ok) throw new Error(`tw-names returned ${resp.status}`);
-  return resp.json();
-}
+export const fetchTWNames = (codes) => proxyGetJSON(`/tw-names?codes=${codes.map(encodeURIComponent).join(',')}`, 'tw-names');
 
 const chartPath = (symbol, query) => `/v8/finance/chart/${encodeURIComponent(symbol)}?${query}`;
 
@@ -107,7 +100,7 @@ function makeQuote(symbol, price, prevClose, currency, name, exchange, type) {
 }
 
 async function fetchQuoteYahoo(symbol) {
-  const yr = await yahooGetJSON(chartPath(symbol, 'interval=1d&range=1d'), symbol);
+  const yr = await proxyGetJSON(chartPath(symbol, 'interval=1d&range=1d'), symbol);
   if (yr.chart?.error) throw new Error(`yahoo API error for ${symbol}: ${yr.chart.error.description}`);
   const res = yr.chart?.result?.[0];
   if (!res) throw new Error(`no results for ${symbol}`);
@@ -217,7 +210,7 @@ const periodEnd = () => Math.ceil(Date.now() / 3600000) * 3600;
  * in dividends. The last bar may be today's in-progress price.
  */
 export async function fetchDailyCloses(symbol, since, until = null) {
-  const body = await yahooGetJSON(
+  const body = await proxyGetJSON(
     chartPath(symbol, `interval=1d&period1=${unix(since)}&period2=${until ? unix(until) : periodEnd()}`),
     `${symbol} history`);
   if (body.chart?.error) throw new Error(`yahoo history error for ${symbol}: ${body.chart.error.description}`);
@@ -278,7 +271,7 @@ export async function fetchDividendHistory(symbol, since) {
   const key = `${symbol}|${since.toISOString().slice(0, 10)}`;
   const e = dividendCache.get(key);
   if (e && Date.now() - e.at < DIVIDEND_TTL_MS) return e.evs;
-  const body = await yahooGetJSON(
+  const body = await proxyGetJSON(
     chartPath(symbol, `interval=1mo&events=div&period1=${unix(since)}&period2=${periodEnd()}`),
     `${symbol} dividends`);
   const res = body.chart?.result?.[0];
@@ -306,7 +299,7 @@ const holdingsCache = new Map(); // symbol -> { at, info }
 export async function fetchFundHoldings(symbol) {
   const e = holdingsCache.get(symbol);
   if (e && Date.now() - e.at < HOLDINGS_TTL_MS) return e.info;
-  const body = await yahooGetJSON(`/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=quoteType,topHoldings`, `${symbol} holdings`);
+  const body = await proxyGetJSON(`/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=quoteType,topHoldings`, `${symbol} holdings`);
   const res = body.quoteSummary?.result?.[0];
   if (!res) throw new Error(body.quoteSummary?.error?.description || `no holdings for ${symbol}`);
   const type = res.quoteType?.quoteType || '';
