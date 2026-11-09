@@ -2,7 +2,7 @@
 // Google 的 API、登入、Yahoo 代理一律不經快取。
 // 採「網路優先」，一般部署會自動拿到新版；SHELL 清單有增減時請把 VERSION 加一。
 
-const VERSION = 'v9'; // 網站版本見 js/version.js
+const VERSION = 'v10'; // 網站版本見 js/version.js
 const CACHE = `finance-watcher-${VERSION}`;
 const SHELL = [
   './',
@@ -28,6 +28,7 @@ const SHELL = [
   'js/server/lookthrough.js',
   'js/server/lots.js',
   'js/server/managed.js',
+  'js/server/names.js',
   'js/server/market.js',
   'js/server/other_assets.js',
   'js/server/overview.js',

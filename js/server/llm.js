@@ -12,6 +12,7 @@ import { xirrHandler } from './performance.js';
 import { check } from './datacheck.js';
 import { expenseTWD } from './expenses.js';
 import { lookThroughData, REST, BOND } from './lookthrough.js';
+import { allNames } from './names.js';
 import { getProfile, missing, LABELS, CHOICES, BIG_EXPENSE_YEARS } from './profile.js';
 
 // ---------------------------------------------------------------- data for the prompt
@@ -37,6 +38,7 @@ export async function generateAutoPrompt(sections) {
   const { overview = null, stocks = null, portfolio = null } = built || {};
   return generateFinancialPrompt({
     sections: set,
+    names: allNames(),
     profile: getProfile(),
     rate: storedUSDTWDRate(),
     overview,
@@ -130,7 +132,7 @@ function portfolioSection(data) {
     sb += '|------|------|------|------|------|-----------|----------------|-------|--------|\n';
     for (const x of [...h.holdings].sort((a, b) => b.market_value_twd - a.market_value_twd)) {
       const w = h.total_value_twd > 0 ? x.market_value_twd / h.total_value_twd * 100 : 0;
-      sb += `| ${x.symbol} | ${x.market} | ${f(x.shares, 0)} | ${f(x.avg_cost, 2)} | ${f(x.current_price, 2)} | ${money(x.market_value_twd)} | ${smoney(x.unrealized_pl_twd)} | ${pct(x.pl_percent)} | ${f(w, 1)}% |\n`;
+      sb += `| ${stock(data, x.symbol)} | ${x.market} | ${f(x.shares, 0)} | ${f(x.avg_cost, 2)} | ${f(x.current_price, 2)} | ${money(x.market_value_twd)} | ${smoney(x.unrealized_pl_twd)} | ${pct(x.pl_percent)} | ${f(w, 1)}% |\n`;
     }
     sb += '\n';
   }
@@ -138,7 +140,7 @@ function portfolioSection(data) {
   if (pf) {
     const top = pf.rows[0];
     sb += '### 集中度與配置\n';
-    sb += `- 最大持股 ${top.symbol} 佔 ${f(top.weight, 1)}%；前 3 大合計 ${f(pf.top3, 1)}%（App 以 25% 為偏高、40% 為高度集中）\n`;
+    sb += `- 最大持股 ${stock(data, top.symbol)} 佔 ${f(top.weight, 1)}%；前 3 大合計 ${f(pf.top3, 1)}%（App 以 25% 為偏高、40% 為高度集中）\n`;
     sb += `- 等效持股數 ${f(pf.effective, 1)} 檔（實際持有 ${pf.rows.length} 檔；1 ÷ Σ權重²，越小越集中）\n`;
     if (pf.usd.pct != null && pf.usd.stock + (pf.usd.cash || 0) > 0) sb += `- 美元資產佔淨資產 ${f(pf.usd.pct, 1)}%\n`;
     sb += `- 近 12 個月股利 NT$ ${money(pf.dividends.ttm)}${pf.dividends.yield_cost != null ? `，以持有成本計殖利率 ${f(pf.dividends.yield_cost, 2)}%` : ''}\n\n`;
@@ -192,6 +194,9 @@ function portfolioSection(data) {
 
 const LT_ROWS = 10;
 
+/** "2330 台積電" (names.js; `fallback` when it has none, e.g. Yahoo's name of an ETF holding). */
+const stock = (data, symbol, fallback = '') => [symbol, data.names?.[symbol] || fallback].filter(Boolean).join(' ');
+
 /** ETF 穿透: each company's total weight, direct plus held through ETFs (top 10 holdings of each ETF). */
 function lookThroughSection(data) {
   const lt = data.lookthrough;
@@ -200,11 +205,11 @@ function lookThroughSection(data) {
   const nwPct = (v) => (nw > 0 ? `${f(v / nw * 100, 1)}%` : '--');
   let sb = '### ETF 穿透後的公司曝險\n';
   sb += 'ETF 依各自的前十大成分股拆開，和直接持有的同一家公司合併（ADR 併入台股，例如 TSM 算台積電）；前十大以外的部分合成「其他成分股」。\n\n';
-  sb += `- 穿透前最大持股 ${lt.before.top.symbol} 佔股票 ${f(lt.before.top.weight, 1)}%，等效持股 ${f(lt.before.effective, 1)} 檔\n`;
-  if (lt.after) sb += `- 穿透後最大單一公司 ${lt.after.top.symbol} 佔股票 ${f(lt.after.top.weight, 1)}%，等效持股 ${f(lt.after.effective, 1)} 檔\n`;
+  sb += `- 穿透前最大持股 ${stock(data, lt.before.top.symbol)} 佔股票 ${f(lt.before.top.weight, 1)}%，等效持股 ${f(lt.before.effective, 1)} 檔\n`;
+  if (lt.after) sb += `- 穿透後最大單一公司 ${stock(data, lt.after.top.symbol)} 佔股票 ${f(lt.after.top.weight, 1)}%，等效持股 ${f(lt.after.effective, 1)} 檔\n`;
   sb += '\n| 公司 | 合計(TWD) | 佔股票% | 佔淨資產% | 直接持有 | 經由 ETF |\n';
   sb += '|------|-----------|--------|----------|---------|---------|\n';
-  const name = (r) => (r.key === REST ? '其他成分股（前十大以外）' : r.key === BOND ? '債券' : `${r.key}${r.name ? ` ${r.name}` : ''}`);
+  const name = (r) => (r.key === REST ? '其他成分股（前十大以外）' : r.key === BOND ? '債券' : stock(data, r.key, r.name));
   const via = (r) => Object.entries(r.via).sort((a, b) => b[1] - a[1]).map(([etf, v]) => `${etf} ${money(v)}`).join('、') || '--';
   const named = lt.rows.filter((r) => !r.lumped).slice(0, LT_ROWS);
   for (const r of [...named, ...lt.rows.filter((r) => r.lumped)]) {
@@ -230,7 +235,7 @@ function realizedSection(data) {
   sb += '|------|------|---------|-----------|----------|-------|-------|\n';
   for (const s of data.realized.by_stock) {
     const cur = s.currency === 'TWD' ? 'NT$' : 'US$';
-    sb += `| ${s.symbol} | ${s.market} | ${s.total_trades} | ${cur} ${money(s.total_realized_pl)} | ${pct(s.avg_return_pct)} | ${pct(s.best_trade_pct)} | ${pct(s.worst_trade_pct)} |\n`;
+    sb += `| ${stock(data, s.symbol)} | ${s.market} | ${s.total_trades} | ${cur} ${money(s.total_realized_pl)} | ${pct(s.avg_return_pct)} | ${pct(s.best_trade_pct)} | ${pct(s.worst_trade_pct)} |\n`;
   }
   sb += '\n';
   return ['交易績效（已實現損益）', sb];

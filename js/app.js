@@ -294,6 +294,48 @@ function fillYearFilter(sel, dates, allLabel = '全部') {
   sel.value = years.includes(prev) ? prev : '';
 }
 
+// ---- Stock names next to symbols ("2330 台積電"; js/server/names.js looks them up and caches them) ----
+let _stockNames = {}; // symbol -> name
+const _namesAsked = new Set(); // asked once per visit; a symbol with no name is not asked again
+const _namesQueue = new Set();
+
+/** 台股 code without the .TW / .TWO suffix (2330.TW → 2330); other symbols unchanged. */
+const symCode = (s) => String(s || '').replace(/\.TWO?\b/g, '');
+
+/**
+ * The name of a symbol ('' until known). Unknown ones are looked up in one batch, then the current
+ * tab redraws. `fallback`: a name already at hand (Yahoo's, for ETF holdings) — 台股 still get the Chinese one.
+ */
+function stockName(sym, fallback = '') {
+  if (_stockNames[sym]) return _stockNames[sym];
+  if (sym && !_namesAsked.has(sym) && (!fallback || /\.TWO?$/.test(sym))) {
+    _namesAsked.add(sym);
+    _namesQueue.add(sym);
+    requestStockNames();
+  }
+  return fallback;
+}
+
+const requestStockNames = debounce(async () => {
+  const syms = [..._namesQueue];
+  _namesQueue.clear();
+  try {
+    const names = await api(`/api/stocks/names?symbols=${encodeURIComponent(syms.join(','))}`);
+    const changed = Object.keys(names).some(k => names[k] !== _stockNames[k]);
+    _stockNames = names;
+    if (changed) onTabActivated(document.body.dataset.tab || 'dashboard');
+  } catch (e) { /* names are extra: the code alone still works */ }
+}, 50);
+
+/** "2330 台積電" as plain text (toasts, titles, summaries); escape it where it goes into HTML. */
+const stockText = (sym, fallback) => [symCode(sym), stockName(sym, fallback)].filter(Boolean).join(' ');
+
+/** The code, then the name small and gray (tables and lists). */
+function stockHTML(sym, fallback) {
+  const n = stockName(sym, fallback);
+  return `<span class="sym-code">${escapeHtml(symCode(sym) || '--')}</span>${n ? ` <span class="sym-name" title="${escapeAttr(n)}">${escapeHtml(n)}</span>` : ''}`;
+}
+
 /** A search box's words, lowercased (every one must match). */
 const searchWords = (inputId) => document.getElementById(inputId).value.trim().toLowerCase().split(/\s+/).filter(Boolean);
 
@@ -676,7 +718,7 @@ function renderRecentTx(txList) {
   body.innerHTML = txList.length ? txList.slice(0, 5).map(t => `
     <tr>
       <td>${t.date || '--'}</td>
-      <td>${escapeHtml(t.symbol || '--')}</td>
+      <td>${stockHTML(t.symbol)}</td>
       <td><span class="${t.action === 'BUY' ? 'tag-buy' : 'tag-sell'}">${t.action === 'BUY' ? '買' : '賣'}</span></td>
       <td>${fmt(t.shares)}</td>
       <td>${fmtNum(t.price, 2)}</td>
@@ -1043,7 +1085,7 @@ function renderHoldingRow(s) {
   const dm = divMetrics(s.unrealized_pl || 0, costNative, s.market_value || 0, _divBySymbol[s.symbol]);
   return `
     <tr>
-      <td class="c-sym"><a class="sym-link" href="${quoteURL(s)}" target="_blank" rel="noopener" title="在 Google 財經查看"><strong>${s.symbol || '--'}</strong></a></td>
+      <td class="c-sym"><a class="sym-link" href="${quoteURL(s)}" target="_blank" rel="noopener" title="在 Google 財經查看"><strong>${stockHTML(s.symbol)}</strong></a></td>
       <td class="c-sh">${fmt(s.shares)}<span class="cell-sub">均價 ${fmtPrice(s.avg_cost, cur)}</span></td>
       <td class="c-cost">${fmtCur(costNative, cur)}</td>
       <td class="c-px">${fmtPrice(s.current_price, cur)}${s.current_price ? `<span class="cell-sub ${plClass(s.day_change_pct)}" title="較前一交易日收盤">${fmtPct(s.day_change_pct)}</span>` : ''}</td>
@@ -1332,8 +1374,8 @@ function renderRealizedSummary() {
   const withDiv = totalPLTwd + divTwd;
   setStat('rpl-total-div', plSpan(withDiv), '已實現損益 ＋ 股利');
   if (bestTrade) {
-    const worst = worstTrade ? ` · 最差 ${worstTrade.symbol} ${plSpan(worstTrade.pct, fmtPct)}` : '';
-    setStat('rpl-best', plSpan(bestTrade.pct, fmtPct), bestTrade.symbol + worst);
+    const worst = worstTrade ? ` · 最差 ${escapeHtml(stockText(worstTrade.symbol))} ${plSpan(worstTrade.pct, fmtPct)}` : '';
+    setStat('rpl-best', plSpan(bestTrade.pct, fmtPct), escapeHtml(stockText(bestTrade.symbol)) + worst);
   } else {
     setStat('rpl-best', '--');
   }
@@ -1351,7 +1393,7 @@ function renderRealizedSummary() {
     const fc = s.currency === 'TWD' ? fmtTWD : fmtUSD;
     return `
       <tr>
-        <td><strong>${s.symbol}</strong></td>
+        <td><strong>${stockHTML(s.symbol)}</strong></td>
         <td>${s.market === 'TW' ? '台股' : '美股'}</td>
         <td>${s.total_trades}</td>
         <td>${fmt(s.total_shares_sold)}</td>
@@ -1388,7 +1430,7 @@ function openTxModal(id) {
   form.reset();
   // Editing keeps the stored fee/tax (auto_fee off)
   fillForm(form, t ? { ...t, fee: t.fee || 0, tax: t.tax || 0, auto_fee: false } : { action: 'BUY', date: todayStr() });
-  document.getElementById('tx-modal-title').textContent = t ? `編輯交易 · ${t.symbol}` : '補登交易';
+  document.getElementById('tx-modal-title').textContent = t ? `編輯交易 · ${stockText(t.symbol)}` : '補登交易';
   document.getElementById('tx-continue-btn').style.display = t ? 'none' : '';
   document.getElementById('tx-delete-btn').style.display = t ? '' : 'none';
   openModal('modal-tx');
@@ -1436,7 +1478,7 @@ async function submitTransaction(e) {
       const result = await api('/api/transactions', { method: 'POST', body: JSON.stringify(data) });
       const pl = data.action === 'SELL' && result && result.realized_pl != null
         ? `，已實現損益 ${fmtPLCur(result.realized_pl, result.currency)}` : '';
-      showToast(`已記錄 ${data.symbol} ${data.action === 'BUY' ? '買入' : '賣出'} ${fmt(data.shares)} 股${pl}`, 'success');
+      showToast(`已記錄 ${stockText(data.symbol)} ${data.action === 'BUY' ? '買入' : '賣出'} ${fmt(data.shares)} 股${pl}`, 'success');
     }
     onTxSaved();
     if (!old && e.submitter?.dataset.continue) {
@@ -1477,9 +1519,9 @@ async function loadTransactions() {
 
 const onTxSearch = debounce(() => renderTransactions());
 
-/** Search: every word must appear in the symbol, note, date or 買／賣 (台股 / 美股 too). */
+/** Search: every word must appear in the symbol, its name, note, date or 買／賣 (台股 / 美股 too). */
 function txMatches(t, words) {
-  const text = [t.symbol, t.note, t.date, t.action === 'BUY' ? '買入' : '賣出', t.market === 'TW' ? '台股' : '美股']
+  const text = [t.symbol, stockName(t.symbol), t.note, t.date, t.action === 'BUY' ? '買入' : '賣出', t.market === 'TW' ? '台股' : '美股']
     .join(' ').toLowerCase();
   return words.every(w => text.includes(w));
 }
@@ -1515,7 +1557,7 @@ function renderTransactions() {
     return `
         <tr class="tx-row" tabindex="0" title="點一下編輯或刪除" onclick="openTxModal(${t.id})" onkeydown="if (event.key === 'Enter') openTxModal(${t.id})">
           <td>${t.date || '--'}</td>
-          <td><strong>${escapeHtml(t.symbol || '--')}</strong></td>
+          <td><strong>${stockHTML(t.symbol)}</strong></td>
           <td><span class="${t.action === 'BUY' ? 'tag-buy' : 'tag-sell'}">${t.action === 'BUY' ? '買' : '賣'}</span></td>
           <td>${fmt(t.shares)}</td>
           <td>${fmtNum(t.price, 2)}</td>
@@ -1553,7 +1595,7 @@ async function loadPortfolioAnalysis() {
 function renderPortfolioStats(p) {
   const top = p.rows[0];
   setStat('pf-top', `<span class="${top.level ? CONCENTRATION[top.level][1] : ''}">${top.weight.toFixed(1)}%</span>`,
-    `${escapeHtml(top.symbol)}${p.rows.length > 3 ? ` · 前 3 大 ${p.top3.toFixed(1)}%` : ''}`);
+    `${escapeHtml(stockText(top.symbol))}${p.rows.length > 3 ? ` · 前 3 大 ${p.top3.toFixed(1)}%` : ''}`);
   setStat('pf-effective', `${p.effective.toFixed(1)} 檔`, `實際持有 ${p.rows.length} 檔；越小越集中`);
   const usdTotal = p.usd.stock + (p.usd.cash || 0);
   document.getElementById('pf-usd-card').hidden = !(usdTotal > 0); // no US stock or USD cash
@@ -1610,7 +1652,7 @@ function renderPortfolioWeights(rows) {
     ].filter(Boolean).join(' · ');
     return `<div class="pf-row pf-mkt-${mkt.cls}">
       <div class="pf-row-head">
-        <span class="pf-sym">${escapeHtml(r.symbol)}</span>
+        <span class="pf-sym">${stockHTML(r.symbol)}</span>
         <span class="pf-mkt">${mkt.short}</span>
         ${flag ? `<span class="pf-flag ${flag[1]}">${flag[0]}</span>` : ''}
         <span class="pf-weight">${r.weight.toFixed(1)}%</span>
@@ -1632,8 +1674,6 @@ let _ltMode = 'all'; // 'all' | 'etf'
 let _ltAll = false;
 try { if (localStorage.getItem('lookThroughMode') === 'etf') _ltMode = 'etf'; } catch (e) { /* ignore */ }
 
-/** Taiwan symbols without the .TW / .TWO suffix. */
-const ltLabel = (s) => s.replace(/\.TWO?\b/g, '');
 
 async function loadLookThrough() {
   try {
@@ -1683,8 +1723,8 @@ function renderLookThrough() {
   </div>`;
   const topFlag = a && CONCENTRATION[a.top.level];
   document.getElementById('lt-compare').innerHTML = p.etfs.length && a ? [
-    item('最大單一持股（穿透前 → 後）', `${escapeHtml(ltLabel(p.before.top.symbol))} ${pct(p.before.top.weight)}`,
-      `${escapeHtml(ltLabel(a.top.symbol))} ${pct(a.top.weight)}`, topFlag ? topFlag[1] : ''),
+    item('最大單一持股（穿透前 → 後）', `${escapeHtml(stockText(p.before.top.symbol))} ${pct(p.before.top.weight)}`,
+      `${escapeHtml(stockText(a.top.symbol))} ${pct(a.top.weight)}`, topFlag ? topFlag[1] : ''),
     item('等效持股（穿透前 → 後）', `${p.before.effective.toFixed(1)} 檔`, `${a.effective.toFixed(1)} 檔`),
   ].join('') : '';
 
@@ -1696,11 +1736,11 @@ function renderLookThrough() {
       : `ETF ${fmtTWD(p.etf_total)} 拆成成分股，再加上直接持有的 ${fmtTWD(p.direct_total)}。長條顏色是這筆錢的來源。`);
     hints.push('Yahoo 只提供各 ETF 的前十大持股，其餘歸在「其他成分股」，等效持股不計這一列。');
   }
-  if (p.unresolved.length) hints.push(`查不到 ${p.unresolved.map(s => escapeHtml(ltLabel(s))).join('、')} 的成分股，暫以本身計算。`);
+  if (p.unresolved.length) hints.push(`查不到 ${p.unresolved.map(s => escapeHtml(symCode(s))).join('、')} 的成分股，暫以本身計算。`);
   document.getElementById('lt-hint').innerHTML = hints.join('<br>');
 
   const legend = (etfMode ? [] : [['direct', '直接持有']])
-    .concat(p.etfs.map(e => [e.symbol, `${ltLabel(e.symbol)}（前十大佔 ${pct(e.listed * 100)}）`]));
+    .concat(p.etfs.map(e => [e.symbol, `${stockText(e.symbol)}（前十大佔 ${pct(e.listed * 100)}）`]));
   document.getElementById('lt-legend').innerHTML = p.etfs.length ? legend.map(([src, label]) =>
     `<span class="legend-item"><span class="legend-dot" style="background:${ltColor(src)}"></span>${escapeHtml(label)}</span>`).join('') : '';
 
@@ -1721,6 +1761,7 @@ function renderLookThrough() {
     const sources = (etfMode || !(r.direct > 0) ? [] : [['direct', r.direct]])
       .concat(Object.entries(r.via).sort((x, y) => y[1] - x[1]));
     const isStock = !r.lumped;
+    const ltName = isStock ? stockName(r.key, r.name) : '';
     const mkt = MKT[r.market];
     const flag = etfMode ? null : CONCENTRATION[r.level];
     let badge = '';
@@ -1728,14 +1769,14 @@ function renderLookThrough() {
     else if (isStock && !etfMode && r.from_etf > 0 && !(r.direct > 0)) badge = '<span class="lt-badge">僅 ETF</span>';
     // Held directly under another listing (TSM for 2330): name every listing held
     const heldElsewhere = r.held_as.some(s => s !== r.key);
-    const srcText = (src) => (src === 'direct' ? `直接${heldElsewhere ? ` ${r.held_as.map(ltLabel).join('＋')}` : ''}` : ltLabel(src));
+    const srcText = (src) => (src === 'direct' ? `直接${heldElsewhere ? ` ${r.held_as.map(symCode).join('＋')}` : ''}` : symCode(src));
     const sub = sources.map(([src, v]) =>
       `<span class="lt-src" style="--c:${ltColor(src)}">${escapeHtml(srcText(src))} ${fmtTWD(v)}</span>`).join(' · ');
     return `<div class="pf-row${mkt ? ` pf-mkt-${mkt.cls}` : ''}">
       <div class="pf-row-head">
-        <span class="pf-sym">${escapeHtml(isStock ? ltLabel(r.key) : r.name)}</span>
+        <span class="pf-sym">${escapeHtml(isStock ? symCode(r.key) : r.name)}</span>
         ${mkt ? `<span class="pf-mkt">${mkt.short}</span>` : ''}
-        ${isStock && r.name ? `<span class="lt-name" title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</span>` : ''}
+        ${isStock && ltName ? `<span class="lt-name" title="${escapeAttr(ltName)}">${escapeHtml(ltName)}</span>` : ''}
         ${badge}
         ${flag ? `<span class="pf-flag ${flag[1]}">${flag[0]}</span>` : ''}
         <span class="pf-weight">${pct(weight)}</span>
@@ -1775,15 +1816,15 @@ function openTradeModal(action, symbol, market, currency, currentShares, current
   currLabel.textContent = currency || 'USD';
 
   if (action === 'BUY') {
-    title.textContent = `買入 ${symbol}`;
+    title.textContent = `買入 ${stockText(symbol)}`;
     submitBtn.textContent = '確認買入';
     submitBtn.className = 'btn btn-buy';
-    info.innerHTML = `<strong>${symbol}</strong> 目前持有 ${fmt(currentShares)} 股`;
+    info.innerHTML = `<strong>${stockHTML(symbol)}</strong> 目前持有 ${fmt(currentShares)} 股`;
   } else {
-    title.textContent = `賣出 ${symbol}`;
+    title.textContent = `賣出 ${stockText(symbol)}`;
     submitBtn.textContent = '確認賣出';
     submitBtn.className = 'btn btn-sell';
-    info.innerHTML = `<strong>${symbol}</strong> 目前持有 <strong>${fmt(currentShares)} 股</strong>（可賣出上限）`;
+    info.innerHTML = `<strong>${stockHTML(symbol)}</strong> 目前持有 <strong>${fmt(currentShares)} 股</strong>（可賣出上限）`;
     form.querySelector('[name="shares"]').max = currentShares;
   }
 
@@ -1816,9 +1857,9 @@ async function submitTrade(e) {
       resultBox.style.display = 'block';
       resultBox.className = 'tx-result-box success';
       resultBox.innerHTML = `賣出完成！已實現損益: <strong class="${plClass(result.realized_pl)}">${fmtTWD(result.realized_pl)}</strong>`;
-      showToast(`${data.symbol} 賣出 ${data.shares} 股完成`, 'success');
+      showToast(`${stockText(data.symbol)} 賣出 ${data.shares} 股完成`, 'success');
     } else {
-      showToast(`${data.symbol} 買入 ${data.shares} 股完成`, 'success');
+      showToast(`${stockText(data.symbol)} 買入 ${data.shares} 股完成`, 'success');
       closeModal('modal-trade');
     }
 
@@ -2470,23 +2511,23 @@ async function loadDividendSources() {
   // The biggest payers overall keep a color across years (same palette as 穿透持股); 其他 is gray
   const color = (sym) => { const i = r.symbols.indexOf(sym); return i >= 0 ? `var(--lt-${i})` : 'var(--lt-5)'; };
   document.getElementById('div-sources-legend').innerHTML = [...r.symbols, ...(r.has_other ? ['其他'] : [])]
-    .map(s => `<span class="legend-item"><span class="legend-dot" style="background:${color(s)}"></span>${escapeHtml(s)}</span>`).join('');
+    .map(s => `<span class="legend-item"><span class="legend-dot" style="background:${color(s)}"></span>${escapeHtml(s === '其他' ? s : stockText(s))}</span>`).join('');
 
   const max = Math.max(...r.years.map(y => y.total));
   document.getElementById('div-sources-rows').innerHTML = r.years.map(y => {
-    const drivers = y.drivers.map(x => `${escapeHtml(x.symbol)} <span class="${plClass(x.delta)}">${signedWan(x.delta)}</span>`).join('、');
+    const drivers = y.drivers.map(x => `${escapeHtml(stockText(x.symbol))} <span class="${plClass(x.delta)}">${signedWan(x.delta)}</span>`).join('、');
     return `<div class="pf-row">
       <div class="pf-row-head"><strong>${y.year}</strong><span class="pf-weight">${fmtTWD(y.total)}</span></div>
       <div class="source-bar cat-track lt-stack" aria-hidden="true" style="width:${y.total / max * 100}%">${y.parts.map(p =>
-        `<span style="width:${p.amount / y.total * 100}%;background:${color(p.symbol)}" title="${escapeAttr(p.symbol)} ${fmtTWD(p.amount)}"></span>`).join('')}</div>
-      <div class="pf-row-sub">${y.parts.slice(0, 3).map(p => `${escapeHtml(p.symbol)} ${(p.amount / y.total * 100).toFixed(0)}%`).join(' · ')}${
+        `<span style="width:${p.amount / y.total * 100}%;background:${color(p.symbol)}" title="${escapeAttr(stockText(p.symbol))} ${fmtTWD(p.amount)}"></span>`).join('')}</div>
+      <div class="pf-row-sub">${y.parts.slice(0, 3).map(p => `${escapeHtml(stockText(p.symbol))} ${(p.amount / y.total * 100).toFixed(0)}%`).join(' · ')}${
         changeLine(y, drivers)}</div>
     </div>`;
   }).join('');
 
   const t = r.ttm;
   document.getElementById('div-sources-hint').innerHTML = t.total > 0
-    ? `近 12 個月 ${fmtTWD(t.total)}，${escapeHtml(t.parts[0].symbol)} 佔 ${t.top_share.toFixed(0)}%` +
+    ? `近 12 個月 ${fmtTWD(t.total)}，${escapeHtml(stockText(t.parts[0].symbol))} 佔 ${t.top_share.toFixed(0)}%` +
       (t.top_share >= 50 ? '：股利現金流大多靠這一檔，它的配息政策一改變，整體股利就會跟著變。' : '。')
     : '近 12 個月沒有股利。';
 }
@@ -2509,7 +2550,7 @@ function renderDividends() {
     return `
       <tr>
         <td>${d.date}</td>
-        <td><strong>${escapeHtml(d.symbol)}</strong></td>
+        <td><strong>${stockHTML(d.symbol)}</strong></td>
         <td>${d.market === 'TW' ? '台股' : '美股'}</td>
         <td class="positive">${fc(d.amount)}</td>
         <td>${d.withheld ? fc(d.withheld) : '--'}</td>
@@ -2572,7 +2613,7 @@ function renderDividendSuggestions() {
       <tr>
         <td><input type="checkbox" class="div-suggest-cb" data-idx="${i}" checked></td>
         <td>${s.ex_date}</td>
-        <td><strong>${escapeHtml(s.symbol)}</strong></td>
+        <td><strong>${stockHTML(s.symbol)}</strong></td>
         <td>${s.currency === 'TWD' ? 'NT$' : '$'}${fmtNum(s.per_share, 4)}</td>
         <td>${fmt(s.shares)}</td>
         <td class="positive">${fc(s.amount)}</td>
@@ -3625,7 +3666,7 @@ const IMPORT_COLUMNS = {
   ],
   transactions: [
     ['日期', t => t.date],
-    ['股票', t => escapeHtml(t.symbol)],
+    ['股票', t => stockHTML(t.symbol)],
     ['買賣', t => `<span class="tag-${t.action === 'BUY' ? 'income' : 'expense'}">${t.action === 'BUY' ? '買進' : '賣出'}</span>`],
     ['股數', t => fmt(t.shares)],
     ['成交價', t => fmtPrice(t.price, t.currency)],
@@ -3661,7 +3702,7 @@ function renderImportSection(kind, r) {
 /** The 「以對帳單取代」 option; when checked, what will be removed and the reworked 匯入持倉. */
 function renderReplacePlan(plan) {
   const on = _aiImportMode === 'replace';
-  const syms = plan.symbols.map(s => escapeHtml(s.symbol)).join('、');
+  const syms = plan.symbols.map(s => escapeHtml(stockText(s.symbol))).join('、');
   let html = `<div class="replace-box">
     <label class="inline-check"><input type="checkbox" ${on ? 'checked' : ''} onchange="setAIImportMode(this.checked)"> 以對帳單取代這幾檔股票的交易</label>
     <p class="form-hint">把 ${syms} 在下面各自期間內的舊交易換成這份對帳單；期間開始前的持股用一筆「匯入持倉」補上（由目前持股倒推）。
@@ -3674,7 +3715,7 @@ function renderReplacePlan(plan) {
         ? s.transfers.map(t => `${t.date} ${fmt(t.shares)} 股`).join('、') : '（沒有）';
       const after = s.transfer ? `${s.transfer.date} ${fmt(s.transfer.shares)} 股 @ ${fmtNum(s.transfer.price, 2)}` : '（刪除）';
       const rows = s.remove.map(t => `<li>${t.date} ${t.action === 'BUY' ? '買進' : '賣出'} ${fmt(t.shares)} 股 @ ${fmtNum(t.price, 2)}${t.history ? '（歷史損益）' : ''}${t.note ? ' · ' + escapeHtml(t.note) : ''}</li>`).join('');
-      return `<details class="replace-symbol"><summary><strong>${escapeHtml(s.symbol)}</strong>（${s.start} ~ ${s.end}）：刪除 ${s.remove.length} 筆舊交易；
+      return `<details class="replace-symbol"><summary><strong>${stockHTML(s.symbol)}</strong>（${s.start} ~ ${s.end}）：刪除 ${s.remove.length} 筆舊交易；
         匯入持倉 ${before} → ${after}；匯入後持股 ${fmt(s.current)} 股（不變）</summary>
         ${rows ? `<ul>${rows}</ul>` : '<p class="form-hint">期間內沒有舊交易。</p>'}</details>`;
     }).join('');
@@ -3993,7 +4034,7 @@ async function loadManagedAccountSummary(id) {
       hBody.innerHTML = holdings.map(h => {
         const curSym = h.currency === 'USD' ? '$' : 'NT$';
         return `<tr>
-          <td>${escapeHtml(h.symbol)}</td>
+          <td>${stockHTML(h.symbol)}</td>
           <td>${h.market}</td>
           <td>${fmt(h.shares, 2)}</td>
           <td>${fmtPrice(h.avg_cost, h.currency)}</td>
@@ -4016,7 +4057,7 @@ async function loadManagedAccountSummary(id) {
         const curSym = t.currency === 'USD' ? '$' : 'NT$';
         return `<tr>
           <td>${t.date}</td>
-          <td>${escapeHtml(t.symbol)}</td>
+          <td>${stockHTML(t.symbol)}</td>
           <td><span class="${t.action === 'BUY' ? 'tag-buy' : 'tag-sell'}">${t.action === 'BUY' ? '買' : '賣'}</span></td>
           <td>${fmt(t.shares, 2)}</td>
           <td>${fmtPrice(t.price, t.currency)}</td>

@@ -37,7 +37,7 @@
     <h2>3. External services the app connects to</h2>
     <ul>
       <li><strong>Google</strong> (sign-in, Sheets, Drive APIs): as described above.</li>
-      <li><strong>Market data proxy</strong> (a Cloudflare Worker run by the developer): forwards public Yahoo Finance market data. Only ticker symbols and date ranges are sent, never amounts or records.</li>
+      <li><strong>Market data proxy</strong> (a Cloudflare Worker run by the developer): forwards public Yahoo Finance market data and public stock names from TWSE. Only ticker symbols and date ranges are sent, never amounts or records.</li>
       <li><strong>AI analysis</strong>: only when you click one of the AI services (ChatGPT, Claude, Gemini and others) is the generated prompt, including the financial summary you chose, copied to your clipboard and that service opened; ChatGPT and Claude receive it in the link. The app never sends it on its own.</li>
       <li><strong>AI import</strong>: the prompt pre-filled or copied when opening an AI service contains only format instructions, not your data. Anything you paste into those services is governed by their own privacy policies.</li>
       <li><strong>Web resources</strong>: fonts from Google Fonts and the Chart.js library from jsDelivr are loaded. These services may log general connection information such as your IP address.</li>

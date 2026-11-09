@@ -52,6 +52,16 @@ async function yahooGetJSON(path, label) {
   return resp.json();
 }
 
+/** 台股中文名稱 { '2330': '台積電' } for the given codes, from the proxy's /tw-names (TWSE open data). */
+export async function fetchTWNames(codes) {
+  const base = proxyURL();
+  if (!base) throw new MarketUnavailableError();
+  const resp = await fetch(`${base}/tw-names?codes=${codes.map(encodeURIComponent).join(',')}`,
+    { signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined });
+  if (!resp.ok) throw new Error(`tw-names returned ${resp.status}`);
+  return resp.json();
+}
+
 const chartPath = (symbol, query) => `/v8/finance/chart/${encodeURIComponent(symbol)}?${query}`;
 
 // ---------------------------------------------------------------- quotes

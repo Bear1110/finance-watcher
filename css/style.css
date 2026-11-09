@@ -2168,3 +2168,16 @@ body[data-tab="expenses"] .fab { display: flex; }
 
 /* 交易紀錄: tap a row to edit / delete it in the modal (cursor: the [title] rule) */
 .tx-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* A stock: code, then its name small and gray ("2330 台積電"; stockHTML in app.js) */
+.sym-name {
+  display: inline-block;
+  max-width: 10em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  font-size: 0.85em;
+  font-weight: 400;
+  color: var(--text-secondary);
+}

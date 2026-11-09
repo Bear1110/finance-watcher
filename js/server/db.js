@@ -74,6 +74,12 @@ export const SCHEMA = {
     columns: { symbol: 'text', from_date: 'text', synced_at: 'text' },
     defaults: {},
   },
+  // Local cache of stock names shown next to symbols (filled by names.js)
+  stock_names: {
+    synced: false, key: 'symbol',
+    columns: { symbol: 'text', name: 'text', fetched_at: 'text' },
+    defaults: {},
+  },
 };
 
 // Where device-only settings (a Gemini API key, a custom Yahoo proxy URL) used to be kept; both

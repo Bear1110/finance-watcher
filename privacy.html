@@ -37,7 +37,7 @@
     <h2>3. 會連線的外部服務</h2>
     <ul>
       <li><strong>Google</strong>（登入、Sheets、Drive API）：如上所述。</li>
-      <li><strong>行情代理</strong>（開發者部署的 Cloudflare Worker）：轉送 Yahoo Finance 的公開行情，只會送出股票代號與日期範圍，不含任何金額或紀錄。</li>
+      <li><strong>行情代理</strong>（開發者部署的 Cloudflare Worker）：轉送 Yahoo Finance 的公開行情與證交所公開的股票名稱，只會送出股票代號與日期範圍，不含任何金額或紀錄。</li>
       <li><strong>AI 分析</strong>：只有在你按下某個 AI（ChatGPT、Claude、Gemini 等）時，產生的提示詞（包含你勾選的財務摘要）才會被複製到剪貼簿並開啟該服務；ChatGPT、Claude 會直接帶在網址裡。本網站不會自動送出。</li>
       <li><strong>AI 匯入</strong>：開啟 AI 時帶入或複製的提示詞只有格式說明，不含你的資料；你在那些服務貼上的內容受該服務的隱私權政策規範。</li>
       <li><strong>網頁資源</strong>：載入 Google Fonts 字型與 jsDelivr 上的 Chart.js 圖表程式庫，這些服務可能會記錄你的 IP 位址等一般連線資訊。</li>

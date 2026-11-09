@@ -8,6 +8,8 @@
 //   GET https://<worker>/v8/finance/chart/2330.TW?interval=1d&range=1d
 //   GET https://<worker>/v10/finance/quoteSummary/0050.TW?modules=topHoldings,quoteType
 //     （ETF 前十大成分股；Yahoo 這支要 cookie + crumb，由 Worker 代為取得）
+//   GET https://<worker>/tw-names?codes=2330,0050,00679B
+//     （台股中文名稱，來自證交所的公開資料（上市清單＋ISIN 查詢）；回傳 { "2330": "台積電", ... }）
 
 // 允許的網站來源；自己的 GitHub Pages 網域與本機開發。
 const ALLOWED_ORIGINS = [
@@ -20,6 +22,83 @@ const ALLOWED_MODULES = new Set(['topHoldings', 'quoteType']);
 const SYMBOL_RE = /^[A-Za-z0-9.^=\-]{1,20}$/;
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 const SUMMARY_TTL = 12 * 3600; // 成分股一天變不了多少
+
+// ---- 台股中文名稱：上市用證交所每日收盤清單（整份整理成 { 代號: 名稱 } 快取一天）；
+// 清單裡沒有的（上櫃、興櫃）逐一查證交所 ISIN 單筆頁（Big5），每個代號各快取一天。
+// 櫃買中心的 openapi 會擋 Cloudflare 的連線，所以不用它。
+const TWSE_LIST = 'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL';
+const ISIN_SINGLE = 'https://isin.twse.com.tw/isin/single_main.jsp?owncode=';
+const TW_NAMES_TTL = 24 * 3600;
+const TW_CODE_RE = /^[0-9A-Z]{4,6}$/;
+const MAX_SINGLE = 20; // 一次最多逐一查幾檔
+
+function cacheJSON(ctx, key, data) {
+  ctx.waitUntil(caches.default.put(key, new Response(JSON.stringify(data), {
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${TW_NAMES_TTL}` },
+  })));
+}
+
+async function cachedJSON(key) {
+  const hit = await caches.default.match(key);
+  return hit ? hit.json() : undefined;
+}
+
+async function listedNames(ctx) {
+  const key = 'https://tw-names.cache/twse-v1';
+  const hit = await cachedJSON(key);
+  if (hit) return hit;
+  const names = {};
+  try {
+    const r = await fetch(TWSE_LIST, { headers: { 'User-Agent': UA, Accept: 'application/json' } });
+    if (r.ok) {
+      for (const row of await r.json()) {
+        const code = String(row.Code || '').trim();
+        const name = String(row.Name || '').trim();
+        if (TW_CODE_RE.test(code) && name) names[code] = name;
+      }
+    }
+  } catch (e) { console.log('tw-names list', e.message); }
+  if (Object.keys(names).length) cacheJSON(ctx, key, names);
+  return names;
+}
+
+/** One code from the ISIN page ('' when not found; cached either way so a typo isn't asked again all day). */
+async function singleName(code, ctx) {
+  const key = `https://tw-names.cache/isin-v1/${code}`;
+  const hit = await cachedJSON(key);
+  if (hit !== undefined) return hit.name;
+  try {
+    const r = await fetch(ISIN_SINGLE + encodeURIComponent(code), { headers: { 'User-Agent': UA } });
+    if (!r.ok) return '';
+    const html = new TextDecoder('big5').decode(await r.arrayBuffer());
+    const m = html.match(new RegExp(`<td[^>]*>${code}</td>\\s*<td[^>]*>([^<]+)</td>`));
+    const name = m ? m[1].trim() : '';
+    cacheJSON(ctx, key, { name });
+    return name;
+  } catch (e) {
+    console.log('tw-names isin', code, e.message);
+    return '';
+  }
+}
+
+async function twNames(codes, ctx) {
+  const listed = await listedNames(ctx);
+  const out = {};
+  const rest = [];
+  for (const c of codes) if (listed[c]) out[c] = listed[c]; else rest.push(c);
+  const found = await Promise.all(rest.slice(0, MAX_SINGLE).map((c) => singleName(c, ctx)));
+  rest.slice(0, MAX_SINGLE).forEach((c, i) => { if (found[i]) out[c] = found[i]; });
+  return out;
+}
+
+async function twNamesResponse(url, origin, ctx) {
+  const codes = (url.searchParams.get('codes') || '').toUpperCase().split(',').filter((c) => TW_CODE_RE.test(c)).slice(0, 300);
+  if (!codes.length) return new Response('bad request', { status: 400, headers: cors(origin) });
+  const out = await twNames(codes, ctx);
+  return new Response(JSON.stringify(out), {
+    headers: { ...cors(origin), 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
+  });
+}
 
 function cors(origin) {
   return {
@@ -90,7 +169,10 @@ export default {
     if (request.method !== 'GET') return new Response('method not allowed', { status: 405, headers: cors(origin) });
     if (origin && !ALLOWED_ORIGINS.includes(origin)) return new Response('forbidden', { status: 403 });
 
-    const r = route(new URL(request.url));
+    const url = new URL(request.url);
+    if (url.pathname === '/tw-names') return twNamesResponse(url, origin, ctx);
+
+    const r = route(url);
     if (!r) return new Response('bad request', { status: 400, headers: cors(origin) });
 
     // 同一個網址短暫快取，減少打到 Yahoo 的次數（快取鍵不含 crumb）
