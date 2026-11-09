@@ -289,13 +289,16 @@ const SELECT_VALUE = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype
  * A list that grows (years): `data-segmented="6"` shows the first 6 options as buttons and folds
  * the rest into a 「更多 ▾」 dropdown (label from data-more), which shows a picked value on itself.
  */
-/** Year buttons for a list: 全部 + every year in `dates` (newest first); keeps the chosen year if it's still there. */
+/**
+ * Year buttons for a list: 全部 (allLabel; null = none, the newest year by default) + every year in
+ * `dates`, newest first; keeps the chosen year if it's still there.
+ */
 function fillYearFilter(sel, dates, allLabel = '全部') {
   const prev = sel.value;
   const years = [...new Set(dates.map(d => (d || '').slice(0, 4)).filter(Boolean))].sort().reverse();
-  sel.innerHTML = `<option value="">${allLabel}</option>` + years.map(y => `<option value="${y}">${y}</option>`).join('');
+  sel.innerHTML = (allLabel == null ? '' : `<option value="">${allLabel}</option>`) + years.map(y => `<option value="${y}">${y}</option>`).join('');
   segmentSelect(sel);
-  sel.value = years.includes(prev) ? prev : '';
+  sel.value = years.includes(prev) ? prev : allLabel == null ? years[0] || '' : '';
 }
 
 // ---- Stock names next to symbols ("2330 台積電"; js/server/names.js looks them up and caches them) ----
@@ -395,6 +398,7 @@ function segmentSelect(sel) {
   }).join('') + (folded.length ? `<label class="chart-type-btn seg-more"><span></span>
     <select aria-label="${escapeAttr(sel.dataset.more || '更多')}"><option value="" disabled>${escapeHtml(sel.dataset.more || '更多')}</option>${
       folded.map(o => `<option value="${escapeAttr(o.value)}">${escapeHtml(o.textContent)}</option>`).join('')}</select></label>` : '');
+  box.hidden = options.length < 2; // one option is no choice
   syncSegments(sel);
 }
 
@@ -618,7 +622,7 @@ async function loadDashboard() {
     renderMonth(ov.month, ov.spending);
     renderGrowthYears(ov.years);
     renderSnapshots(assets);
-    renderSnapshotStrip(ov.snapshot_months);
+    renderSnapshotStrip(ov.snapshot_months, ov.snapshot_streak);
     renderRecentTx(transactions);
     // The data check is slower (price history): its warnings join once it is done
     renderAlerts(ov.alerts);
@@ -662,7 +666,7 @@ function renderHero(ov) {
   }
   $('dash-net-worth').textContent = fmtTWD(ov.net_worth);
   $('dash-year').innerHTML = year && year.start > 0 ? `今年 ${changeHtml(year.start + year.change, year.start)}` : '';
-  $('dash-year').title = `今年 1/1（或之前最後一筆快照）到現在，淨資產多了多少：\n${growthLegend(false)}`;
+  $('dash-year').title = `今年 1/1（或之前最後一筆快照）到現在，淨資產多了多少：\n${growthLegend()}`;
   $('dash-year-parts').innerHTML = year ? growthPartsText(year) : '';
 
   const parts = COMP_PARTS.map(p => ({ ...p, v: Math.max(0, ov.parts[p.key]) })).filter(p => p.v > 0);
@@ -724,7 +728,9 @@ function renderMonth(m, f) {
 }
 
 function renderGrowthYears(years) {
-  document.getElementById('nw-legend').innerHTML = `每年淨資產多了多少，拆成${showOther() ? '四' : '三'}塊：<br>${growthLegend(true)}`;
+  // the colors, each explained on hover / tap
+  document.getElementById('nw-legend').innerHTML = growthPartList().map(p =>
+    `<span class="legend-item" title="${escapeAttr(p.desc)}"><span class="legend-dot" style="background:${p.color || 'var(--up)'}"></span>${p.label} ⓘ</span>`).join('');
   document.getElementById('nw-years').innerHTML = years.length ? years.map(y => `<div class="nw-year">
       <div class="nw-year-head">
         <strong${y.partial ? ` title="從 ${y.from} 第一筆快照開始算"` : ''}>${y.year}${y.current ? '（至今）' : ''}${y.partial ? '*' : ''}</strong>
@@ -746,6 +752,12 @@ function renderRecentTx(txList) {
       <td>${fmt(t.shares)}</td>
       <td>${fmtNum(t.price, 2)}</td>
     </tr>`).join('') : '<tr><td colspan="5" class="empty-state">尚無交易紀錄</td></tr>';
+}
+
+/** 淨資產走勢 card: show one view ('trend' | 'years' | 'history'), with the controls tagged for it. */
+function setNetWorthView(view) {
+  document.querySelectorAll('#nw-views .chart-type-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  document.querySelectorAll('[data-nw-view]').forEach(el => { el.hidden = el.dataset.nwView !== view; });
 }
 
 function setNetWorthPeriod(years) {
@@ -810,8 +822,8 @@ const growthPartList = () => GROWTH_PARTS.filter(p => p.key !== 'other' || showO
 function growthParts(g) {
   return growthPartList().map(p => ({ ...p, v: g[p.key] || 0, color: p.color || (g.price < 0 ? 'var(--down)' : 'var(--up)') }));
 }
-/** The parts explained, as HTML lines or a plain-text tooltip. */
-const growthLegend = (html) => growthPartList().map(p => html ? `<b>${p.label}</b>：${p.desc}` : `${p.label}：${p.desc}`).join(html ? '<br>' : '\n');
+/** The parts explained, as a plain-text tooltip. */
+const growthLegend = () => growthPartList().map(p => `${p.label}：${p.desc}`).join('\n');
 
 const growthPartsText = (g) => growthParts(g).map(p => `${p.label} <span class="${plClass(p.v)}">${fmtPL(p.v)}</span>`).join(' · ');
 
@@ -825,13 +837,6 @@ function segmentsHtml(parts) {
 
 /** Each part's share of the year's movement. */
 const growthBarHtml = (g) => `<div class="source-bar" aria-hidden="true">${segmentsHtml(growthParts(g))}</div>`;
-
-/** Whole days from a YYYY-MM-DD date to today (local time). */
-function daysSince(d) {
-  const [y, m, day] = d.split('-').map(Number);
-  const now = new Date();
-  return Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - new Date(y, m - 1, day)) / 86400000);
-}
 
 /** Colored change from base to cur: "+12,345 (+1.23%)", or just the percent when compact. '' without a base. */
 function changeHtml(cur, base, compact = false) {
@@ -868,87 +873,55 @@ function snapshotRowHtml(a, prev) {
 }
 
 /**
- * 資產快照 strip under 淨資產 (overview.js snapshotMonths): one dot per month, filled when recorded.
- * A filled dot opens that snapshot; an empty one records that month (dated its last day).
+ * 每月快照 on the 淨資產走勢 card (overview.js snapshotMonths / snapshotStreak): a stamp card, one stamp
+ * a month. A stamped month opens that snapshot; an empty one records that month (dated its last day).
  */
-function renderSnapshotStrip(months) {
+function renderSnapshotStrip(months, streak) {
   const cur = months.at(-1); // this month
   const done = cur?.snapshot;
   const month = cur && Number(cur.ym.slice(5));
-  const btn = document.getElementById('snap-strip-btn');
-  document.getElementById('snap-strip-meta').textContent = !cur ? '' : done ? `✓ 本月 ${shortDate(done.date)} 已記` : `${month} 月還沒記`;
+  const meta = !cur ? '' : done ? `✓ 本月 ${shortDate(done.date)} 已記` : `${month} 月還沒記`;
+  document.getElementById('snap-strip-meta').textContent = meta;
+  const badge = document.getElementById('snap-streak');
+  badge.hidden = !(streak >= 2);
+  badge.textContent = `🔥 連續 ${streak} 個月`;
   const hint = document.getElementById('snap-strip-hint');
-  hint.hidden = !!done; // done this month: just the dots
+  hint.hidden = !!done; // done this month: just the stamps
   hint.textContent = cur
-    ? '每月看一次銀行和券商的現金餘額填進來就好，股票市值 App 會自己算。'
-    : '填一次銀行和券商裡的現金餘額，就算得出你的淨資產；之後每個月記一次。';
-  btn.hidden = !!done;
-  btn.textContent = cur ? `記 ${month} 月快照` : '記第一筆快照';
+    ? '看一下銀行和券商的現金餘額填進來就好，股票市值 App 會自己算。'
+    : '填一次銀行和券商裡的現金餘額，就算得出你的淨資產；之後每個月記一次，這裡會集滿一排章。';
+  document.getElementById('snap-strip-btn').textContent = !cur ? '記第一筆快照' : done ? '+ 新增快照' : `記 ${month} 月快照`;
   document.getElementById('snap-months').innerHTML = months.map(({ ym, date, snapshot: s }, i) => {
     const m = Number(ym.slice(5));
     const label = m === 1 || i === 0 ? `${ym.slice(2, 4)}/${m}` : `${m}月`; // the year where it changes
-    return s
-      ? `<button type="button" class="snap-month done" onclick="editSnapshot(${s.id})" title="${s.date} 的快照，點一下查看或修改"><span class="snap-dot"></span>${label}</button>`
-      : `<button type="button" class="snap-month${i === months.length - 1 ? ' now' : ''}" onclick="openSnapshotModal('${date}')" title="${m} 月沒有快照，點一下補記"><span class="snap-dot"></span>${label}</button>`;
+    const [cls, onclick, title, glyph] = s
+      ? ['done', `editSnapshot(${s.id})`, `${s.date} 的快照，點一下查看或修改`, '✓']
+      : [i === months.length - 1 ? 'now' : '', `openSnapshotModal('${date}')`, `${m} 月沒有快照，點一下補記`, '+'];
+    return `<button type="button" class="snap-month ${cls}" onclick="${onclick}" title="${title}"><span class="snap-dot">${glyph}</span>${label}</button>`;
   }).join('');
 }
 
-/** Snapshot card: the latest one up front; the full history (by year, rows expand) behind a toggle. */
+/** 快照紀錄 view: one year at a time (year buttons), newest first; rows expand. */
 function renderSnapshots(assets) {
-  const latestEl = document.getElementById('snapshot-latest');
-  const toggle = document.getElementById('snapshot-toggle');
-  const history = document.getElementById('snapshot-history');
-  toggle.hidden = !assets.length;
+  fillYearFilter(document.getElementById('snap-year'), assets.map(a => a.date), null);
+  renderSnapshotYear();
+}
+
+function renderSnapshotYear() {
+  const assets = _cachedAssets;
+  const list = document.getElementById('snapshot-history');
+  const meta = document.getElementById('snap-year-meta');
   if (!assets.length) {
-    latestEl.innerHTML = '<div class="empty-state">尚無快照資料，請新增</div>';
-    history.hidden = true;
-    history.innerHTML = '';
+    list.innerHTML = '<div class="empty-state">還沒有快照，按右上角記第一筆</div>';
+    meta.textContent = '';
     return;
   }
-  const [latest, prev] = assets;
-  const days = daysSince(latest.date);
-  latestEl.innerHTML = `
-    <div class="snap-latest-meta">最新 ${latest.date} · ${days <= 0 ? '今天' : `${days} 天前`}</div>
-    <div class="snap-latest-total">${fmtTWD(latest.net_worth)}</div>
-    ${prev ? `<div class="snap-latest-delta">較上一筆（${prev.date}）${changeHtml(latest.net_worth, prev.net_worth)}</div>` : ''}`;
-  syncSnapshotToggle();
-
-  // assets are newest first, so the previous snapshot of assets[i] is assets[i + 1]
-  const years = new Map();
-  assets.forEach((a, i) => {
-    const y = a.date.slice(0, 4);
-    if (!years.has(y)) years.set(y, []);
-    years.get(y).push(snapshotRowHtml(a, assets[i + 1]));
-  });
-  const thisYear = String(new Date().getFullYear());
-  const yearList = [...years.keys()];
-  // year-end (or latest) snapshot of each year = first of its group
-  const yearEnd = new Map(yearList.map(y => [y, assets.find(a => a.date.startsWith(y))]));
-  history.innerHTML = yearList.map((y, yi) => {
-    const last = yearEnd.get(y);
-    const prevYear = yearEnd.get(yearList[yi + 1]);
-    const yoy = prevYear ? changeHtml(last.net_worth, prevYear.net_worth, true) : '';
-    return `<details class="snap-year"${yi === 0 || y === thisYear ? ' open' : ''}>
-      <summary>
-        <span class="snap-year-label">${y}</span>
-        <span class="snap-year-meta">${years.get(y).length} 筆 · ${y === thisYear ? '最新' : '年末'} ${fmtTWD(last.net_worth)}${yoy ? ` · 年增 ${yoy}` : ''}</span>
-      </summary>
-      ${years.get(y).join('')}
-    </details>`;
-  }).join('');
-}
-
-function syncSnapshotToggle() {
-  const toggle = document.getElementById('snapshot-toggle');
-  const open = !document.getElementById('snapshot-history').hidden;
-  toggle.textContent = open ? '收合紀錄' : `全部紀錄（${_cachedAssets.length} 筆）`;
-  toggle.setAttribute('aria-expanded', String(open));
-}
-
-function toggleSnapshotHistory() {
-  const history = document.getElementById('snapshot-history');
-  history.hidden = !history.hidden;
-  syncSnapshotToggle();
+  const y = document.getElementById('snap-year').value;
+  // assets are newest first: the previous snapshot of assets[i] is assets[i + 1]
+  const rows = assets.map((a, i) => [a, assets[i + 1]]).filter(([a]) => a.date.startsWith(y));
+  // the year's change lives on the 年度成長 tab (overview.js yearlyGrowth), not recomputed here
+  meta.innerHTML = `${y} 年 ${rows.length} 筆 · ${y === todayStr().slice(0, 4) ? '最新' : '年末'} ${fmtTWD(rows[0][0].net_worth)}`;
+  list.innerHTML = rows.map(([a, prev]) => snapshotRowHtml(a, prev)).join('');
 }
 
 // ============================================================

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { growthBetween, yearlyGrowth, monthSummary, avgMonthlyExpense, spendingStats, buildAlerts, snapshotMonths } from '../js/server/overview.js';
+import { growthBetween, yearlyGrowth, monthSummary, avgMonthlyExpense, spendingStats, buildAlerts, snapshotMonths, snapshotStreak } from '../js/server/overview.js';
 
 const snap = (date, stock, total, created_at = `${date} 12:00:00`) => ({ date, created_at, stock_value_twd: stock, total });
 const tx = (o) => ({ currency: 'TWD', fee: 0, tax: 0, created_at: '', ...o });
@@ -135,4 +135,14 @@ test('snapshotMonths: from the first snapshot month to this one, latest per mont
   assert.deepEqual([old[0].ym, old[11].ym], ['2025-03', '2026-02']); // across the year
   assert.equal(old[11].snapshot, null);
   assert.deepEqual(snapshotMonths([], '2026-11-09'), []);
+});
+
+test('snapshotStreak: months in a row up to this month, or last month while this one is open', () => {
+  const s = (date) => ({ date });
+  const snaps = [s('2026-08-31'), s('2026-09-30'), s('2026-10-15'), s('2026-06-01')];
+  assert.equal(snapshotStreak(snaps, '2026-11-09'), 3); // 11 月 not yet: 8–10
+  assert.equal(snapshotStreak([...snaps, s('2026-11-02')], '2026-11-09'), 4);
+  assert.equal(snapshotStreak([s('2026-01-05'), s('2025-12-20')], '2026-01-09'), 2); // across the year
+  assert.equal(snapshotStreak([s('2026-08-31')], '2026-11-09'), 0);
+  assert.equal(snapshotStreak([], '2026-11-09'), 0);
 });

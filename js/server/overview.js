@@ -52,6 +52,13 @@ export function yearlyGrowth(snaps, live, opts) {
 const pad = (n) => String(n).padStart(2, '0');
 const ymd = (y, m, d) => `${y}-${pad(m)}-${pad(d)}`;
 const daysInMonth = (y, m) => new Date(y, m, 0).getDate(); // m is 1-based
+/** The month i months before today's: [y, m (1-based), 'YYYY-MM']. */
+function monthBack(today, i) {
+  const [y, m] = today.split('-').map(Number);
+  const d = new Date(y, m - 1 - i, 1);
+  const [my, mm] = [d.getFullYear(), d.getMonth() + 1];
+  return [my, mm, `${my}-${pad(mm)}`];
+}
 
 /**
  * The whole calendar month, including entries recorded ahead of time (planned), plus the top
@@ -133,16 +140,26 @@ export function snapshotMonths(snaps, today, max = 12) {
     if (!(byMonth.get(ym)?.date >= s.date)) byMonth.set(ym, { id: s.id, date: s.date });
   }
   const first = [...byMonth.keys()].sort()[0];
-  const [y, m] = today.split('-').map(Number);
   const months = [];
   for (let i = 0; first && i < max; i++) {
-    const d = new Date(y, m - 1 - i, 1);
-    const [my, mm] = [d.getFullYear(), d.getMonth() + 1];
-    const ym = `${my}-${pad(mm)}`;
+    const [my, mm, ym] = monthBack(today, i);
     if (ym < first) break;
     months.unshift({ ym, date: i === 0 ? today : ymd(my, mm, daysInMonth(my, mm)), snapshot: byMonth.get(ym) || null });
   }
   return months;
+}
+
+/**
+ * Months in a row with a snapshot, counting back from this month (or last month while this one
+ * isn't recorded yet, so the streak isn't broken before the month is over).
+ */
+export function snapshotStreak(snaps, today) {
+  const have = new Set(snaps.map((s) => s.date.slice(0, 7)));
+  const ym = (i) => monthBack(today, i)[2];
+  let i = have.has(ym(0)) ? 0 : 1;
+  const start = i;
+  while (have.has(ym(i))) i++;
+  return i - start;
 }
 
 /**
@@ -208,6 +225,7 @@ export async function buildOverview() {
     month,
     spending,
     snapshot_months: snapshotMonths(snaps, today),
+    snapshot_streak: snapshotStreak(snaps, today),
     alerts: buildAlerts({ today, topHolding: pf && pf.rows[0], spending, month, otherAssets: includeOther ? countedRows() : [] }),
   };
   return { overview, stocks, portfolio: pf };

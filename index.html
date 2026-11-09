@@ -90,16 +90,55 @@
         <div class="hero-sub" id="dash-net-date">--</div>
       </div>
 
-      <!-- 資產快照: the monthly habit, one dot per month (renderSnapshotStrip) -->
-      <div class="card snap-strip" data-tour="snapshots">
+      <!-- Net worth over time + yearly growth + snapshots -->
+      <div class="card">
         <div class="card-header">
-          <h3>資產快照 <small class="card-meta" id="snap-strip-meta"></small></h3>
+          <h3>淨資產走勢與快照</h3>
           <div class="header-actions">
-            <button type="button" class="btn btn-primary btn-sm" id="snap-strip-btn" onclick="openSnapshotModal()"></button>
+            <button class="btn btn-outline btn-sm" onclick="openAIImport('asset_snapshots')" title="把銀行、券商的餘額截圖或對帳單交給 AI，一次補好多個日期的快照"><span class="i" data-icon="sparkles"></span>AI 匯入</button>
+            <button type="button" class="btn btn-primary btn-sm" id="snap-strip-btn" onclick="openSnapshotModal()">+ 新增快照</button>
           </div>
         </div>
-        <p class="form-hint card-hint" id="snap-strip-hint"></p>
-        <div class="snap-months" id="snap-months"></div>
+
+        <!-- 每月快照: a stamp card, one stamp per month (renderSnapshotStrip) -->
+        <div class="snap-strip" data-tour="snapshots">
+          <div class="snap-strip-head">
+            <span class="snap-strip-title">每月快照</span>
+            <span id="snap-strip-meta"></span>
+            <span class="snap-streak" id="snap-streak" hidden></span>
+          </div>
+          <div class="snap-months" id="snap-months"></div>
+          <p class="form-hint" id="snap-strip-hint"></p>
+        </div>
+        <!-- One view at a time: the line, each year's growth, or the snapshot list (setNetWorthView) -->
+        <div class="chart-controls nw-controls">
+          <div class="chart-type-toggle" id="nw-views">
+            <button type="button" class="chart-type-btn active" data-view="trend" onclick="setNetWorthView('trend')">走勢</button>
+            <button type="button" class="chart-type-btn" data-view="years" onclick="setNetWorthView('years')">年度成長</button>
+            <button type="button" class="chart-type-btn" data-view="history" onclick="setNetWorthView('history')">快照紀錄</button>
+          </div>
+          <div class="chart-type-toggle" id="nw-periods" data-nw-view="trend">
+            <button type="button" class="chart-type-btn" data-years="1" onclick="setNetWorthPeriod(1)">1 年</button>
+            <button type="button" class="chart-type-btn active" data-years="3" onclick="setNetWorthPeriod(3)">3 年</button>
+            <button type="button" class="chart-type-btn" data-years="0" onclick="setNetWorthPeriod(0)">全部</button>
+          </div>
+          <span class="nw-years-pick" data-nw-view="history" hidden><select id="snap-year" data-segmented="6" data-more="更早" aria-label="年份" onchange="renderSnapshotYear()"></select></span>
+        </div>
+
+        <div data-nw-view="trend">
+          <div class="chart-container-md"><canvas id="chart-asset-trend"></canvas></div>
+        </div>
+
+        <div data-nw-view="years" hidden>
+          <div class="chart-legend nw-legend" id="nw-legend"></div>
+          <div id="nw-years" class="nw-years"></div>
+        </div>
+
+        <div data-nw-view="history" hidden>
+          <p class="form-hint" id="snap-year-meta"></p>
+          <div id="snapshot-history"><div class="empty-state">載入中...</div></div>
+          <p class="form-hint chart-note">填實際現金餘額，股票市值自動擷取。快照之後的股票買賣與股利會自動推算進現金，不用每次交易都記。</p>
+        </div>
       </div>
 
       <!-- Investment return: the 績效 card without the risk table (built by perfCardHtml) -->
@@ -112,33 +151,6 @@
           <button type="button" class="btn btn-primary btn-sm" onclick="openExpenseModal()"><span class="i" data-icon="plus"></span>記一筆</button>
         </div>
         <div id="dash-month-body"></div>
-      </div>
-
-      <!-- Net worth over time + yearly growth + snapshots -->
-      <div class="card">
-        <div class="card-header">
-          <h3>淨資產走勢與快照</h3>
-          <div class="header-actions">
-            <button class="btn btn-outline btn-sm" onclick="openAIImport('asset_snapshots')" title="把銀行、券商的餘額截圖或對帳單交給 AI，一次補好多個日期的快照"><span class="i" data-icon="sparkles"></span>AI 匯入</button>
-            <button class="btn btn-primary btn-sm" onclick="openSnapshotModal()">+ 新增快照</button>
-          </div>
-        </div>
-        <div class="chart-type-toggle nw-periods" id="nw-periods">
-          <button type="button" class="chart-type-btn" data-years="1" onclick="setNetWorthPeriod(1)">1 年</button>
-          <button type="button" class="chart-type-btn active" data-years="3" onclick="setNetWorthPeriod(3)">3 年</button>
-          <button type="button" class="chart-type-btn" data-years="0" onclick="setNetWorthPeriod(0)">全部</button>
-        </div>
-        <div class="chart-container-md"><canvas id="chart-asset-trend"></canvas></div>
-
-        <h4 class="nw-subtitle">年度成長</h4>
-        <p class="form-hint nw-legend" id="nw-legend"></p>
-        <div id="nw-years" class="nw-years"></div>
-
-        <h4 class="nw-subtitle">資產快照</h4>
-        <p class="form-hint card-hint">填實際現金餘額，股票市值自動擷取。快照之後的股票買賣與股利會自動推算進現金，不用每次交易都記。</p>
-        <div id="snapshot-latest" class="snap-latest"><div class="empty-state">載入中...</div></div>
-        <button type="button" id="snapshot-toggle" class="btn btn-outline btn-sm snap-toggle" onclick="toggleSnapshotHistory()" aria-controls="snapshot-history" aria-expanded="false" hidden>全部紀錄</button>
-        <div id="snapshot-history" class="snap-history" hidden></div>
       </div>
 
       <!-- Recent transactions -->

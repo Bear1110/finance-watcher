@@ -1928,28 +1928,17 @@ body[data-tab="expenses"] .fab { display: flex; }
 .exp-income .e-amt { color: var(--green); }
 .exp-income .e-amt::before { content: '+'; }
 
-/* --- Asset snapshots (dashboard): latest up front, history by year on demand --- */
+/* --- Asset snapshots (dashboard 快照紀錄 view): one year at a time, rows expand --- */
 #snapshot-cash-hint { margin: 0 0 0.6rem; }
-.snap-latest { margin-bottom: 0.75rem; }
-.snap-latest-meta { color: var(--text-secondary); font-size: 0.85rem; }
-.snap-latest-total { font-size: 1.5rem; font-weight: 700; color: var(--text-heading); margin: 0.15rem 0; }
-.snap-latest-delta { color: var(--text-secondary); font-size: 0.9rem; }
-.snap-toggle { width: 100%; justify-content: center; }
-.snap-history { margin-top: 0.75rem; }
-
-.snap-year { border-top: 1px solid var(--border-color); }
-.snap-year > summary,
 .snap-row > summary {
   display: flex;
   align-items: baseline;
   gap: 0.75rem;
+  padding: 0.6rem 0.25rem;
   cursor: pointer;
   list-style: none;
 }
-.snap-year > summary::-webkit-details-marker,
 .snap-row > summary::-webkit-details-marker { display: none; }
-.snap-year > summary { padding: 0.7rem 0.25rem; flex-wrap: wrap; }
-.snap-year > summary::before,
 .snap-row > summary::before {
   content: '›';
   display: inline-block;
@@ -1957,13 +1946,9 @@ body[data-tab="expenses"] .fab { display: flex; }
   color: var(--text-muted);
   transition: transform var(--transition);
 }
-.snap-year[open] > summary::before,
 .snap-row[open] > summary::before { transform: rotate(90deg); }
-.snap-year-label { font-weight: 600; color: var(--text-heading); }
-.snap-year-meta { color: var(--text-secondary); font-size: 0.85rem; }
 
-.snap-row { border-top: 1px solid var(--border-color); margin-left: 0.25rem; }
-.snap-row > summary { padding: 0.6rem 0.25rem; }
+.snap-row { border-top: 1px solid var(--border-color); }
 .snap-row > summary:hover { background: var(--bg-card-hover); }
 .snap-date { color: var(--text-secondary); font-variant-numeric: tabular-nums; min-width: 3em; }
 .snap-total { flex: 1; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -2107,9 +2092,11 @@ body[data-tab="expenses"] .fab { display: flex; }
 .month-cat .cat-amt { color: var(--text-secondary); }
 .month-foot { margin: 14px 0 0; padding-top: 10px; border-top: 1px solid var(--border-color); font-size: 0.85rem; color: var(--text-secondary); }
 
-.nw-periods { width: fit-content; margin-bottom: 10px; }
-.nw-subtitle { margin: 20px 0 10px; font-size: 0.95rem; font-weight: 600; color: var(--text-heading); }
-.nw-legend { margin: -4px 0 10px; line-height: 1.7; }
+.nw-controls { margin-bottom: 12px; }
+.nw-years-pick { display: contents; }
+.nw-legend { margin: 0 0 10px; }
+.nw-legend .legend-item { cursor: help; }
+#snap-year-meta { margin: 0 0 6px; }
 .nw-year { padding: 10px 0; border-top: 1px solid var(--border-color); }
 .nw-year:first-child { border-top: none; padding-top: 0; }
 .nw-year-head { display: flex; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
@@ -2213,12 +2200,29 @@ body[data-tab="expenses"] .fab { display: flex; }
   .holdings-summary-parts strong { font-size: 0.85rem; overflow-wrap: anywhere; }
 }
 
-/* 資產快照 strip on 總覽: one dot per month, filled when recorded */
-.snap-months { display: flex; }
-.snap-month { flex: 1 1 0; min-width: 0; max-width: 64px; white-space: nowrap; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; border: none; border-radius: 6px; background: none; color: var(--text-muted); font-size: 0.72rem; cursor: pointer; }
-.snap-month:hover { background: var(--accent-subtle); color: var(--text-primary); }
-.snap-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border-color); }
-.snap-month.done .snap-dot { background: var(--accent); border-color: var(--accent); }
+/* 每月快照 on the 淨資產走勢 card: a stamp card, one stamp a month, joined by a line */
+.snap-strip { margin-bottom: 18px; padding: 12px 14px 8px; border-radius: 12px; background: var(--accent-subtle); }
+.snap-strip-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 0.85rem; color: var(--text-secondary); }
+.snap-strip-title { font-weight: 600; color: var(--text-heading); }
+.snap-streak { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--yellow-bg); color: var(--yellow); font-size: 0.78rem; font-weight: 600; }
+.snap-months { --snap-dot: 26px; display: flex; margin-top: 8px; }
+.snap-month { position: relative; flex: 1 1 0; min-width: 0; white-space: nowrap; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 6px 0; border: none; border-radius: 8px; background: none; color: var(--text-muted); font-size: 0.72rem; line-height: 14px; cursor: pointer; }
+.snap-month:hover .snap-dot { transform: scale(1.12); }
+.snap-month:hover { color: var(--text-primary); }
+.snap-month:not(.done):hover .snap-dot { color: var(--accent); border-color: var(--accent); }
+/* the line on to the next month, behind the stamps (so hiding older months leaves none dangling); solid when both are stamped */
+.snap-month:not(:last-child)::after { content: ''; position: absolute; top: calc(6px + var(--snap-dot) / 2 - 1px); left: 50%; width: 100%; height: 2px; background: var(--border-color); z-index: 0; }
+.snap-month.done:has(+ .done)::after { background: var(--accent); opacity: 0.6; }
+.snap-dot { position: relative; z-index: 1; width: var(--snap-dot); height: var(--snap-dot); border-radius: 50%; display: grid; place-items: center; border: 2px solid var(--border-color); background: var(--bg-card); color: transparent; font-size: 0.8rem; font-weight: 700; line-height: 1; transition: transform 0.15s; }
+.snap-month.done .snap-dot { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 2px 8px var(--accent-subtle); }
 .snap-month.now { color: var(--accent); font-weight: 600; }
-.snap-month.now .snap-dot { border-color: var(--accent); border-style: dashed; }
-@media (max-width: 599px) { .snap-month { font-size: 0.66rem; letter-spacing: -0.02em; } }
+.snap-month.now .snap-dot { border-color: var(--accent); border-style: dashed; color: var(--accent); font-size: 1rem; animation: snap-pulse 2s ease-in-out infinite; }
+@keyframes snap-pulse { 50% { box-shadow: 0 0 0 5px var(--accent-subtle); } }
+@media (prefers-reduced-motion: reduce) { .snap-month.now .snap-dot { animation: none; } }
+#snap-strip-hint { margin: 2px 0 4px; }
+@media (max-width: 599px) {
+  .snap-strip { padding: 10px 10px 6px; }
+  .snap-month { font-size: 0.66rem; letter-spacing: -0.02em; }
+  .snap-month:nth-last-child(n+7) { display: none; } /* the last 6 months fit a phone */
+  .snap-months { --snap-dot: 22px; }
+}
