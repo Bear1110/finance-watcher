@@ -1782,7 +1782,7 @@ body[data-tab="expenses"] .fab { display: flex; }
 .holdings-table.as-cards thead { display: none; }
 .holdings-table.as-cards tr {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); /* halves stay halves, whatever the content (long names) */
   grid-template-areas: "sym act" "mv pl" "sh cost" "px div" "yp yc";
   gap: 8px 12px;
   padding: 12px 14px;
@@ -1798,7 +1798,9 @@ body[data-tab="expenses"] .fab { display: flex; }
 .sym-link { color: inherit; }
 .sym-link:hover { color: var(--accent); text-decoration: underline; }
 .holdings-table.as-cards .c-sym { grid-area: sym; font-size: 1.05rem; }
-.holdings-table.as-cards .c-act { grid-area: act; justify-content: flex-end; }
+/* The name on its own line under the code, cut with … when it doesn't fit (fonts differ: Windows' are wider) */
+.holdings-table.as-cards .c-sym .sym-name { display: block; max-width: 100%; margin-top: 2px; }
+.holdings-table.as-cards .c-act { grid-area: act; justify-content: flex-end; align-items: flex-start; }
 .holdings-table.as-cards .c-mv { grid-area: mv; }
 .holdings-table.as-cards .c-pl { grid-area: pl; }
 .holdings-table.as-cards :is(.c-mv, .c-pl) { font-size: 1.1rem; font-weight: 600; }
