@@ -2,7 +2,7 @@
 
 import * as db from './db.js';
 import { route } from './router.js';
-import { badRequest, body, refreshAndPersistRate, cmp, storedUSDTWDRate } from './util.js';
+import { badRequest, body, refreshAndPersistRate, cmp, storedUSDTWDRate, calcExpr } from './util.js';
 import { portfolioValues } from './stocks.js';
 import { performance } from './twr.js';
 import { otherAssetsTotal, includeOtherAssets } from './other_assets.js';
@@ -20,7 +20,12 @@ const assetJSON = (s) => ({
 function decode(req) {
   const b = body(req);
   const s = { date: b.date ? String(b.date) : '', note: b.note == null ? '' : String(b.note) };
-  for (const f of FIELDS) s[f] = Number(b[f]) || 0;
+  for (const f of FIELDS) {
+    if (b[f] == null || b[f] === '') { s[f] = 0; continue; }
+    const v = calcExpr(b[f]); // a number, or a typed sum like "120000+35000"
+    if (v == null) throw badRequest(`看不懂「${b[f]}」：只能用數字和 + − × ÷`);
+    s[f] = v;
+  }
   if (b.other_assets != null) s.other_assets = Number(b.other_assets) || 0; // else: today's total on create, kept on edit
   return s;
 }

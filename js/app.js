@@ -959,6 +959,7 @@ function openSnapshotModal(date = todayStr()) {
   document.getElementById('snapshot-modal-title').textContent = '新增資產快照';
   setSnapshotMode('auto');
   document.getElementById('snapshot-cash-hint').hidden = !carried;
+  refreshCalcInputs(form);
   openModal('modal-snapshot');
 }
 
@@ -978,7 +979,38 @@ function editSnapshot(id) {
   document.getElementById('snapshot-modal-title').textContent = '編輯資產快照';
   setSnapshotMode('manual'); // editing always shows all fields
   document.getElementById('snapshot-cash-hint').hidden = true;
+  refreshCalcInputs(form);
   openModal('modal-snapshot');
+}
+
+/**
+ * Money fields that take a typed sum (`<input data-calc>`, e.g. 120000+35000-500): the result shows
+ * under the field as you type, and the form won't submit an unreadable or negative one. The sum is
+ * worked out by util.js calcExpr, the same one the server uses when saving.
+ */
+function updateCalcInput(input) {
+  let out = input.nextElementSibling;
+  if (!out?.matches('.calc-out')) {
+    out = document.createElement('small');
+    out.className = 'form-hint calc-out';
+    out.setAttribute('aria-live', 'polite');
+    input.after(out);
+  }
+  const raw = input.value.trim();
+  const v = window.calcExpr ? window.calcExpr(raw) : Number(raw);
+  const err = !raw ? '' : v == null ? '看不懂這個算式：只能用數字和 + − × ÷' : v < 0 ? '不能是負數' : '';
+  input.setCustomValidity(err);
+  out.hidden = !err && !/\d[^\d.,\s]+\d/.test(raw); // only for a sum: a plain number needs no echo
+  out.textContent = err || `= ${fmtNum(v, Number.isInteger(v) ? 0 : 2)}`;
+  out.classList.toggle('calc-err', !!err);
+}
+
+/** Calc fields set by code (open / edit a form) */
+const refreshCalcInputs = (root) => root.querySelectorAll('input[data-calc]').forEach(updateCalcInput);
+
+function initCalcInputs() {
+  document.addEventListener('input', (e) => { if (e.target.matches?.('input[data-calc]')) updateCalcInput(e.target); });
+  document.addEventListener('reset', (e) => setTimeout(() => refreshCalcInputs(e.target)));
 }
 
 async function submitSnapshot(e) {
@@ -987,8 +1019,8 @@ async function submitSnapshot(e) {
   const id = form.querySelector('[name="id"]').value;
   const data = {
     date: form.querySelector('[name="date"]').value,
-    cash_twd: Number(form.querySelector('[name="cash_twd"]').value),
-    cash_usd: Number(form.querySelector('[name="cash_usd"]').value),
+    cash_twd: form.querySelector('[name="cash_twd"]').value, // may be a sum: the server works it out
+    cash_usd: form.querySelector('[name="cash_usd"]').value,
     note: form.querySelector('[name="note"]').value,
   };
 
@@ -4117,6 +4149,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initUpDown();
   applyIcons();
   initTapTips();
+  initCalcInputs();
   applyPrivacyUI();
   initTabs();
   initPerfCards();

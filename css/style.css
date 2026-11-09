@@ -1930,6 +1930,9 @@ body[data-tab="expenses"] .fab { display: flex; }
 
 /* --- Asset snapshots (dashboard 快照紀錄 view): one year at a time, rows expand --- */
 #snapshot-cash-hint { margin: 0 0 0.6rem; }
+/* a typed sum's result under the field (initCalcInputs) */
+.calc-out { display: block; margin-top: 4px; font-variant-numeric: tabular-nums; color: var(--accent); }
+.calc-out.calc-err { color: var(--red); }
 .snap-row > summary {
   display: flex;
   align-items: baseline;
