@@ -685,8 +685,11 @@ function renderHero(ov) {
 /** "每月 NT$ 44,333，依收支估算" — where the monthly spending figure came from. */
 const monthlyExpenseNote = (f) => `每月 ${fmtTWD(f.monthly_expense)}${f.source === 'records' ? '，依收支紀錄估算' : ''}`;
 
-/** This month (whole month, planned entries included): spending, income, top categories, cash runway. */
+/** This month (whole month, planned entries included): spending, income, top categories, cash runway. Hidden when 收支 isn't in use. */
 function renderMonth(m, f) {
+  // Not using 收支 (nothing this month or last): the card would only say "no records"
+  document.getElementById('dash-month').hidden = !m.in_use;
+  if (!m.in_use) return;
   document.getElementById('dash-month-range').textContent = `${shortDate(m.from)}–${shortDate(m.to)}`;
   const cashLine = f.cash_months != null
     ? `<p class="month-foot">現金可撐 <strong>${Math.max(0, f.cash_months).toFixed(1)}</strong> 個月生活費（${monthlyExpenseNote(f)}）</p>`
@@ -1244,6 +1247,7 @@ async function submitHolding(e) {
     avg_cost: Number(form.querySelector('[name="avg_cost"]').value),
     currency: market === 'US' ? 'USD' : 'TWD',
     date: form.querySelector('[name="date"]').value || '',
+    note: form.querySelector('[name="note"]').value.trim(),
   };
 
   try {
@@ -2296,7 +2300,7 @@ function renderHoldingsTrend() {
   const b = Math.max(0, s.dates.findIndex(d => d >= start));
   const idx = weekdayIndexes(s.dates, b);
   const value = s.value[seg], cost = s.cost[seg], realized = s.realized[seg];
-  const unreal = (i) => value[i] - cost[i];
+  const unreal = (i) => s.unrealized[seg][i]; // net of estimated 台股 sell fee + tax, like the holdings page
 
   // Latest numbers, plus how much each moved over the shown period
   const last = s.dates.length - 1;
@@ -3978,17 +3982,37 @@ let _otherAssets = [];
 async function loadOtherAssets() {
   const [list, settings] = await Promise.all([api('/api/other-assets').catch(() => []), api('/api/settings').catch(() => ({}))]);
   _otherAssets = list;
-  document.getElementById('other-include').checked = settings.include_other_assets !== '0';
-  document.getElementById('other-list').innerHTML = list.map(a => `
+  const include = settings.include_other_assets !== '0';
+  document.getElementById('other-include').checked = include;
+  // Each row's own tick only matters while the setting above is on
+  document.getElementById('other-list').innerHTML = list.map(a => { const on = a.counted !== 0; return `
     <div class="settings-row">
-      <div><strong>${escapeHtml(a.name)}</strong><p class="form-hint">更新於 ${a.updated || '--'}</p></div>
+      <label class="inline-check other-name">
+        <input type="checkbox" ${on ? 'checked' : ''} ${include ? '' : 'disabled'} onchange="setOtherCounted(${a.id}, this.checked)" aria-label="${escapeAttr(a.name)} 計入淨資產">
+        <span><strong>${escapeHtml(a.name)}</strong><span class="form-hint">${on ? '' : '不計入淨資產 · '}更新於 ${a.updated || '--'}</span></span>
+      </label>
       <div class="other-actions">
-        <span class="other-value">${fmtTWD(a.value)}</span>
+        <span class="other-value${on && include ? '' : ' text-muted'}">${fmtTWD(a.value)}</span>
         ${rowBtn('edit', `editOtherAsset(${a.id})`)}
         ${rowBtn('delete', `deleteOtherAsset(${a.id})`)}
       </div>
-    </div>`).join('');
+    </div>`; }).join('');
   resetOtherAssetForm();
+}
+
+async function saveOtherInclude(on) {
+  await saveSetting('include_other_assets', on ? '1' : '0');
+  loadOtherAssets();
+}
+
+async function setOtherCounted(id, on) {
+  try {
+    await api(`/api/other-assets/${id}/counted`, { method: 'PUT', body: JSON.stringify({ counted: on }) });
+    showToast(on ? '已計入淨資產' : '已改成不計入淨資產', 'success');
+    loadOtherAssets();
+  } catch (err) {
+    showToast('儲存失敗: ' + err.message, 'error');
+  }
 }
 
 function resetOtherAssetForm() {

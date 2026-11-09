@@ -62,3 +62,20 @@ test('snapshots: 其他資產 recorded at creation, kept on edit, counted in net
   assert.equal(s.net_worth, 5_000_000);
   await assert.rejects(handle('/api/other-assets', { method: 'POST', body: JSON.stringify({ name: '', value: 1 }) }), /請填名稱/);
 });
+
+test('其他資產: a row left out (counted: 0) is kept for the record but not in net worth', async () => {
+  const { handle } = await import('../js/server/router.js');
+  const { otherAssetsTotal } = await import('../js/server/other_assets.js');
+  db._reset({ settings: [{ id: 1, key: 'usd_twd_rate', value: '30' }] });
+  await handle('/api/other-assets', { method: 'POST', body: JSON.stringify({ name: '自住房', value: 3_000_000 }) });
+  const land = await handle('/api/other-assets', { method: 'POST', body: JSON.stringify({ name: '老家土地', value: 5_000_000 }) });
+  assert.equal(otherAssetsTotal(), 8_000_000); // new rows count
+  const before = db.all('other_assets').find((a) => a.id === land.id).updated;
+  await handle(`/api/other-assets/${land.id}/counted`, { method: 'PUT', body: JSON.stringify({ counted: false }) });
+  assert.equal(otherAssetsTotal(), 3_000_000);
+  assert.equal(db.all('other_assets').find((a) => a.id === land.id).updated, before); // not a new value
+  const { id } = await handle('/api/assets', { method: 'POST', body: JSON.stringify({ date: '2026-11-01', cash_twd: 1_000_000, stock_value_twd: 0, usd_twd_rate: 30 }) });
+  const s = (await handle('/api/assets')).find((x) => x.id === id);
+  assert.equal(s.other_assets, 3_000_000);
+  assert.equal(s.net_worth, 4_000_000);
+});

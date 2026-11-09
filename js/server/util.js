@@ -43,6 +43,9 @@ export function settingFloat(key, def, valid = () => true) {
 
 export const storedUSDTWDRate = () => settingFloat('usd_twd_rate', 32.0, (v) => v > 0);
 
+/** The user's Taiwan brokerage fee discount (設定), 1 = no discount. */
+export const twFeeDiscount = () => settingFloat('tw_fee_discount', 1.0, (v) => v > 0 && v <= 1);
+
 export const toTWD = (v, currency, rate) => (currency === 'USD' ? v * rate : v);
 
 /** Sum of realized P&L of SELLs, in TWD. */

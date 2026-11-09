@@ -5,8 +5,8 @@
 // holdings stale.
 
 import * as db from './db.js';
-import { isCounted, normalizeSymbolMarket, settingFloat, round4, badRequest, cmp } from './util.js';
-import { lotFromBuy, takeLots, lotsTotal } from './lots.js';
+import { isCounted, normalizeSymbolMarket, twFeeDiscount, round4, badRequest, cmp } from './util.js';
+import { lotFromBuy, takeLots, lotsTotal, twTradeCost } from './lots.js';
 
 const actionOrder = (a) => (a === 'BUY' ? 0 : 1);
 
@@ -101,14 +101,7 @@ export function normalizeTxn(txn) {
  */
 export function applyAutoFee(txn) {
   if (!txn.auto_fee || txn.market !== 'TW' || txn.fee !== 0 || txn.tax !== 0) return;
-  const discount = settingFloat('tw_fee_discount', 1.0, (v) => v > 0 && v <= 1);
-  const amount = txn.shares * txn.price;
-  const minFee = txn.shares >= 1000 ? 20 : 1;
-  txn.fee = Math.max(minFee, Math.floor(amount * 0.001425 * discount));
-  if (txn.action === 'SELL') {
-    const rate = txn.symbol.startsWith('00') ? 0.001 : 0.003;
-    txn.tax = Math.floor(amount * rate);
-  }
+  Object.assign(txn, twTradeCost(txn.symbol, txn.action, txn.shares, txn.price, twFeeDiscount()));
 }
 
 /** %.4g-style formatting for share counts. */

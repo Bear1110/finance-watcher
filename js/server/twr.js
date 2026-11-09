@@ -4,7 +4,7 @@
 
 import * as db from './db.js';
 import { route } from './router.js';
-import { isHistorySell, sellCostBasis, storedUSDTWDRate, cmp, round4, goRound } from './util.js';
+import { isHistorySell, sellCostBasis, storedUSDTWDRate, twFeeDiscount, cmp, round4, goRound } from './util.js';
 import { fetchDailyCloses, fetchQuotes, hasProxy, MarketUnavailableError, USDTWD_SYMBOL } from './market.js';
 import { queryDividends } from './dividends.js';
 import {
@@ -218,7 +218,7 @@ export async function performance() {
   const live = {};
   for (const [sym, q] of Object.entries(await fetchQuotes(heldSymbols()))) live[sym] = q.price;
   const res = computePerformance({
-    txns, divs, closes, live, liveRate: storedUSDTWDRate(), today,
+    txns, divs, closes, live, liveRate: storedUSDTWDRate(), today, twFeeDiscount: twFeeDiscount(),
   });
 
   // Everything starts at the close of the day before the origin.
@@ -256,6 +256,7 @@ export async function performance() {
   const growth = {};
   const value = {};
   const cost = {};
+  const unrealized = {};
   const realized = {};
   const benchOut = {};
   for (const seg of perfSegments) {
@@ -270,6 +271,7 @@ export async function performance() {
     value[seg] = v;
     // Cost of what is held and cumulative realized P&L (from the first trade, not the period start)
     cost[seg] = ps.cost.slice(o, last + 1).map(goRound);
+    unrealized[seg] = ps.unrealized.slice(o, last + 1).map(goRound); // net of 台股 sell fee + tax
     realized[seg] = ps.realized.slice(o, last + 1).map(goRound);
   }
   for (const [sym, vals] of Object.entries(bench)) {
@@ -278,6 +280,7 @@ export async function performance() {
   series.growth = growth;
   series.value = value;
   series.cost = cost;
+  series.unrealized = unrealized;
   series.realized = realized;
   series.bench = benchOut;
   series.fx = res.fx.slice(o).map(round4);

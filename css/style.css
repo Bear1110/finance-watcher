@@ -2066,6 +2066,9 @@ body[data-tab="expenses"] .fab { display: flex; }
 /* --- Settings › 生活費 / 其他資產 --- */
 .settings-input { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--text-secondary); }
 .settings-input input { width: 8em; }
+.other-name { margin: 0; align-items: flex-start; }
+.other-name > span { display: flex; flex-direction: column; }
+.other-name input[type=checkbox] { margin-top: 3px; }
 .other-actions { display: flex; align-items: center; gap: 0.5rem; }
 .other-value { font-weight: 600; font-variant-numeric: tabular-nums; margin-right: 0.25rem; }
 .other-form { display: flex; flex-wrap: wrap; gap: 0.5rem; padding-top: 12px; border-top: 1px solid var(--border-color); }

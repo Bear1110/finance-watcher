@@ -33,3 +33,25 @@ export function lotsTotal(lots) {
   }
   return { shares, cost };
 }
+
+/**
+ * Taiwan trading costs: brokerage fee 0.1425% × discount (at least NT$20 for a board lot, else NT$1)
+ * and, on a sale, securities transaction tax 0.3% (ETFs, codes starting with 00: 0.1%). Rounded down
+ * like a broker statement. Returns { fee, tax }.
+ */
+export function twTradeCost(symbol, action, shares, price, discount = 1) {
+  const amount = shares * price;
+  const fee = Math.max(shares >= 1000 ? 20 : 1, Math.floor(amount * 0.001425 * discount));
+  const tax = action === 'SELL' ? Math.floor(amount * (symbol.startsWith('00') ? 0.001 : 0.003)) : 0;
+  return { fee, tax };
+}
+
+/**
+ * What selling a position now would cost (fee + tax, native currency), as a broker app deducts from
+ * 未實現損益. Taiwan only: US costs are a few cents, so 0.
+ */
+export function estSellCost(market, symbol, shares, price, discount = 1) {
+  if (market !== 'TW' || !(shares > 0) || !(price > 0)) return 0;
+  const { fee, tax } = twTradeCost(symbol, 'SELL', shares, price, discount);
+  return fee + tax;
+}

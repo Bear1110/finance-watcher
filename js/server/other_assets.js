@@ -1,12 +1,16 @@
 // 其他資產 (a home, a car, 勞退, insurance cash value…): a value the user fills in now and then.
-// Whether they count toward net worth is a setting (include_other_assets, on by default).
+// Whether they count toward net worth is a setting (include_other_assets, on by default); each row can
+// also be left out on its own (counted: 0), e.g. a property kept here for the record only.
 
 import * as db from './db.js';
 import { route } from './router.js';
 import { badRequest, body, cmp } from './util.js';
 
-/** Total of everything listed (TWD), counted or not. */
-export const otherAssetsTotal = () => db.all('other_assets').reduce((s, a) => s + (a.value || 0), 0);
+/** The rows that count toward net worth (when the setting is on). */
+export const countedRows = () => db.where('other_assets', (a) => a.counted !== 0);
+
+/** Total of the counted rows (TWD), whatever the setting: what a snapshot records. */
+export const otherAssetsTotal = () => countedRows().reduce((s, a) => s + (a.value || 0), 0);
 
 /** Does net worth include 其他資產? */
 export const includeOtherAssets = () => db.getSetting('include_other_assets') !== '0';
@@ -27,6 +31,11 @@ route('GET', '/api/other-assets', () => db.all('other_assets').sort((a, b) => b.
 route('POST', '/api/other-assets', (req) => db.insert('other_assets', decode(req)));
 route('PUT', '/api/other-assets/{id}', (req) => {
   if (!db.update('other_assets', req.params.id, decode(req))) throw badRequest('找不到這筆資產');
+  return { status: 'updated' };
+});
+// Ticking a row in or out isn't a new value: `updated` stays
+route('PUT', '/api/other-assets/{id}/counted', (req) => {
+  if (!db.update('other_assets', req.params.id, { counted: body(req).counted ? 1 : 0 })) throw badRequest('找不到這筆資產');
   return { status: 'updated' };
 });
 route('DELETE', '/api/other-assets/{id}', (req) => { db.remove('other_assets', req.params.id); return { status: 'deleted' }; });

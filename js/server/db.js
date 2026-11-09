@@ -40,8 +40,8 @@ export const SCHEMA = {
   },
   other_assets: {
     synced: true,
-    columns: { id: 'int', name: 'text', value: 'real', updated: 'text', note: 'text', created_at: 'text' },
-    defaults: {},
+    columns: { id: 'int', name: 'text', value: 'real', counted: 'int', updated: 'text', note: 'text', created_at: 'text' },
+    defaults: { counted: 1 }, // counted: 0 = listed for the record only, never in net worth
   },
   managed_accounts: {
     synced: true,

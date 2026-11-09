@@ -6,9 +6,10 @@ import * as db from './db.js';
 import { route } from './router.js';
 import { fetchQuotes, invalidateCache, lastFetchTime } from './market.js';
 import {
-  HttpError, badRequest, body, storedUSDTWDRate, toTWD, realizedTWD, fmtLocal, round2, cmp, sellCostBasis, sellReturnPct,
+  HttpError, badRequest, body, storedUSDTWDRate, twFeeDiscount, toTWD, realizedTWD, fmtLocal, round2, cmp, sellCostBasis, sellReturnPct,
 } from './util.js';
 import { replaySymbol, normalizeTxn, applyAutoFee, uncoveredWarnings, fmtShares } from './ledger.js';
+import { estSellCost } from './lots.js';
 
 const activeHoldings = () => db.where('stock_holdings', (h) => h.shares > 0);
 
@@ -64,6 +65,7 @@ export async function listHoldings() {
   const holdings = activeHoldings();
   const quotes = await fetchQuotes(holdings.map((h) => h.symbol));
   const rate = storedUSDTWDRate();
+  const discount = twFeeDiscount();
 
   const realizedPLTWD = realizedTWD(db.where('stock_transactions', (t) => t.action === 'SELL' && t.account_id == null), rate);
 
@@ -86,8 +88,9 @@ export async function listHoldings() {
       d.day_change_twd = toTWD(q.change * h.shares, h.currency, rate);
       d.day_change_pct = q.change_percent;
       d.market_value = q.price * h.shares;
-      d.unrealized_pl = (q.price - h.avg_cost) * h.shares;
-      if (h.avg_cost > 0) d.pl_percent = (q.price - h.avg_cost) / h.avg_cost * 100;
+      // Net of what selling now would cost (台股 fee + tax), like a broker app's 預估損益
+      d.unrealized_pl = (q.price - h.avg_cost) * h.shares - estSellCost(h.market, h.symbol, h.shares, q.price, discount);
+      if (h.avg_cost > 0) d.pl_percent = d.unrealized_pl / (h.avg_cost * h.shares) * 100;
     }
     d.cost_twd = toTWD(h.avg_cost * h.shares, h.currency, rate);
     d.market_value_twd = toTWD(d.market_value, h.currency, rate);

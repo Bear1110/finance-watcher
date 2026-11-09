@@ -185,6 +185,9 @@ test('cost and realized: FIFO lots with fees, USD cost at the day rate', () => {
   approx('US cost at day rate', last('US', 'cost'), 2 * 50 * 32);
   approx('ALL cost', last('ALL', 'cost'), 5 * 120 + 2 * 50 * 32);
   approx('US realized', last('US', 'realized'), 0);
+  // Selling the 5 left at 130 costs fee max(1, floor(650 × 0.1425%)) = 1 + tax floor(650 × 0.3%) = 1; US none
+  approx('TW unrealized', last('TW', 'unrealized'), 5 * 130 - 5 * 120 - 2);
+  approx('US unrealized', last('US', 'unrealized'), 2 * 60 * 32 - 2 * 50 * 32);
 });
 
 test('realized uses the ledger realized_pl when the SELL carries one', () => {

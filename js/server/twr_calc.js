@@ -7,7 +7,7 @@
 
 import { USDTWD_SYMBOL } from './market.js';
 import { goRound, round2, round4, toTWD } from './util.js';
-import { lotFromBuy, takeLots, lotsTotal } from './lots.js';
+import { lotFromBuy, takeLots, lotsTotal, estSellCost } from './lots.js';
 
 
 // perfTxn: { symbol, market, action, currency, date, shares, price, fee, tax, transfer, realized_pl? }
@@ -70,7 +70,8 @@ class PriceCursor {
  * SELL's stored realized_pl when given (the ledger's number, so the 已實現損益
  * page and this agree), else proceeds − lot cost. USD cost is converted at that
  * day's rate (like the holdings page), so unrealized excludes FX moves;
- * realized is converted at the sale day's rate.
+ * realized is converted at the sale day's rate. `unrealized` = value − cost − what selling everything
+ * held would cost that day (台股 fee + tax at input.twFeeDiscount), like the holdings page.
  */
 export function computePerformance(input) {
   const txns = input.txns || [];
@@ -79,10 +80,11 @@ export function computePerformance(input) {
   const live = input.live || {};
   const liveRate = input.liveRate || 0;
   const today = input.today;
+  const discount = input.twFeeDiscount;
 
   const res = new PerfResult();
   for (const s of perfSegments) {
-    res.series[s] = { value: [0], growth: [1], pnl: [0], active: [0], cost: [0], realized: [0] };
+    res.series[s] = { value: [0], growth: [1], pnl: [0], active: [0], cost: [0], unrealized: [0], realized: [0] };
   }
   if (txns.length === 0) return res;
   const first = txns[0].date;
@@ -183,8 +185,10 @@ export function computePerformance(input) {
     }
     const value = valueAt((sym) => px[sym] || 0);
     const held = { ALL: 0, TW: 0, US: 0 };
+    const sell = { ALL: 0, TW: 0, US: 0 };
     for (const [sym, fifo] of Object.entries(lots)) {
       addFlow(held, symMarket[sym], toTWD(lotsTotal(fifo).cost, symCur[sym], fx));
+      addFlow(sell, symMarket[sym], estSellCost(symMarket[sym], sym, shares[sym], px[sym], discount)); // TWD: 台股 only
     }
 
     res.days.push(d);
@@ -212,6 +216,7 @@ export function computePerformance(input) {
       ps.pnl.push(ps.pnl[n] + (value[seg] || 0) + (outflow[seg] || 0) - prev - (inflow[seg] || 0));
       ps.active.push(act);
       ps.cost.push(held[seg] || 0);
+      ps.unrealized.push((value[seg] || 0) - (held[seg] || 0) - (sell[seg] || 0));
       ps.realized.push(realized[seg] || 0);
     }
   }
@@ -221,7 +226,7 @@ export function computePerformance(input) {
 export class PerfResult {
   constructor() {
     this.days = []; // days[0] is the base day before the first trade (value 0, growth 1)
-    this.series = {}; // seg -> { value, growth, pnl, active, cost, realized }
+    this.series = {}; // seg -> { value, growth, pnl, active, cost, unrealized, realized }
     this.fx = []; // USD/TWD used each day
     this.missing = []; // traded symbols without any daily close
   }

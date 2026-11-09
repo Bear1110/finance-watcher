@@ -5,7 +5,7 @@ import { route } from './router.js';
 import { storedUSDTWDRate, toTWD, daysBetween } from './util.js';
 import { listSnapshots, afterSnapshot, tradeCash, carriedCash, netWorthOf } from './assets.js';
 import { listHoldings } from './stocks.js';
-import { countedOtherAssets, includeOtherAssets } from './other_assets.js';
+import { countedOtherAssets, countedRows, includeOtherAssets } from './other_assets.js';
 import { expenseTWD } from './expenses.js';
 import { portfolioStats, ttmDividendsTWD } from './portfolio.js';
 
@@ -74,6 +74,7 @@ export function monthSummary(expenses, today) {
   for (const e of month) {
     if (e.type === 'expense') byCat.set(e.category, (byCat.get(e.category) || 0) + e.amount_twd);
   }
+  const lastRecord = expenses.reduce((mx, e) => (e.date > mx ? e.date : mx), '');
   return {
     from, to, today, prev_from: prevFrom, prev_to: prevTo,
     expense: sum(from, to, 'expense', month),
@@ -82,7 +83,10 @@ export function monthSummary(expenses, today) {
     prev_expense: sum(prevFrom, prevTo, 'expense'),
     top: [...byCat].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([category, amount]) => ({ category, amount })),
     count: month.length,
-    last_record: expenses.reduce((mx, e) => (e.date > mx ? e.date : mx), ''),
+    last_record: lastRecord,
+    // 收支 is in use: something this month or last. Otherwise 總覽 leaves the card out (early in the
+    // month it stays, so the card doesn't vanish on the 1st for someone who records every month)
+    in_use: lastRecord >= prevFrom,
   };
 }
 
@@ -181,7 +185,7 @@ export async function buildOverview() {
     }) : [],
     month,
     spending,
-    alerts: buildAlerts({ today, latestSnapshot: snaps[0], topHolding: pf && pf.rows[0], spending, month, otherAssets: includeOther ? db.all('other_assets') : [] }),
+    alerts: buildAlerts({ today, latestSnapshot: snaps[0], topHolding: pf && pf.rows[0], spending, month, otherAssets: includeOther ? countedRows() : [] }),
   };
   return { overview, stocks, portfolio: pf };
 }

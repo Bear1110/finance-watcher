@@ -62,6 +62,10 @@ test('monthSummary: whole month incl. planned entries; pace vs the same days las
   assert.deepEqual(m.top.map((t) => t.category), ['餐飲', '購物', '交通']);
   assert.equal(m.last_record, '2026-04-01');
   assert.equal(monthSummary([], '2026-01-15').prev_from, '2025-12-01');
+  assert.equal(m.in_use, true);
+  assert.equal(monthSummary([ex('2026-02-03', 10)], '2026-03-05').in_use, true); // last month only: keep the card
+  assert.equal(monthSummary([ex('2026-01-31', 10)], '2026-03-05').in_use, false); // stopped recording
+  assert.equal(monthSummary([], '2026-03-05').in_use, false); // never used 收支
 });
 
 test('avgMonthlyExpense: full months only, since records began', () => {

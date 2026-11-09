@@ -5,8 +5,8 @@
 import * as db from './db.js';
 import { route } from './router.js';
 import { fetchQuotes } from './market.js';
-import { HttpError, badRequest, body, cmp, refreshAndPersistRate, round2, storedUSDTWDRate, toTWD, realizedTWD } from './util.js';
-import { lotsTotal } from './lots.js';
+import { HttpError, badRequest, body, cmp, refreshAndPersistRate, round2, storedUSDTWDRate, twFeeDiscount, toTWD, realizedTWD } from './util.js';
+import { lotsTotal, estSellCost } from './lots.js';
 import { replayTrades } from './ledger.js';
 
 // USD/TWD rate: stored rate, 32 when missing or 0.
@@ -92,12 +92,13 @@ export async function computeHoldings(accountID) {
 
   const quotes = await fetchQuotes(pendings.map((p) => p.sym));
   const rate = storedUSDTWDRate();
+  const discount = twFeeDiscount();
 
   return pendings.map((p) => {
     const avgCost = p.shares > 0 ? p.costBasis / p.shares : 0;
     const price = quotes[p.sym]?.price || 0;
     const mv = p.shares * price;
-    const upl = mv - p.costBasis;
+    const upl = mv - p.costBasis - estSellCost(p.market, p.sym, p.shares, price, discount); // like the holdings page
     const plPct = p.costBasis > 0 ? upl / p.costBasis * 100 : 0;
     const twd = (v) => toTWD(v, p.currency, rate);
     return {

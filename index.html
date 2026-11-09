@@ -191,7 +191,7 @@
                   <th>投入金額</th>
                   <th>現價</th>
                   <th>市值</th>
-                  <th>未實現損益 / %</th>
+                  <th title="台股已扣掉現在賣出要付的手續費（依設定的折扣）和證交稅（股票 0.3%、ETF 0.1%），和券商 App 的預估損益算法一樣">未實現損益 / % ⓘ</th>
                   <th title="累計已領股利 / (未實現損益 + 累計股利) ÷ 投入金額">股利 / 含股利報酬</th>
                   <th title="近 12 個月已領股利 ÷ 市值">現價殖利率</th>
                   <th title="近 12 個月已領股利 ÷ 投入金額">成本殖利率</th>
@@ -267,7 +267,7 @@
           </div>
           <div class="trend-summary" id="holdings-trend-summary"></div>
           <div class="chart-container-md"><canvas id="chart-holdings-trend" aria-label="市值、持有成本與損益的每日走勢"></canvas></div>
-          <p class="form-hint chart-note" id="holdings-trend-hint">每天的持股 × 當日收盤價（美股以當日匯率換算台幣），由交易紀錄自動計算。持有成本與已實現損益依先進先出，與已實現損益頁一致；美股成本以當日匯率換算，未實現損益不含匯率漲跌。</p>
+          <p class="form-hint chart-note" id="holdings-trend-hint">每天的持股 × 當日收盤價（美股以當日匯率換算台幣），由交易紀錄自動計算。持有成本與已實現損益依先進先出，與已實現損益頁一致；美股成本以當日匯率換算，未實現損益不含匯率漲跌；台股未實現損益已扣預估的賣出手續費與證交稅。</p>
         </div>
 
         <!-- Time-weighted return by period (built by perfCardHtml) -->
@@ -720,7 +720,7 @@
             <div class="stat-value" id="mng-stock-value">--</div>
           </div>
           <div class="stat-card">
-            <div class="stat-label">未實現損益</div>
+            <div class="stat-label" title="台股已扣掉現在賣出要付的手續費（依設定的折扣）和證交稅（股票 0.3%、ETF 0.1%），和券商 App 的預估損益算法一樣">未實現損益 ⓘ</div>
             <div class="stat-value" id="mng-unrealized">--</div>
           </div>
           <div class="stat-card">
@@ -1000,8 +1000,8 @@
 
       <div class="card">
         <div class="card-header"><h3><span class="i" data-icon="briefcase"></span>其他資產</h3></div>
-        <p class="form-hint card-hint">房子、車子、勞退、保單解約金等不常變動的資產。自己填目前大約的價值，偶爾更新就好；之後記的快照會一起記下當時的總額。</p>
-        <label class="inline-check"><input type="checkbox" id="other-include" onchange="saveSetting('include_other_assets', this.checked ? '1' : '0')"> 計入總覽的淨資產（含走勢與年度成長）</label>
+        <p class="form-hint card-hint">房子、車子、勞退、保單解約金等不常變動的資產。自己填目前大約的價值，偶爾更新就好；之後記的快照會一起記下當時的總額。每一列的勾勾決定那一筆算不算進淨資產，不勾就只是記下來。</p>
+        <label class="inline-check"><input type="checkbox" id="other-include" onchange="saveOtherInclude(this.checked)"> 計入總覽的淨資產（含走勢與年度成長）</label>
         <div id="other-list"></div>
         <form id="other-form" class="other-form" onsubmit="submitOtherAsset(event)">
           <input type="hidden" name="other_id">
@@ -1215,6 +1215,10 @@
           <label>買入日期</label>
           <input type="date" name="date">
           <small class="form-hint">交易紀錄用，不填則為今天</small>
+        </div>
+        <div class="form-group">
+          <label>備註</label>
+          <input type="text" name="note" placeholder="選填，例如：轉倉自其他券商">
         </div>
         <div class="form-actions">
           <button type="submit" class="btn btn-primary">儲存</button>
