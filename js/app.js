@@ -137,9 +137,10 @@ function fmtPLCur(n, currency) {
   return prefix + (isUSD ? '$' : 'NT$') + fmt(Math.abs(n), isUSD ? 2 : 0);
 }
 
-/** Today's date string YYYY-MM-DD */
+/** Today's local date YYYY-MM-DD (not UTC: in Taiwan that is still yesterday until 08:00), like db.today() */
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 
@@ -617,10 +618,12 @@ async function loadDashboard() {
     renderMonth(ov.month, ov.spending);
     renderGrowthYears(ov.years);
     renderSnapshots(assets);
+    renderSnapshotStrip(ov.snapshot_months);
     renderRecentTx(transactions);
     // The data check is slower (price history): its warnings join once it is done
     renderAlerts(ov.alerts);
-    getDataCheck().then(d => renderAlerts([...ov.alerts, ...dataCheckWarnings(d).map(c => ({ ...c, text: c.title }))])).catch(() => {});
+    // (a stale snapshot shows on the 資產快照 strip instead)
+    getDataCheck().then(d => renderAlerts([...ov.alerts, ...dataCheckWarnings(d).filter(c => c.action !== 'assets').map(c => ({ ...c, text: c.title }))])).catch(() => {});
     renderNetWorthChart(); // snapshots now; daily once the performance series arrives
     loadPerformance('dash');
     getPerf().then(renderNetWorthChart).catch(() => {});
@@ -864,6 +867,32 @@ function snapshotRowHtml(a, prev) {
   </details>`;
 }
 
+/**
+ * 資產快照 strip under 淨資產 (overview.js snapshotMonths): one dot per month, filled when recorded.
+ * A filled dot opens that snapshot; an empty one records that month (dated its last day).
+ */
+function renderSnapshotStrip(months) {
+  const cur = months.at(-1); // this month
+  const done = cur?.snapshot;
+  const month = cur && Number(cur.ym.slice(5));
+  const btn = document.getElementById('snap-strip-btn');
+  document.getElementById('snap-strip-meta').textContent = !cur ? '' : done ? `✓ 本月 ${shortDate(done.date)} 已記` : `${month} 月還沒記`;
+  const hint = document.getElementById('snap-strip-hint');
+  hint.hidden = !!done; // done this month: just the dots
+  hint.textContent = cur
+    ? '每月看一次銀行和券商的現金餘額填進來就好，股票市值 App 會自己算。'
+    : '填一次銀行和券商裡的現金餘額，就算得出你的淨資產；之後每個月記一次。';
+  btn.hidden = !!done;
+  btn.textContent = cur ? `記 ${month} 月快照` : '記第一筆快照';
+  document.getElementById('snap-months').innerHTML = months.map(({ ym, date, snapshot: s }, i) => {
+    const m = Number(ym.slice(5));
+    const label = m === 1 || i === 0 ? `${ym.slice(2, 4)}/${m}` : `${m}月`; // the year where it changes
+    return s
+      ? `<button type="button" class="snap-month done" onclick="editSnapshot(${s.id})" title="${s.date} 的快照，點一下查看或修改"><span class="snap-dot"></span>${label}</button>`
+      : `<button type="button" class="snap-month${i === months.length - 1 ? ' now' : ''}" onclick="openSnapshotModal('${date}')" title="${m} 月沒有快照，點一下補記"><span class="snap-dot"></span>${label}</button>`;
+  }).join('');
+}
+
 /** Snapshot card: the latest one up front; the full history (by year, rows expand) behind a toggle. */
 function renderSnapshots(assets) {
   const latestEl = document.getElementById('snapshot-latest');
@@ -939,22 +968,24 @@ function setSnapshotMode(mode) {
     autoInfo.textContent = '手動模式：所有欄位由你自行填入';
   } else {
     manualFields.style.display = 'none';
-    autoInfo.textContent = '系統將自動擷取：目前股票市值、USD/TWD 匯率';
+    autoInfo.textContent = '系統將自動擷取：那一天的股票市值、USD/TWD 匯率';
   }
 }
 
-function openSnapshotModal() {
+/** New snapshot, dated today unless backfilling a month (date). */
+function openSnapshotModal(date = todayStr()) {
   const form = document.getElementById('snapshot-form');
   form.reset();
   form.querySelector('[name="id"]').value = '';
-  form.querySelector('[name="date"]').value = todayStr();
-  if (_overview?.cash) { // the user corrects it to the real balance
-    form.querySelector('[name="cash_twd"]').value = Math.max(0, Math.round(_overview?.cash.twd));
-    form.querySelector('[name="cash_usd"]').value = Math.max(0, Math.round(_overview?.cash.usd * 100) / 100);
+  form.querySelector('[name="date"]').value = date;
+  const carried = date === todayStr() && _overview?.cash; // today's cash estimate; a past month starts empty
+  if (carried) { // the user corrects it to the real balance
+    form.querySelector('[name="cash_twd"]').value = Math.max(0, Math.round(carried.twd));
+    form.querySelector('[name="cash_usd"]').value = Math.max(0, Math.round(carried.usd * 100) / 100);
   }
   document.getElementById('snapshot-modal-title').textContent = '新增資產快照';
   setSnapshotMode('auto');
-  document.getElementById('snapshot-cash-hint').hidden = !_overview?.cash;
+  document.getElementById('snapshot-cash-hint').hidden = !carried;
   openModal('modal-snapshot');
 }
 
@@ -2439,7 +2470,6 @@ const CHECK_ACTIONS = {
   transactions: ['到交易紀錄', () => goToTab('stocks', 'transactions')],
   dividends: ['到股利', () => goToTab('stocks', 'dividends')],
   assets: ['新增快照', () => openSnapshotModal()],
-  snapshot: ['新增快照', () => openSnapshotModal()],
   portfolio: ['看組合分析', () => goToTab('stocks', 'portfolio')],
   expenses: ['去記帳', () => goToTab('expenses')],
   settings: ['去設定', () => goToTab('settings')],

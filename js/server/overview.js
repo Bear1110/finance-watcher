@@ -121,14 +121,36 @@ export function spendingStats({ cashTWD, setting, recorded }) {
 }
 
 /**
- * Things worth acting on, most important first. Each: { level: 'warn'|'info', text, action }.
- * A stale snapshot is the data check's job (/api/data-check); the dashboard shows its warnings too.
+ * The 資產快照 strip on 總覽 (a snapshot a month is the habit): each month from the first snapshot's
+ * month to this one (the last), at most `max`, with that month's latest snapshot { id, date } or null,
+ * and `date` to record a missing one on: today for this month, else the month's last day.
+ * No snapshots: no months.
  */
-export function buildAlerts({ today, latestSnapshot, topHolding, spending, month, otherAssets }) {
-  const out = [];
-  if (!latestSnapshot) {
-    out.push({ level: 'info', text: '還沒有資產快照：記一筆現金餘額，才算得出淨資產', action: 'snapshot' });
+export function snapshotMonths(snaps, today, max = 12) {
+  const byMonth = new Map();
+  for (const s of snaps) {
+    const ym = s.date.slice(0, 7);
+    if (!(byMonth.get(ym)?.date >= s.date)) byMonth.set(ym, { id: s.id, date: s.date });
   }
+  const first = [...byMonth.keys()].sort()[0];
+  const [y, m] = today.split('-').map(Number);
+  const months = [];
+  for (let i = 0; first && i < max; i++) {
+    const d = new Date(y, m - 1 - i, 1);
+    const [my, mm] = [d.getFullYear(), d.getMonth() + 1];
+    const ym = `${my}-${pad(mm)}`;
+    if (ym < first) break;
+    months.unshift({ ym, date: i === 0 ? today : ymd(my, mm, daysInMonth(my, mm)), snapshot: byMonth.get(ym) || null });
+  }
+  return months;
+}
+
+/**
+ * Things worth acting on, most important first. Each: { level: 'warn'|'info', text, action }.
+ * Snapshots have their own strip on 總覽 (snapshotMonths), so none here.
+ */
+export function buildAlerts({ today, topHolding, spending, month, otherAssets }) {
+  const out = [];
   if (topHolding && topHolding.level === 'danger') {
     out.push({ level: 'warn', text: `${topHolding.symbol} 佔股票 ${topHolding.weight.toFixed(0)}%，高度集中`, action: 'portfolio' });
   }
@@ -185,7 +207,8 @@ export async function buildOverview() {
     }) : [],
     month,
     spending,
-    alerts: buildAlerts({ today, latestSnapshot: snaps[0], topHolding: pf && pf.rows[0], spending, month, otherAssets: includeOther ? countedRows() : [] }),
+    snapshot_months: snapshotMonths(snaps, today),
+    alerts: buildAlerts({ today, topHolding: pf && pf.rows[0], spending, month, otherAssets: includeOther ? countedRows() : [] }),
   };
   return { overview, stocks, portfolio: pf };
 }

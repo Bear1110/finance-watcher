@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { growthBetween, yearlyGrowth, monthSummary, avgMonthlyExpense, spendingStats, buildAlerts } from '../js/server/overview.js';
+import { growthBetween, yearlyGrowth, monthSummary, avgMonthlyExpense, spendingStats, buildAlerts, snapshotMonths } from '../js/server/overview.js';
 
 const snap = (date, stock, total, created_at = `${date} 12:00:00`) => ({ date, created_at, stock_value_twd: stock, total });
 const tx = (o) => ({ currency: 'TWD', fee: 0, tax: 0, created_at: '', ...o });
@@ -85,20 +85,18 @@ test('spendingStats: setting wins over records, cash runway', () => {
     { monthly_expense: null, source: null, recorded_monthly_expense: null, cash_months: null });
 });
 
-test('buildAlerts: no snapshot, concentration, low cash, stale 收支 and 其他資產', () => {
+test('buildAlerts: concentration, low cash, stale 收支 and 其他資產', () => {
   const a = buildAlerts({
     today: '2026-11-06',
-    latestSnapshot: null,
     topHolding: { symbol: '0050.TW', weight: 42, level: 'danger' },
     spending: { cash_months: 2.1 },
     month: { last_record: '2026-10-01' },
     otherAssets: [{ name: '自住房', updated: '2025-10-01' }, { name: '車', updated: '2026-10-01' }],
   });
-  assert.deepEqual(a.map((x) => x.action), ['snapshot', 'portfolio', 'settings', 'expenses', 'settings']);
-  assert.match(a[1].text, /0050\.TW 佔股票 42%/);
-  assert.match(a[4].text, /自住房/);
-  // a stale snapshot is left to the data check
-  assert.deepEqual(buildAlerts({ today: '2026-11-06', latestSnapshot: { date: '2026-01-01' }, topHolding: { weight: 30, level: 'warn' },
+  assert.deepEqual(a.map((x) => x.action), ['portfolio', 'settings', 'expenses', 'settings']);
+  assert.match(a[0].text, /0050\.TW 佔股票 42%/);
+  assert.match(a[3].text, /自住房/);
+  assert.deepEqual(buildAlerts({ today: '2026-11-06', topHolding: { weight: 30, level: 'warn' },
     spending: {}, month: { last_record: '' }, otherAssets: [] }), []);
 });
 
@@ -125,4 +123,16 @@ test('growthBetween: consecutive periods add up (same-day records go to exactly 
   assert.equal(ab.savings + bc.savings, ac.savings);
   assert.equal(ab.price, 500 - 100);
   assert.equal(bc.price, 300 - 200);
+});
+
+test('snapshotMonths: from the first snapshot month to this one, latest per month, at most 12', () => {
+  const s = (id, date) => ({ id, date });
+  const r = snapshotMonths([s(3, '2026-11-02'), s(2, '2026-09-30'), s(1, '2026-09-01')], '2026-11-09');
+  assert.deepEqual(r.map((m) => [m.ym, m.snapshot && m.snapshot.id, m.date]),
+    [['2026-09', 2, '2026-09-30'], ['2026-10', null, '2026-10-31'], ['2026-11', 3, '2026-11-09']]);
+  const old = snapshotMonths([s(1, '2024-05-01')], '2026-02-10');
+  assert.equal(old.length, 12);
+  assert.deepEqual([old[0].ym, old[11].ym], ['2025-03', '2026-02']); // across the year
+  assert.equal(old[11].snapshot, null);
+  assert.deepEqual(snapshotMonths([], '2026-11-09'), []);
 });

@@ -90,6 +90,18 @@
         <div class="hero-sub" id="dash-net-date">--</div>
       </div>
 
+      <!-- 資產快照: the monthly habit, one dot per month (renderSnapshotStrip) -->
+      <div class="card snap-strip" data-tour="snapshots">
+        <div class="card-header">
+          <h3>資產快照 <small class="card-meta" id="snap-strip-meta"></small></h3>
+          <div class="header-actions">
+            <button type="button" class="btn btn-primary btn-sm" id="snap-strip-btn" onclick="openSnapshotModal()"></button>
+          </div>
+        </div>
+        <p class="form-hint card-hint" id="snap-strip-hint"></p>
+        <div class="snap-months" id="snap-months"></div>
+      </div>
+
       <!-- Investment return: the 績效 card without the risk table (built by perfCardHtml) -->
       <div id="perf-dash"></div>
 
@@ -103,7 +115,7 @@
       </div>
 
       <!-- Net worth over time + yearly growth + snapshots -->
-      <div class="card" data-tour="snapshots">
+      <div class="card">
         <div class="card-header">
           <h3>淨資產走勢與快照</h3>
           <div class="header-actions">
@@ -1120,9 +1132,7 @@
       </div>
       <form id="snapshot-form" onsubmit="submitSnapshot(event)">
         <input type="hidden" name="id">
-        <div class="snapshot-auto-info" id="snapshot-auto-info">
-          系統將自動擷取：目前股票市值、USD/TWD 匯率
-        </div>
+        <div class="snapshot-auto-info" id="snapshot-auto-info"></div>
         <div class="snapshot-mode-toggle">
           <button type="button" class="toggle-sm active" onclick="setSnapshotMode('auto')">自動擷取</button>
           <button type="button" class="toggle-sm" onclick="setSnapshotMode('manual')">手動填入(匯入歷史)</button>

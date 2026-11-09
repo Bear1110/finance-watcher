@@ -447,19 +447,18 @@ const snapshots = {
     return { row: { date, cash_twd: twd || 0, cash_usd: usd || 0, note: str(raw.note), stock_tw_value: 0, stock_us_value: 0, stock_value_twd: 0, usd_twd_rate: 0, total_asset: 0 } };
   },
   // Each snapshot gets its date's stock value and rate (assets.js autoFill); the series is built once.
-  // Unlike the form, a past date without the series is an error: a batch of old balances valued
-  // at today's prices would quietly bend the net-worth history.
+  // A past date without the series is that row's error, never today's prices.
   async prepare(res) {
     const today = db.today();
     const perf = res.records.some((r) => r.date < today) ? await performance().catch(() => null) : null;
     const kept = [];
     for (const r of res.records) {
-      if (r.date < today && !perf) {
-        res.errors.push({ index: r.index, error: '算不出當天的股票市值（還沒抓到歷史股價），請稍後再試或手動新增' });
-        continue;
+      try {
+        await autoFill(r, perf);
+        kept.push(r);
+      } catch (err) {
+        res.errors.push({ index: r.index, error: err.message });
       }
-      await autoFill(r, perf);
-      kept.push(r);
     }
     res.records = kept;
   },

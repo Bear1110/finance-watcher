@@ -2,7 +2,7 @@
 
 import * as db from './db.js';
 import { route } from './router.js';
-import { body, refreshAndPersistRate, cmp, storedUSDTWDRate } from './util.js';
+import { badRequest, body, refreshAndPersistRate, cmp, storedUSDTWDRate } from './util.js';
 import { portfolioValues } from './stocks.js';
 import { performance } from './twr.js';
 import { otherAssetsTotal, includeOtherAssets } from './other_assets.js';
@@ -40,15 +40,18 @@ export function marketOn(date, perf) {
 /**
  * Fill whatever was left at 0: rate, stock values, total. Today: live quotes and rate (refreshed and
  * persisted, so the snapshot freezes it). A past date: that day's values from the performance series
- * (built here unless passed in), so a snapshot for last March doesn't get today's stock value; live
- * values when the series can't be built.
+ * (built here unless passed in; null = already tried and unavailable), so a snapshot for last March
+ * doesn't get today's stock value. Without the series that is an error (fill them in by hand), never
+ * today's values.
  */
 export async function autoFill(s, perf) {
   const needRate = s.usd_twd_rate === 0;
   const needStock = s.stock_value_twd === 0;
   if (needRate || needStock) {
-    if (s.date < db.today()) perf ??= await performance().catch(() => null);
-    const past = s.date < db.today() && perf ? marketOn(s.date, perf) : null;
+    const isPast = s.date < db.today();
+    if (isPast && perf === undefined) perf = await performance().catch(() => null); // null: tried, unavailable
+    if (isPast && !perf) throw badRequest('算不出那一天的股票市值（還沒抓到歷史股價，或沒有行情代理）。請稍後再試，或切到「手動」自己填股票市值與匯率');
+    const past = isPast ? marketOn(s.date, perf) : null;
     if (needRate) s.usd_twd_rate = past ? past[2] : await refreshAndPersistRate();
     if (needStock) {
       const [tw, us] = past || await portfolioValues();

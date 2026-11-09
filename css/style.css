@@ -2212,3 +2212,13 @@ body[data-tab="expenses"] .fab { display: flex; }
   .holdings-summary-parts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
   .holdings-summary-parts strong { font-size: 0.85rem; overflow-wrap: anywhere; }
 }
+
+/* 資產快照 strip on 總覽: one dot per month, filled when recorded */
+.snap-months { display: flex; }
+.snap-month { flex: 1 1 0; min-width: 0; max-width: 64px; white-space: nowrap; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; border: none; border-radius: 6px; background: none; color: var(--text-muted); font-size: 0.72rem; cursor: pointer; }
+.snap-month:hover { background: var(--accent-subtle); color: var(--text-primary); }
+.snap-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border-color); }
+.snap-month.done .snap-dot { background: var(--accent); border-color: var(--accent); }
+.snap-month.now { color: var(--accent); font-weight: 600; }
+.snap-month.now .snap-dot { border-color: var(--accent); border-style: dashed; }
+@media (max-width: 599px) { .snap-month { font-size: 0.66rem; letter-spacing: -0.02em; } }
