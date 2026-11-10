@@ -36,6 +36,27 @@ export function expenseTWD(e) {
   return e.currency === 'USD' ? toTWD(e.amount, 'USD', storedUSDTWDRate()) : e.amount;
 }
 
+/**
+ * Totals of a list of 收支 the page shows (search results, one day): count, income / expense in TWD,
+ * the date range, and the top 3 expense categories (only when there are 2+ categories). The page
+ * filters; the adding up is here, like every other number.
+ */
+export function expenseListSummary(records) {
+  let income = 0, expense = 0, first = '', last = '';
+  const byCat = new Map();
+  for (const e of records) {
+    if (e.type === 'income') income += e.amount_twd;
+    else {
+      expense += e.amount_twd;
+      byCat.set(e.category || '', (byCat.get(e.category || '') || 0) + e.amount_twd);
+    }
+    if (e.date && (!first || e.date < first)) first = e.date;
+    if (e.date > last) last = e.date;
+  }
+  const top = byCat.size > 1 ? [...byCat].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([category, amount]) => ({ category, amount })) : [];
+  return { count: records.length, income, expense, first, last, top };
+}
+
 export const expenseJSON = (e) => ({
   id: e.id, type: e.type, amount: e.amount, currency: e.currency, fx_rate: e.fx_rate, fx_pending: e.fx_pending,
   amount_twd: expenseTWD(e), category: e.category, note: e.note, date: e.date, created_at: e.created_at,

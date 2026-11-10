@@ -30,7 +30,9 @@ function stale(symbol, now) {
 
 /**
  * Look up the symbols whose name is missing or old. One with no name found is saved as '' (tried
- * again after a day); a failed request saves nothing, so the next call tries again.
+ * again after a day); a failed request saves nothing, so the next call tries again. 台股: only codes in
+ * the Worker's reply are saved — it leaves out the ones it didn't get to (too many at once) or
+ * couldn't read, and '' means "no such code".
  */
 export async function refreshNames(symbols) {
   if (!hasProxy()) return;
@@ -46,7 +48,7 @@ export async function refreshNames(symbols) {
   }
   await Promise.all([
     tw.size && fetchTWNames([...tw.keys()])
-      .then((names) => tw.forEach((s, code) => save(s, names[code])))
+      .then((names) => tw.forEach((s, code) => { if (code in names) save(s, names[code]); }))
       .catch((e) => console.warn('tw names', e.message)),
     other.length && fetchQuotes(other)
       .then((quotes) => other.forEach((s) => save(s, quotes[s]?.name)))

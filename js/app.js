@@ -322,11 +322,17 @@ async function loadStockNames() {
   api('/api/stocks/names?refresh=1').then(setStockNames, () => {});
 }
 
-/** New names from the server; redraws the current tab when one of them changes what is shown. */
+/**
+ * New names from the server. Only the names on screen are filled in (stockHTML's data-sym spans):
+ * reloading the tab would refetch everything and wipe what the user is typing in a form.
+ */
 function setStockNames(names, symbols = Object.keys(names)) {
-  const changed = symbols.some(s => (names[s] || '') !== (_stockNames[s] || ''));
+  const changed = new Set(symbols.filter(s => (names[s] || '') !== (_stockNames[s] || '')));
   _stockNames = names;
-  if (changed) onTabActivated(document.body.dataset.tab || 'dashboard');
+  if (!changed.size) return;
+  document.querySelectorAll('[data-sym]').forEach(el => {
+    if (changed.has(el.dataset.sym)) el.innerHTML = stockInner(el.dataset.sym);
+  });
 }
 
 /**
@@ -353,6 +359,10 @@ const stockText = (sym) => [symCode(sym), stockName(sym)].filter(Boolean).join('
 
 /** The code, then the name small and gray (tables and lists). */
 function stockHTML(sym) {
+  return `<span data-sym="${escapeAttr(sym || '')}">${stockInner(sym)}</span>`; // setStockNames fills the name in later
+}
+
+function stockInner(sym) {
   const n = stockName(sym);
   return `${escapeHtml(symCode(sym) || '--')}${n ? ` <span class="sym-name" title="${escapeAttr(n)}">${escapeHtml(n)}</span>` : ''}`;
 }
@@ -949,6 +959,7 @@ function setSnapshotMode(mode) {
 function openSnapshotModal(date = todayStr()) {
   const form = document.getElementById('snapshot-form');
   form.reset();
+  form.querySelectorAll('input[data-calc]').forEach(i => delete i.dataset.stored);
   form.querySelector('[name="id"]').value = '';
   form.querySelector('[name="date"]').value = date;
   const carried = date === todayStr() && _overview?.cash; // today's cash estimate; a past month starts empty
@@ -969,8 +980,11 @@ function editSnapshot(id) {
   const form = document.getElementById('snapshot-form');
   form.querySelector('[name="id"]').value = a.id;
   form.querySelector('[name="date"]').value = a.date;
-  form.querySelector('[name="cash_twd"]').value = a.cash_twd || 0;
-  form.querySelector('[name="cash_usd"]').value = a.cash_usd || 0;
+  for (const f of ['cash_twd', 'cash_usd']) {
+    const input = form.querySelector(`[name="${f}"]`);
+    input.value = a[f] || 0;
+    input.dataset.stored = a[f] || 0; // an old negative balance can be saved again as it is (assets.js decode)
+  }
   form.querySelector('[name="stock_tw_value"]').value = a.stock_tw_value || 0;
   form.querySelector('[name="stock_us_value"]').value = a.stock_us_value || 0;
   form.querySelector('[name="usd_twd_rate"]').value = a.usd_twd_rate || 0;
@@ -1026,7 +1040,8 @@ function updateCalcInput(input, typing = false) {
   const raw = input.value.trim();
   const n = Number(raw); // fallback if amount.js didn't load: plain numbers only
   const c = window.calcInfo ? window.calcInfo(raw) : { value: Number.isFinite(n) ? n : null, sum: false, open: false };
-  const err = !raw ? '' : c.value == null ? '看不懂這個算式：只能用數字和 + − × ÷（千分位逗號要三位一組）' : c.value < 0 ? '不能是負數' : '';
+  const negative = c.value < 0 && c.value !== Number(input.dataset.stored); // the stored value as it was is fine
+  const err = !raw ? '' : c.value == null ? '看不懂這個算式：只能用數字和 + − × ÷（千分位逗號要三位一組）' : negative ? '不能是負數' : '';
   input.setCustomValidity(err); // still blocks saving while typing
   const quiet = typing && c.open;
   out.hidden = quiet || (!err && !c.sum); // a plain number needs no echo
@@ -1350,7 +1365,8 @@ async function refreshStockPrices() {
 // ============================================================
 
 let _rplData = null; // cached realized P&L data
-let _rplFilter = 'ALL';
+let _rplFilter = 'ALL'; // the market shown
+let _rplMarketPick = 'ALL'; // the one the user picked: kept through a year with only one market
 let _rplYear = 'ALL';
 let _rplYears = [];
 
@@ -1381,7 +1397,7 @@ function renderRplMarketButtons() {
   const sel = document.getElementById('rpl-market');
   const single = markets.size < 2;
   sel._seg.hidden = single; // the button row segmentSelect built at startup
-  if (single) sel.value = _rplFilter = 'ALL';
+  sel.value = _rplFilter = single ? 'ALL' : _rplMarketPick;
 }
 
 function filterRealizedYear(year) {
@@ -1390,7 +1406,7 @@ function filterRealizedYear(year) {
 }
 
 function filterRealizedPL(market) {
-  _rplFilter = market;
+  _rplFilter = _rplMarketPick = market;
   renderRealizedSummary();
 }
 
@@ -1621,12 +1637,8 @@ function renderTransactions() {
   const summary = document.getElementById('tx-search-summary');
   summary.hidden = !words.length;
   if (words.length) {
-    const buys = list.filter(t => t.action === 'BUY').length;
-    const sells = list.length - buys;
-    // One stock: how many shares the shown records add up to (bought − sold)
-    const net = new Set(list.map(t => t.symbol)).size === 1
-      ? list.reduce((s, t) => s + (t.action === 'BUY' ? t.shares : -t.shares), 0) : null;
-    summary.textContent = [`找到 ${list.length} 筆`, buys && sells ? `買 ${buys} · 賣 ${sells}` : '',
+    const { count, buys, sells, net_shares: net } = txnListSummary(list); // js/server/stocks.js
+    summary.textContent = [`找到 ${count} 筆`, buys && sells ? `買 ${buys} · 賣 ${sells}` : '',
       net != null ? `合計${net >= 0 ? '買進' : '賣出'} ${fmt(Math.abs(net))} 股` : ''].filter(Boolean).join(' · ');
   }
 
@@ -3514,27 +3526,17 @@ function expenseMatches(e, words) {
  */
 function searchSummaryHTML(records) {
   if (!records.length) return '找到 0 筆';
-  const dates = records.map(e => e.date).sort();
-  const first = dates[0];
-  const last = dates.at(-1);
+  const sum = expenseListSummary(records); // js/server/expenses.js
+  const { first, last } = sum;
   let range = fullDate(first);
   if (last !== first) range += `–${last.startsWith(first.slice(0, 4)) ? shortDate(last) : fullDate(last)}`;
-  const byCat = new Map();
-  for (const e of records) {
-    if (e.type === 'income') continue;
-    const k = catLabel(e.category);
-    byCat.set(k, (byCat.get(k) || 0) + e.amount_twd);
-  }
-  const top = byCat.size > 1 ? [...byCat].sort((a, b) => b[1] - a[1]).slice(0, 3)
-    .map(([k, v]) => `${escapeHtml(k)} ${fmtTWD(v)}`).join(' · ') : '';
-  return `<div>${[`找到 ${records.length} 筆`, expTotals(records), range].filter(Boolean).join(' · ')}</div>${top ? `<div>${top}</div>` : ''}`;
+  const top = sum.top.map(t => `${escapeHtml(catLabel(t.category))} ${fmtTWD(t.amount)}`).join(' · ');
+  return `<div>${[`找到 ${sum.count} 筆`, expTotals(sum), range].filter(Boolean).join(' · ')}</div>${top ? `<div>${top}</div>` : ''}`;
 }
 
-/** Income / expense totals in TWD: "收入 +NT$ 1,500 · 支出 NT$ 1,283" (parts with nothing are left out). */
-function expTotals(records) {
-  let inc = 0, out = 0;
-  for (const e of records) if (e.type === 'income') inc += e.amount_twd; else out += e.amount_twd;
-  return [inc ? `收入 +${fmtTWD(inc)}` : '', out ? `支出 ${fmtTWD(out)}` : ''].filter(Boolean).join(' · ');
+/** Income / expense totals in TWD: "收入 +NT$ 1,500 · 支出 NT$ 1,283" (parts with nothing are left out). sum: expenseListSummary. */
+function expTotals({ income, expense }) {
+  return [income ? `收入 +${fmtTWD(income)}` : '', expense ? `支出 ${fmtTWD(expense)}` : ''].filter(Boolean).join(' · ');
 }
 
 /**
@@ -3575,7 +3577,7 @@ function renderExpenseTable(month) {
     days.get(e.date).push(e);
   }
   list.innerHTML = [...days].map(([date, recs]) => `
-      <div class="exp-day"><span>${dateText(date)}</span><span>${expTotals(recs)}</span></div>` +
+      <div class="exp-day"><span>${dateText(date)}</span><span>${expTotals(expenseListSummary(recs))}</span></div>` +
     recs.map(e => row(e, noteHTML(e.note))).join('')).join('');
 }
 

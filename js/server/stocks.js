@@ -45,6 +45,17 @@ export function txnJSON(t) {
 }
 
 /** Returns [twValueTWD, usValueTWD, totalValueTWD] of self holdings at live prices. */
+/**
+ * Totals of the trades the page shows (search results): count, buys, sells, and for a single stock
+ * the shares they add up to (bought − sold; null when several stocks are mixed).
+ */
+export function txnListSummary(list) {
+  const buys = list.filter((t) => t.action === 'BUY').length;
+  const oneStock = new Set(list.map((t) => t.symbol)).size === 1;
+  const net = oneStock ? list.reduce((sum, t) => sum + (t.action === 'BUY' ? t.shares : -t.shares), 0) : null;
+  return { count: list.length, buys, sells: list.length - buys, net_shares: net };
+}
+
 export async function portfolioValues() {
   const rate = storedUSDTWDRate();
   const holdings = activeHoldings();

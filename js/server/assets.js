@@ -20,7 +20,11 @@ const assetJSON = (s) => ({
   net_worth: s.total_asset + (includeOtherAssets() ? s.other_assets || 0 : 0), note: s.note, created_at: s.created_at,
 });
 
-function decode(req) {
+/**
+ * The snapshot fields from a request. stored: the row being edited — a negative cash balance it
+ * already has (allowed before) can be saved again, so an old snapshot stays editable.
+ */
+function decode(req, stored) {
   const b = body(req);
   const s = { date: b.date ? String(b.date) : '', note: b.note == null ? '' : String(b.note) };
   for (const f of FIELDS) {
@@ -28,7 +32,7 @@ function decode(req) {
     if (b[f] == null || b[f] === '') { s[f] = 0; continue; }
     const v = calcExpr(b[f]); // cash may be a typed sum like "120000+35000"
     if (v == null) throw badRequest(`看不懂「${b[f]}」：只能用數字和 + − × ÷`);
-    if (v < 0) throw badRequest(`現金不能是負數（「${b[f]}」= ${v}）`);
+    if (v < 0 && v !== stored?.[f]) throw badRequest(`現金不能是負數（「${b[f]}」= ${v}）`);
     s[f] = v;
   }
   if (b.other_assets != null) s.other_assets = Number(b.other_assets) || 0; // else: today's total on create, kept on edit
@@ -52,11 +56,11 @@ export function marketOn(date, perf) {
  * persisted, so the snapshot freezes it). A past date: that day's values from the performance series
  * (built here unless passed in; null = already tried and unavailable), so a snapshot for last March
  * doesn't get today's stock value. Without the series that is an error (fill them in by hand), never
- * today's values.
+ * today's values. keepZero { rate, stock }: leave that 0 as it is (an edit keeping the stored 0).
  */
-export async function autoFill(s, perf) {
-  const needRate = s.usd_twd_rate === 0;
-  const needStock = s.stock_value_twd === 0;
+export async function autoFill(s, perf, keepZero = {}) {
+  const needRate = s.usd_twd_rate === 0 && !keepZero.rate;
+  const needStock = s.stock_value_twd === 0 && !keepZero.stock;
   if (needRate || needStock) {
     const isPast = s.date < db.today();
     if (isPast && perf === undefined) perf = await performance().catch(() => null); // null: tried, unavailable
@@ -144,8 +148,11 @@ async function create(req) {
 }
 
 async function update(req) {
-  const s = decode(req);
-  await autoFill(s);
+  const stored = db.get('asset_snapshots', req.params.id);
+  const s = decode(req, stored);
+  // a 0 the row already had (no stock that day, or entered as 0) is kept, not looked up again: fixing
+  // a note shouldn't need that day's prices
+  await autoFill(s, undefined, { rate: stored?.usd_twd_rate === 0, stock: stored?.stock_value_twd === 0 });
   db.update('asset_snapshots', req.params.id, s);
   return { status: 'updated' };
 }

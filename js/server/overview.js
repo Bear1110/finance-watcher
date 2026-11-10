@@ -81,7 +81,8 @@ export function monthSummary(expenses, today) {
   for (const e of month) {
     if (e.type === 'expense') byCat.set(e.category, (byCat.get(e.category) || 0) + e.amount_twd);
   }
-  const lastRecord = expenses.reduce((mx, e) => (e.date > mx ? e.date : mx), '');
+  // the latest one up to today: a planned record dated next year doesn't mean 收支 is still kept
+  const lastRecord = expenses.reduce((mx, e) => (e.date <= today && e.date > mx ? e.date : mx), '');
   return {
     from, to, today, prev_from: prevFrom, prev_to: prevTo,
     expense: sum(from, to, 'expense', month),
@@ -93,7 +94,7 @@ export function monthSummary(expenses, today) {
     last_record: lastRecord,
     // 收支 is in use: something this month or last. Otherwise 總覽 leaves the card out (early in the
     // month it stays, so the card doesn't vanish on the 1st for someone who records every month)
-    in_use: lastRecord >= prevFrom,
+    in_use: lastRecord >= prevFrom || month.length > 0,
   };
 }
 

@@ -62,14 +62,18 @@ async function listedNames(ctx) {
   return names;
 }
 
-/** One code from the ISIN page ('' when not found; cached either way so a typo isn't asked again all day). */
+/**
+ * One code from the ISIN page: '' when the page says there is no such code (cached, so a typo isn't asked
+ * again all day); null when the page couldn't be read (not cached; the code is left out of the reply so
+ * the app asks again).
+ */
 async function singleName(code, ctx) {
   const key = `https://tw-names.cache/isin-v1/${code}`;
   const hit = await cachedJSON(key);
   if (hit !== undefined) return hit.name;
   try {
     const r = await fetch(ISIN_SINGLE + encodeURIComponent(code), { headers: { 'User-Agent': UA } });
-    if (!r.ok) return '';
+    if (!r.ok) return null;
     const html = new TextDecoder('big5').decode(await r.arrayBuffer());
     const m = html.match(new RegExp(`<td[^>]*>${code}</td>\\s*<td[^>]*>([^<]+)</td>`));
     const name = m ? m[1].trim() : '';
@@ -77,7 +81,7 @@ async function singleName(code, ctx) {
     return name;
   } catch (e) {
     console.log('tw-names isin', code, e.message);
-    return '';
+    return null;
   }
 }
 
@@ -86,9 +90,10 @@ async function twNames(codes, ctx) {
   const out = {};
   const rest = [];
   for (const c of codes) if (listed[c]) out[c] = listed[c]; else rest.push(c);
+  // past MAX_SINGLE, or the page couldn't be read: left out, so the app asks again later; '' = no such code
   await Promise.all(rest.slice(0, MAX_SINGLE).map(async (c) => {
     const name = await singleName(c, ctx);
-    if (name) out[c] = name;
+    if (name != null) out[c] = name;
   }));
   return out;
 }

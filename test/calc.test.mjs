@@ -20,11 +20,13 @@ test('calcExpr: + − × ÷ with × ÷ first, no brackets', () => {
   assert.equal(calcExpr('2500.5'), 2500.5);
   assert.equal(calcExpr('0.5'), 0.5);
   assert.equal(calcExpr('NT$ 120,000 + 500元'), 120500);
+  assert.equal(calcExpr('-500'), -500); // an old negative balance being edited
+  assert.equal(calcExpr('-5+10'), 5);
   assert.equal(calcExpr(1200), 1200);
 });
 
 test('calcExpr: null when it is not a sum', () => {
-  for (const s of ['', '  ', '1+', '+1', '-5+10', '1++2', '(1+2)', 'abc', '1/0', '1e5', '1e-7',
+  for (const s of ['', '  ', '1+', '+1', '--5', '1+-2', '120000 35000', '12 000', '１２０　３０', '1++2', '(1+2)', 'abc', '1/0', '1e5', '1e-7',
     '350,5', '1,2345', '2026-01', '012-345', '2026/01/05', null, undefined]) assert.equal(calcExpr(s), null, String(s));
 });
 
@@ -44,9 +46,28 @@ test('snapshot API: cash typed as a sum is saved as its result; unreadable or ne
   assert.equal(r.cash_usd, 150);
   await assert.rejects(snap('12++3'), /看不懂/);
   await assert.rejects(snap('100-5000'), /負數/);
-  await assert.rejects(snap('-5000'), /看不懂/);
+  await assert.rejects(snap('-5000'), /負數/);
   // the other fields are plain numbers, as before: no sums, no rounding, exponents fine
   const m = await snap('1', { usd_twd_rate: 1e-7, total_asset: 1e21 });
   assert.equal(m.usd_twd_rate, 1e-7);
   assert.equal(m.total_asset, 1e21);
+});
+
+test('snapshot API: editing keeps an old negative cash balance and a stored 0 stock value / rate', async (t) => {
+  db._reset({});
+  // a trade, and no way to get that day's prices (offline): the stock value can't be looked up
+  db.insert('stock_transactions', { symbol: '2330.TW', market: 'TW', action: 'BUY', shares: 1000, price: 500, date: '2024-06-03' });
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error('offline'); };
+  t.after(() => { globalThis.fetch = realFetch; });
+  const id = db.insert('asset_snapshots', { date: '2025-01-31', cash_twd: 100, cash_usd: -500, stock_tw_value: 0, stock_us_value: 0,
+    stock_value_twd: 0, usd_twd_rate: 30, total_asset: 0, note: '' }).id;
+  const edit = (extra) => handle(`/api/assets/${id}`, { method: 'PUT', body: JSON.stringify({
+    date: '2025-01-31', cash_twd: '100', cash_usd: '-500', stock_tw_value: 0, stock_us_value: 0, stock_value_twd: 0, usd_twd_rate: 30, note: '改備註', ...extra }) });
+  await edit(); // no prices needed: the stored 0 stock value is kept
+  const row = db.get('asset_snapshots', id);
+  assert.equal(row.note, '改備註');
+  assert.equal(row.cash_usd, -500);
+  assert.equal(row.stock_value_twd, 0);
+  await assert.rejects(edit({ cash_usd: '-600' }), /負數/); // a new negative is still refused
 });
