@@ -4003,11 +4003,7 @@ async function loadSettings() {
     loadLivingCostSetting();
     loadOtherAssets();
 
-    // Font size buttons
-    const saved = localStorage.getItem('fontSize') || 'm';
-    document.querySelectorAll('.font-btn[onclick^="setFontSize"]').forEach(b => {
-      b.classList.toggle('active', b.textContent.trim().toLowerCase().startsWith(saved));
-    });
+    markFontSize();
   } catch (err) {
     // Settings may not exist yet
   }
@@ -4132,18 +4128,23 @@ async function refreshUSDTWDRate() {
 // SECTION: Initialization
 // ============================================================
 
+/** 字體大小: 'm' 標準 (14px) or 'l' 大 (17px). The old 's' 小 was removed: it reads as 標準. */
+const savedFontSize = () => (localStorage.getItem('fontSize') === 'l' ? 'l' : 'm');
+
 function setFontSize(size) {
-  document.documentElement.className = document.documentElement.className.replace(/font-[sml]/g, '').trim();
+  document.documentElement.classList.remove('font-s', 'font-m', 'font-l');
   document.documentElement.classList.add('font-' + size);
   localStorage.setItem('fontSize', size);
-  document.querySelectorAll('.font-btn[onclick^="setFontSize"]').forEach(b => {
-    b.classList.toggle('active', b.textContent.trim().toLowerCase() === size);
-  });
+  markFontSize();
+}
+
+function markFontSize() {
+  const size = savedFontSize();
+  document.querySelectorAll('.font-btn[data-font]').forEach(b => b.classList.toggle('active', b.dataset.font === size));
 }
 
 function initFontSize() {
-  const saved = localStorage.getItem('fontSize') || 'm';
-  setFontSize(saved);
+  setFontSize(savedFontSize());
 }
 
 /** Up/down colors: 'green-up' (default) or 'red-up' (Taiwan / Asia). Pure CSS: <html data-updown>. */
