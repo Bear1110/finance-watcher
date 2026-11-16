@@ -1682,6 +1682,9 @@ function setTxSelecting(on) {
   _txSelecting = on;
   _txSelected.clear();
   document.getElementById('tx-card').classList.toggle('selecting', on);
+  const btn = document.getElementById('tx-select-btn');
+  btn.classList.toggle('btn-danger', !on); // 平常紅框：一看就知道是刪除
+  btn.classList.toggle('btn-primary', on); // 選取中實心藍：知道現在在選、按這裡結束
   document.getElementById('tx-select-btn-label').textContent = on ? '完成' : '選取刪除';
 }
 

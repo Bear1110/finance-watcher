@@ -412,7 +412,7 @@
             <h3>交易紀錄 <small class="card-meta" id="tx-count"></small></h3>
             <div class="header-actions">
               <select id="tx-year-filter" data-segmented="6" data-more="更早" aria-label="年度" onchange="renderTransactions()"></select>
-              <button class="btn btn-outline btn-sm" id="tx-select-btn" onclick="toggleTxSelecting()"><span class="i" data-icon="trash"></span><span id="tx-select-btn-label">選取刪除</span></button>
+              <button class="btn btn-danger btn-sm" id="tx-select-btn" onclick="toggleTxSelecting()"><span class="i" data-icon="trash"></span><span id="tx-select-btn-label">選取刪除</span></button>
               <button class="btn btn-outline btn-sm" onclick="openAIImport('transactions')"><span class="i" data-icon="sparkles"></span>AI 匯入</button>
               <button class="btn btn-primary btn-sm" onclick="openTxModal()">+ 補登交易</button>
             </div>
