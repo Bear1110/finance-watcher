@@ -164,6 +164,13 @@ function remove(req) {
   return { status: 'deleted' };
 }
 
+/** 收支明細 › 選取刪除: { ids } */
+function removeMany(req) {
+  const ids = new Set((body(req).ids || []).map(Number));
+  if (!ids.size) throw badRequest('沒有選取任何紀錄');
+  return { status: 'deleted', deleted: db.removeWhere('expenses', (e) => ids.has(Number(e.id))) };
+}
+
 function yearParam(req) {
   const ys = req.query.get('year');
   return ys && /^-?\d+$/.test(ys) ? Number(ys) : new Date().getFullYear();
@@ -213,6 +220,7 @@ route('GET', '/api/expenses', list);
 route('POST', '/api/expenses', create);
 route('PUT', '/api/expenses/{id}', updateExpense);
 route('DELETE', '/api/expenses/{id}', remove);
+route('POST', '/api/expenses/delete', removeMany);
 route('GET', '/api/expenses/stats', getStats);
 // Market rate for the add/edit dialog: ?currency=JPY&date=YYYY-MM-DD -> { rate, date }
 route('GET', '/api/expenses/fx', (req) => {

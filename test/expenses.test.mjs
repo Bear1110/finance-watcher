@@ -90,3 +90,10 @@ test('offline: a foreign record is saved at the last known rate (estimated), the
   fxOnline = false;
 });
 
+
+test('POST /api/expenses/delete removes the chosen records', async () => {
+  const r = await handle('/api/expenses/delete', { method: 'POST', body: JSON.stringify({ ids: [2, 5, 999] }) });
+  assert.equal(r.deleted, 2);
+  assert.deepEqual(db.all('expenses').map((e) => e.id), [1, 3, 4, 6]);
+  await assert.rejects(handle('/api/expenses/delete', { method: 'POST', body: JSON.stringify({ ids: [] }) }), (e) => e.status === 400);
+});

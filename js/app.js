@@ -1508,9 +1508,6 @@ function renderRealizedSummary() {
 
 let _txAll = []; // own-account transactions, newest first (the API's order)
 let _txEditing = null; // the record open in the modal, null when adding
-let _txSelecting = false; // 選取刪除 mode: rows get checkboxes instead of opening the modal
-const _txSelected = new Set(); // ids ticked in that mode; only the listed ones count
-let _txShown = []; // the rows renderTransactions last listed
 let _txSaved = false;  // saved since the modal opened: refresh holdings once it closes
 
 /** 補登交易 (no id) or edit a row: same modal, delete only when editing. */
@@ -1531,6 +1528,93 @@ function openTxModal(id) {
 function onTxSaved() {
   _txSaved = true;
   loadTransactions();
+}
+
+/**
+ * 選取刪除 on a list (交易紀錄, 收支明細). The card has button.select-btn (span.select-btn-label) in its header
+ * and an empty div.select-bar above the list (filled here); each listed row has data-sel="<id>" and a .sel-box.
+ * The card's .selecting class is the mode: it shows the boxes and the bar (css).
+ * render() lists the rows and calls list(records); open(id) is a tap outside the mode;
+ * remove(picked) deletes and reloads, false = cancelled.
+ * Only rows currently listed count, so changing the filter never deletes records you can't see.
+ */
+class ListSelect {
+  constructor(cardId, { render, open, remove }) {
+    this.card = document.getElementById(cardId);
+    this.ids = new Set();
+    this.shown = [];
+    this.card.querySelector('.select-bar').innerHTML = `
+      <label class="inline-check"><input type="checkbox" class="select-all">全選列出的 <span class="select-shown">0</span> 筆</label>
+      <button type="button" class="btn btn-danger btn-sm select-delete" disabled></button>`;
+    const $ = (sel) => this.card.querySelector(sel);
+    [this.btn, this.label, this.all, this.count, this.del] =
+      ['.select-btn', '.select-btn-label', '.select-all', '.select-shown', '.select-delete'].map($);
+
+    this.btn.addEventListener('click', () => { this.set(!this.on); render(); });
+    this.all.addEventListener('change', () => {
+      this.card.querySelectorAll('[data-sel]').forEach(row => this.mark(row, this.all.checked));
+      this.update();
+    });
+    this.del.addEventListener('click', async () => {
+      try {
+        if (await remove(this.picked()) !== false) this.set(false);
+      } catch (err) {
+        showToast('刪除失敗: ' + err.message, 'error');
+      }
+    });
+    // Picking: catch the tap before anything inside the row (a #標籤 link) handles it
+    this.card.addEventListener('click', (e) => {
+      const row = this.on && e.target.closest('[data-sel]');
+      if (!row) return;
+      e.stopPropagation();
+      e.preventDefault();
+      this.mark(row, !row.classList.contains('selected'));
+      this.update();
+    }, { capture: true });
+    // Otherwise a tap opens the record (after inner links had their turn); Enter on a focused table row too
+    const openRow = (row) => row && open(Number(row.dataset.sel));
+    this.card.addEventListener('click', (e) => openRow(e.target.closest('[data-sel]')));
+    this.card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.target.matches('tr[data-sel]')) e.target.click();
+    });
+  }
+
+  get on() { return this.card.classList.contains('selecting'); }
+
+  /** Enter / leave the mode: red 選取刪除 normally, solid blue 完成 while picking. */
+  set(on) {
+    this.ids.clear();
+    this.card.classList.toggle('selecting', on);
+    this.btn.classList.toggle('btn-danger', !on);
+    this.btn.classList.toggle('btn-primary', on);
+    this.label.textContent = on ? '完成' : '選取刪除';
+  }
+
+  /** The records render() just listed. */
+  list(records) {
+    this.shown = records;
+    this.update();
+  }
+
+  rowClass(id) { return this.ids.has(id) ? ' selected' : ''; }
+
+  mark(row, on) {
+    const id = Number(row.dataset.sel);
+    if (on) this.ids.add(id); else this.ids.delete(id);
+    row.classList.toggle('selected', on);
+  }
+
+  picked() { return this.shown.filter(r => this.ids.has(r.id)); }
+
+  update() {
+    const n = this.picked().length;
+    this.all.checked = n > 0 && n === this.shown.length;
+    this.all.indeterminate = n > 0 && n < this.shown.length;
+    this.all.disabled = !this.shown.length;
+    this.count.textContent = this.shown.length;
+    this.del.disabled = !n;
+    this.del.textContent = n ? `刪除 ${n} 筆` : '刪除已選';
+  }
 }
 
 /** Pages built from the trades (besides the list itself) after trades were saved or deleted. */
@@ -1636,8 +1720,7 @@ function renderTransactions() {
       net != null ? `合計${net >= 0 ? '買進' : '賣出'} ${fmt(Math.abs(net))} 股` : ''].filter(Boolean).join(' · ');
   }
 
-  _txShown = list;
-  updateTxSelectBar();
+  txSelect.list(list);
   const tbody = document.getElementById('tx-body');
   if (list.length === 0) {
     const msg = words.length ? '找不到符合的交易' : _txAll.length ? '這一年沒有交易' : '尚無交易紀錄。平常買賣在「持倉總覽」記；過去的交易按「+ 補登交易」或用 AI 匯入對帳單';
@@ -1647,10 +1730,9 @@ function renderTransactions() {
   tbody.innerHTML = list.map(t => {
     const fees = (t.fee || 0) + (t.tax || 0);
     const feeTitle = t.tax ? ` title="手續費 ${fmt(t.fee, 0)}＋證交稅 ${fmt(t.tax, 0)}"` : '';
-    const picked = _txSelected.has(t.id);
     return `
-        <tr class="tx-row${picked ? ' selected' : ''}" data-id="${t.id}" tabindex="0" title="${_txSelecting ? '點一下勾選' : '點一下編輯或刪除'}" onclick="onTxRowClick(this)" onkeydown="if (event.key === 'Enter') onTxRowClick(this)">
-          <td class="c-check"><input type="checkbox" tabindex="-1" aria-label="選取這筆" ${picked ? 'checked' : ''}></td>
+        <tr class="tx-row${txSelect.rowClass(t.id)}" data-sel="${t.id}" tabindex="0" title="${txSelect.on ? '點一下勾選' : '點一下編輯或刪除'}">
+          <td class="sel-col"><span class="sel-box"></span></td>
           <td>${t.date || '--'}</td>
           <td><strong>${stockHTML(t.symbol)}</strong></td>
           <td><span class="${t.action === 'BUY' ? 'tag-buy' : 'tag-sell'}">${t.action === 'BUY' ? '買' : '賣'}</span></td>
@@ -1663,74 +1745,21 @@ function renderTransactions() {
   }).join('');
 }
 
-/** Tick or untick one listed row in place (no re-render). */
-function markTxRow(row, on) {
-  const id = Number(row.dataset.id);
-  if (on) _txSelected.add(id); else _txSelected.delete(id);
-  row.classList.toggle('selected', on);
-  row.querySelector('.c-check input').checked = on;
-}
-
-function onTxRowClick(row) {
-  if (!_txSelecting) return openTxModal(Number(row.dataset.id));
-  markTxRow(row, !row.classList.contains('selected'));
-  updateTxSelectBar();
-}
-
-/** 選取刪除 ⇄ 完成: the .selecting class shows the checkbox column and the bar (css). */
-function setTxSelecting(on) {
-  _txSelecting = on;
-  _txSelected.clear();
-  document.getElementById('tx-card').classList.toggle('selecting', on);
-  const btn = document.getElementById('tx-select-btn');
-  btn.classList.toggle('btn-danger', !on); // 平常紅框：一看就知道是刪除
-  btn.classList.toggle('btn-primary', on); // 選取中實心藍：知道現在在選、按這裡結束
-  document.getElementById('tx-select-btn-label').textContent = on ? '完成' : '選取刪除';
-}
-
-function toggleTxSelecting() {
-  setTxSelecting(!_txSelecting);
-  renderTransactions();
-}
-
-function selectAllTx(on) {
-  document.querySelectorAll('#tx-body tr[data-id]').forEach(row => markTxRow(row, on));
-  updateTxSelectBar();
-}
-
-/** Ticked rows among the listed ones: a filter change never deletes rows you can't see. */
-const pickedTx = () => _txShown.filter(t => _txSelected.has(t.id));
-
-function updateTxSelectBar() {
-  const n = pickedTx().length;
-  const all = document.getElementById('tx-select-all');
-  all.checked = n > 0 && n === _txShown.length;
-  all.indeterminate = n > 0 && n < _txShown.length;
-  all.disabled = !_txShown.length;
-  document.getElementById('tx-select-shown').textContent = _txShown.length;
-  const del = document.getElementById('tx-delete-selected');
-  del.disabled = !n;
-  del.textContent = n ? `刪除 ${n} 筆` : '刪除已選';
-}
-
-async function deleteSelectedTx() {
-  const picked = pickedTx();
-  if (!picked.length) return;
-  const bySymbol = {};
-  picked.forEach(t => { bySymbol[t.symbol] = (bySymbol[t.symbol] || 0) + 1; });
-  const lines = Object.entries(bySymbol).map(([sym, n]) => `・${stockText(sym)} ${n} 筆`);
-  if (!confirm(`確定要刪除這 ${picked.length} 筆交易嗎？\n\n${lines.join('\n')}\n\n持倉與已實現損益會重新計算；某檔的買入全部刪掉，持倉總覽就不會再有這檔。`)) return;
-  try {
+const txSelect = new ListSelect('tx-card', {
+  render: renderTransactions,
+  open: openTxModal,
+  async remove(picked) {
+    const bySymbol = {};
+    picked.forEach(t => { bySymbol[t.symbol] = (bySymbol[t.symbol] || 0) + 1; });
+    const lines = Object.entries(bySymbol).map(([sym, n]) => `・${stockText(sym)} ${n} 筆`);
+    if (!confirm(`確定要刪除這 ${picked.length} 筆交易嗎？\n\n${lines.join('\n')}\n\n持倉與已實現損益會重新計算；某檔的買入全部刪掉，持倉總覽就不會再有這檔。`)) return false;
     const result = await api('/api/transactions/delete', { method: 'POST', body: JSON.stringify({ ids: picked.map(t => t.id) }) });
     showToast(`已刪除 ${result.deleted} 筆交易，持倉與已實現損益已重新計算`, 'success');
     showLedgerWarnings(result);
-    setTxSelecting(false);
     loadTransactions();
     reloadLedgerViews();
-  } catch (err) {
-    showToast('刪除失敗: ' + err.message, 'error');
-  }
-}
+  },
+});
 
 // ============================================================
 // SECTION: Portfolio Analysis
@@ -3622,6 +3651,7 @@ function renderExpenseTable(month) {
     summary.innerHTML = searchSummaryHTML(filtered) +
       (_expCatFilter === null ? '' : `<div>只看「${escapeHtml(catLabel(_expCatFilter))}」分類，點上方「分類：… ✕」看全部</div>`);
   }
+  expSelect.list(filtered);
   const list = document.getElementById('expense-list');
   if (filtered.length === 0) {
     list.innerHTML = `<div class="empty-state">${words.length ? '找不到符合的紀錄' : month ? '這個月尚無紀錄' : '此年度尚無紀錄'}</div>`;
@@ -3629,7 +3659,8 @@ function renderExpenseTable(month) {
   }
   const dateText = (date) => `${words.length ? `${date.slice(0, 4)}/` : ''}${dayLabel(date)}`;
   const row = (e, meta) => `
-      <button type="button" class="exp-row exp-${e.type || 'expense'}" onclick="editExpense(${e.id})" aria-label="編輯 ${escapeAttr(catLabel(e.category))}">
+      <button type="button" class="exp-row exp-${e.type || 'expense'}${expSelect.rowClass(e.id)}" data-sel="${e.id}" aria-label="${expSelect.on ? '勾選' : '編輯'} ${escapeAttr(catLabel(e.category))}">
+        <span class="sel-box"></span>
         <span class="e-cat">${escapeHtml(catDisplay(e.category))}${meta ? `<span class="e-meta">${meta}</span>` : ''}</span>
         <span class="e-amt">${expAmountCell(e)}</span>
       </button>`;
@@ -3647,6 +3678,18 @@ function renderExpenseTable(month) {
       <div class="exp-day"><span>${dateText(date)}</span><span>${expTotals(expenseListSummary(recs))}</span></div>` +
     recs.map(e => row(e, noteHTML(e.note))).join('')).join('');
 }
+
+const expSelect = new ListSelect('exp-card', {
+  render: () => renderExpenseTable(expMonth()),
+  open: editExpense,
+  async remove(picked) {
+    const totals = expTotals(expenseListSummary(picked));
+    if (!confirm(`確定要刪除這 ${picked.length} 筆收支嗎？${totals ? `\n\n${totals}` : ''}`)) return false;
+    const result = await api('/api/expenses/delete', { method: 'POST', body: JSON.stringify({ ids: picked.map(e => e.id) }) });
+    showToast(`已刪除 ${result.deleted} 筆紀錄`, 'success');
+    loadExpenses();
+  },
+});
 
 // ============================================================
 // SECTION: LLM Analysis
