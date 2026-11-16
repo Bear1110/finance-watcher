@@ -174,19 +174,6 @@ async function addHolding(req) {
   });
 }
 
-// DeleteHolding removes the position together with its BUY records. Keeping
-// the BUYs would resurrect the position on the next replay. SELL records are
-// kept so realized P&L history survives.
-async function deleteHolding(req) {
-  return db.transaction(async () => {
-    const h = db.get('stock_holdings', req.params.id);
-    if (!h) throw new HttpError(404, 'holding not found');
-    db.removeWhere('stock_transactions', (t) => t.symbol === h.symbol && t.action === 'BUY' && t.account_id == null);
-    db.remove('stock_holdings', h.id);
-    return { status: 'deleted' };
-  });
-}
-
 /** Own-account transactions, newest first; ?limit=N for the latest N (the page filters and searches itself). */
 function listTransactions(req) {
   const txns = db.where('stock_transactions', (t) => t.account_id == null);
@@ -277,14 +264,32 @@ async function updateTransaction(req) {
   });
 }
 
+/** Delete own-account trades by id and replay each affected stock once. */
+function removeTransactions(ids) {
+  const wanted = new Set(ids.map(Number));
+  const symbols = new Set();
+  const deleted = db.removeWhere('stock_transactions', (t) => {
+    const hit = wanted.has(Number(t.id)) && t.account_id == null;
+    if (hit) symbols.add(t.symbol);
+    return hit;
+  });
+  const w = [...symbols].flatMap((sym) => uncoveredWarnings(replaySymbol(sym), sym));
+  return { status: 'deleted', deleted, warnings: w.length ? w : null };
+}
+
 async function deleteTransaction(req) {
   return db.transaction(async () => {
-    const t = db.get('stock_transactions', req.params.id);
-    if (!t || t.account_id != null) throw new HttpError(404, 'transaction not found');
-    db.remove('stock_transactions', t.id);
-    const w = uncoveredWarnings(replaySymbol(t.symbol), t.symbol);
-    return { status: 'deleted', warnings: w.length ? w : null };
+    const res = removeTransactions([req.params.id]);
+    if (!res.deleted) throw new HttpError(404, 'transaction not found');
+    return res;
   });
+}
+
+/** 交易紀錄 › 選取刪除: { ids } */
+async function deleteTransactions(req) {
+  const ids = body(req).ids || [];
+  if (!ids.length) throw badRequest('沒有選取任何交易');
+  return db.transaction(async () => removeTransactions(ids));
 }
 
 /**
@@ -434,11 +439,11 @@ export function summarizeRealized(yearFilter = '') {
 
 route('GET', '/api/stocks', listHoldings);
 route('POST', '/api/stocks', addHolding);
-route('DELETE', '/api/stocks/{id}', deleteHolding);
 route('GET', '/api/transactions', listTransactions);
 route('POST', '/api/transactions', recordTransaction);
 route('PUT', '/api/transactions/{id}', updateTransaction);
 route('DELETE', '/api/transactions/{id}', deleteTransaction);
+route('POST', '/api/transactions/delete', deleteTransactions);
 route('GET', '/api/transactions/summary', (req) => summarizeRealized(req.query.get('year') || ''));
 // Wipe the self account's trades and holdings of one market (e.g. before importing full broker
 // statements). Dividends, snapshots, expenses and managed accounts stay.

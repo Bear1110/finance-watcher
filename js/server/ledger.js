@@ -49,7 +49,7 @@ export function replayTrades(txns) {
 
 /**
  * Replay one symbol of the self account (counted txns) and rewrite its stock_holdings row.
- * If the symbol has no BUY at all, stock_holdings is not touched.
+ * With no BUY left (all deleted, or only imported history SELLs) the holding row is removed.
  * Returns { shares, avgCost, hasBuys, uncovered }.
  */
 export function replaySymbol(symbol) {
@@ -57,7 +57,11 @@ export function replaySymbol(symbol) {
   const res = { shares: 0, avgCost: 0, hasBuys: r.hasBuys, uncovered: r.uncovered };
   const { lots, market, currency } = r;
 
-  if (!res.hasBuys) return res;
+  if (!res.hasBuys) {
+    const stale = db.findBy('stock_holdings', 'symbol', symbol);
+    if (stale) db.remove('stock_holdings', stale.id);
+    return res;
+  }
 
   let { shares: totalShares, cost: totalCost } = lotsTotal(lots);
   if (totalShares < 1e-9) totalShares = 0;

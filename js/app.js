@@ -1184,7 +1184,6 @@ function renderHoldingRow(s) {
       ${plCell(s.unrealized_pl, s.pl_percent, cur)}${divCells(dm, cur)}
       <td class="c-act action-buttons">
         ${['BUY', 'SELL'].map(side => `<button type="button" class="btn ${side === 'BUY' ? 'btn-buy' : 'btn-sell'} btn-sm" onclick="openTradeModal('${side}', '${s.symbol}', '${s.market}', '${s.currency}', ${s.shares}, ${s.current_price || 0})">${side === 'BUY' ? '買' : '賣'}</button>`).join('')}
-        ${rowBtn('delete', `deleteHolding(${s.id})`, '刪除持倉')}
       </td>
     </tr>
   `;
@@ -1327,19 +1326,6 @@ async function submitHolding(e) {
     loadTransactions();
   } catch (err) {
     showToast('新增失敗: ' + err.message, 'error');
-  }
-}
-
-async function deleteHolding(id) {
-  if (!confirm('確定要刪除此持倉嗎？\n\n這會一併刪除該股票的「買入」交易紀錄（否則持倉會在下次重算時復活）。\n已實現損益的「賣出」紀錄會保留。')) return;
-  try {
-    await api(`/api/stocks/${id}`, { method: 'DELETE' });
-    showToast('持倉已刪除', 'success');
-    loadHoldings();
-    loadTransactions();
-    loadXirr();
-  } catch (err) {
-    showToast('刪除失敗: ' + err.message, 'error');
   }
 }
 
@@ -1522,6 +1508,9 @@ function renderRealizedSummary() {
 
 let _txAll = []; // own-account transactions, newest first (the API's order)
 let _txEditing = null; // the record open in the modal, null when adding
+let _txSelecting = false; // 選取刪除 mode: rows get checkboxes instead of opening the modal
+const _txSelected = new Set(); // ids ticked in that mode; only the listed ones count
+let _txShown = []; // the rows renderTransactions last listed
 let _txSaved = false;  // saved since the modal opened: refresh holdings once it closes
 
 /** 補登交易 (no id) or edit a row: same modal, delete only when editing. */
@@ -1544,11 +1533,16 @@ function onTxSaved() {
   loadTransactions();
 }
 
+/** Pages built from the trades (besides the list itself) after trades were saved or deleted. */
+function reloadLedgerViews() {
+  loadHoldings();
+  loadRealizedSummary();
+}
+
 document.getElementById('modal-tx')?.addEventListener('close', () => {
   if (!_txSaved) return;
   _txSaved = false;
-  loadHoldings();
-  loadRealizedSummary();
+  reloadLedgerViews();
 });
 
 async function submitTransaction(e) {
@@ -1642,17 +1636,21 @@ function renderTransactions() {
       net != null ? `合計${net >= 0 ? '買進' : '賣出'} ${fmt(Math.abs(net))} 股` : ''].filter(Boolean).join(' · ');
   }
 
+  _txShown = list;
+  updateTxSelectBar();
   const tbody = document.getElementById('tx-body');
   if (list.length === 0) {
     const msg = words.length ? '找不到符合的交易' : _txAll.length ? '這一年沒有交易' : '尚無交易紀錄。平常買賣在「持倉總覽」記；過去的交易按「+ 補登交易」或用 AI 匯入對帳單';
-    tbody.innerHTML = `<tr><td colspan="8" class="empty-state">${msg}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="empty-state">${msg}</td></tr>`;
     return;
   }
   tbody.innerHTML = list.map(t => {
     const fees = (t.fee || 0) + (t.tax || 0);
     const feeTitle = t.tax ? ` title="手續費 ${fmt(t.fee, 0)}＋證交稅 ${fmt(t.tax, 0)}"` : '';
+    const picked = _txSelected.has(t.id);
     return `
-        <tr class="tx-row" tabindex="0" title="點一下編輯或刪除" onclick="openTxModal(${t.id})" onkeydown="if (event.key === 'Enter') openTxModal(${t.id})">
+        <tr class="tx-row${picked ? ' selected' : ''}" data-id="${t.id}" tabindex="0" title="${_txSelecting ? '點一下勾選' : '點一下編輯或刪除'}" onclick="onTxRowClick(this)" onkeydown="if (event.key === 'Enter') onTxRowClick(this)">
+          <td class="c-check"><input type="checkbox" tabindex="-1" aria-label="選取這筆" ${picked ? 'checked' : ''}></td>
           <td>${t.date || '--'}</td>
           <td><strong>${stockHTML(t.symbol)}</strong></td>
           <td><span class="${t.action === 'BUY' ? 'tag-buy' : 'tag-sell'}">${t.action === 'BUY' ? '買' : '賣'}</span></td>
@@ -1663,6 +1661,72 @@ function renderTransactions() {
           <td>${escapeHtml(t.note || '')}</td>
         </tr>`;
   }).join('');
+}
+
+/** Tick or untick one listed row in place (no re-render). */
+function markTxRow(row, on) {
+  const id = Number(row.dataset.id);
+  if (on) _txSelected.add(id); else _txSelected.delete(id);
+  row.classList.toggle('selected', on);
+  row.querySelector('.c-check input').checked = on;
+}
+
+function onTxRowClick(row) {
+  if (!_txSelecting) return openTxModal(Number(row.dataset.id));
+  markTxRow(row, !row.classList.contains('selected'));
+  updateTxSelectBar();
+}
+
+/** 選取刪除 ⇄ 完成: the .selecting class shows the checkbox column and the bar (css). */
+function setTxSelecting(on) {
+  _txSelecting = on;
+  _txSelected.clear();
+  document.getElementById('tx-card').classList.toggle('selecting', on);
+  document.getElementById('tx-select-btn-label').textContent = on ? '完成' : '選取刪除';
+}
+
+function toggleTxSelecting() {
+  setTxSelecting(!_txSelecting);
+  renderTransactions();
+}
+
+function selectAllTx(on) {
+  document.querySelectorAll('#tx-body tr[data-id]').forEach(row => markTxRow(row, on));
+  updateTxSelectBar();
+}
+
+/** Ticked rows among the listed ones: a filter change never deletes rows you can't see. */
+const pickedTx = () => _txShown.filter(t => _txSelected.has(t.id));
+
+function updateTxSelectBar() {
+  const n = pickedTx().length;
+  const all = document.getElementById('tx-select-all');
+  all.checked = n > 0 && n === _txShown.length;
+  all.indeterminate = n > 0 && n < _txShown.length;
+  all.disabled = !_txShown.length;
+  document.getElementById('tx-select-shown').textContent = _txShown.length;
+  const del = document.getElementById('tx-delete-selected');
+  del.disabled = !n;
+  del.textContent = n ? `刪除 ${n} 筆` : '刪除已選';
+}
+
+async function deleteSelectedTx() {
+  const picked = pickedTx();
+  if (!picked.length) return;
+  const bySymbol = {};
+  picked.forEach(t => { bySymbol[t.symbol] = (bySymbol[t.symbol] || 0) + 1; });
+  const lines = Object.entries(bySymbol).map(([sym, n]) => `・${stockText(sym)} ${n} 筆`);
+  if (!confirm(`確定要刪除這 ${picked.length} 筆交易嗎？\n\n${lines.join('\n')}\n\n持倉與已實現損益會重新計算；某檔的買入全部刪掉，持倉總覽就不會再有這檔。`)) return;
+  try {
+    const result = await api('/api/transactions/delete', { method: 'POST', body: JSON.stringify({ ids: picked.map(t => t.id) }) });
+    showToast(`已刪除 ${result.deleted} 筆交易，持倉與已實現損益已重新計算`, 'success');
+    showLedgerWarnings(result);
+    setTxSelecting(false);
+    loadTransactions();
+    reloadLedgerViews();
+  } catch (err) {
+    showToast('刪除失敗: ' + err.message, 'error');
+  }
 }
 
 // ============================================================

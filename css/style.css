@@ -2177,6 +2177,15 @@ body[data-tab="expenses"] .fab { display: flex; }
 
 /* 交易紀錄: tap a row to edit / delete it in the modal (cursor: the [title] rule) */
 .tx-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* 選取刪除: checkbox column and the bar above the table only while selecting */
+#tx-card .c-check { display: none; width: 2.2em; }
+#tx-card.selecting .c-check { display: table-cell; }
+#tx-card:not(.selecting) .tx-select-bar { display: none; }
+.c-check input { width: auto !important; margin: 0; pointer-events: none; }
+.tx-row.selected td { background: var(--red-bg); }
+.tx-select-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 8px; }
+.tx-select-bar .inline-check { margin-bottom: 0; }
+.tx-select-bar .btn-danger { margin-left: auto; }
 
 /* A stock: code, then its name small and gray ("2330 台積電"; stockHTML in app.js) */
 .sym-name {

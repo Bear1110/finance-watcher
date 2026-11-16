@@ -103,8 +103,20 @@ test('PUT/DELETE /api/transactions replay and warn', async () => {
   const sell = db.where('stock_transactions', (t) => t.action === 'SELL')[0];
   assert.equal(sell.realized_pl, 400);
   const del = await call('DELETE', `/api/transactions/${buy.id}`);
-  // No BUY left: nothing to warn about (pure imported SELLs are expected)
+  // No BUY left: nothing to warn about (pure imported SELLs are expected), and the holding is gone
   assert.equal(del.warnings, null);
+  assert.equal(holding('NVDA'), null);
+});
+
+test('POST /api/transactions/delete removes the chosen trades and rebuilds each stock', async () => {
+  const a1 = await call('POST', '/api/transactions', { symbol: '2330.TW', action: 'BUY', shares: 10, price: 100, date: '2026-01-02' });
+  await call('POST', '/api/transactions', { symbol: '2330.TW', action: 'BUY', shares: 5, price: 120, date: '2026-01-03' });
+  const b = await call('POST', '/api/transactions', { symbol: 'NVDA', action: 'BUY', shares: 3, price: 100, date: '2026-01-02' });
+  const r = await call('POST', '/api/transactions/delete', { ids: [a1.id, b.id, 999] });
+  assert.equal(r.deleted, 2);
+  assert.equal(holding('2330.TW').shares, 5);
+  assert.equal(holding('NVDA'), null);
+  await assert.rejects(call('POST', '/api/transactions/delete', { ids: [] }), (e) => e.status === 400);
 });
 
 test('GET /api/transactions/summary groups sells by symbol', async () => {
@@ -124,13 +136,10 @@ test('GET /api/transactions/summary groups sells by symbol', async () => {
   assert.equal(y.overall.best_trade.pct, 10);
 });
 
-test('POST /api/stocks imports a holding as a transfer BUY; DELETE removes its BUYs', async () => {
+test('POST /api/stocks imports a holding as a transfer BUY', async () => {
   const r = await call('POST', '/api/stocks', { symbol: '0050.TW', shares: 100, avg_cost: 150, date: '2025-01-01', note: '匯入' });
   assert.equal(r.shares, 100);
   const h = holding('0050.TW');
   assert.equal(h.note, '匯入');
   assert.equal(db.get('stock_transactions', r.id).is_transfer, 1);
-  await call('DELETE', `/api/stocks/${h.id}`);
-  assert.equal(db.all('stock_transactions').length, 0);
-  assert.equal(holding('0050.TW'), null);
 });
