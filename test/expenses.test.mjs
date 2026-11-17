@@ -97,3 +97,22 @@ test('POST /api/expenses/delete removes the chosen records', async () => {
   assert.deepEqual(db.all('expenses').map((e) => e.id), [1, 3, 4, 6]);
   await assert.rejects(handle('/api/expenses/delete', { method: 'POST', body: JSON.stringify({ ids: [] }) }), (e) => e.status === 400);
 });
+
+test('recentDays: 7 days up to today, oldest first; empty days have count 0; income counts', async () => {
+  const { recentDays } = await import('../js/server/expenses.js');
+  const rec = (date, type, amount_twd) => ({ date, type, amount_twd, category: '' });
+  const days = recentDays([
+    rec('2026-11-17', 'expense', 85), rec('2026-11-17', 'expense', 300),
+    rec('2026-11-15', 'income', 50000),
+    rec('2026-11-10', 'expense', 999), // 8 days ago: outside
+    rec('2026-11-18', 'expense', 1),   // future: outside
+  ], '2026-11-17');
+  assert.deepEqual(days.map(d => d.date), ['2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15', '2026-11-16', '2026-11-17']);
+  const totals = ({ date, count, income, expense }) => ({ date, count, income, expense });
+  assert.deepEqual(totals(days[6]), { date: '2026-11-17', count: 2, income: 0, expense: 385 });
+  assert.deepEqual(days[6].records.map(e => e.amount_twd), [85, 300]); // the day's records, for the list under it
+  assert.deepEqual(totals(days[4]), { date: '2026-11-15', count: 1, income: 50000, expense: 0 });
+  assert.deepEqual([days[5].count, days[5].records], [0, []]);
+  // Across a month / year boundary
+  assert.deepEqual(recentDays([], '2027-01-02', 3).map(d => d.date), ['2026-12-31', '2027-01-01', '2027-01-02']);
+});

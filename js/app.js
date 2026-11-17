@@ -113,9 +113,12 @@ const shortDate = (d) => (d || '').slice(5).replace('-', '/');
 const fullDate = (d) => (d || '').replace(/-/g, '/');
 /** YYYY-MM-DD → MM/DD（三） */
 function dayLabel(d) {
-  if (!d) return '';
+  return d ? `${shortDate(d)}（${weekdayChar(d)}）` : '';
+}
+/** YYYY-MM-DD → 三 (local calendar weekday) */
+function weekdayChar(d) {
   const [y, m, day] = d.split('-').map(Number);
-  return `${shortDate(d)}（${'日一二三四五六'[new Date(y, m - 1, day).getDay()]}）`;
+  return '日一二三四五六'[new Date(y, m - 1, day).getDay()];
 }
 
 /** Format a per-share price in native currency (always 2 decimals, TW prices can be fractional) */
@@ -1531,6 +1534,20 @@ function onTxSaved() {
 }
 
 /**
+ * Tapping a row (data-sel="<id>") inside `box` opens that record, after inner links (#標籤) had their
+ * turn; Enter on a focused table row too. ListSelect lists and the 收支「最近 7 天」card.
+ */
+function onRowOpen(box, open) {
+  box.addEventListener('click', (e) => {
+    const row = e.target.closest('[data-sel]');
+    if (row) open(Number(row.dataset.sel));
+  });
+  box.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.matches('tr[data-sel]')) e.target.click();
+  });
+}
+
+/**
  * 選取刪除 on a list (交易紀錄, 收支明細). The card has button.select-btn (span.select-btn-label) in its header
  * and an empty div.select-bar above the list (filled here); each listed row has data-sel="<id>" and a .sel-box.
  * The card's .selecting class is the mode: it shows the boxes and the bar (css).
@@ -1571,12 +1588,7 @@ class ListSelect {
       this.mark(row, !row.classList.contains('selected'));
       this.update();
     }, { capture: true });
-    // Otherwise a tap opens the record (after inner links had their turn); Enter on a focused table row too
-    const openRow = (row) => row && open(Number(row.dataset.sel));
-    this.card.addEventListener('click', (e) => openRow(e.target.closest('[data-sel]')));
-    this.card.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && e.target.matches('tr[data-sel]')) e.target.click();
-    });
+    onRowOpen(this.card, open);
   }
 
   get on() { return this.card.classList.contains('selecting'); }
@@ -3032,11 +3044,11 @@ function setExpenseType(type, category) {
 }
 
 /** Clears the add/edit form back to a new expense dated today. */
-function resetExpenseForm() {
+function resetExpenseForm(date = todayStr()) {
   const form = document.getElementById('expense-form');
   form.reset();
   form.querySelector('[name="id"]').value = '';
-  form.querySelector('[name="date"]').value = todayStr();
+  form.querySelector('[name="date"]').value = date;
   setExpenseType('expense');
   let last = null;
   try { last = localStorage.getItem('expenseCurrency'); } catch (e) { /* ignore */ }
@@ -3227,8 +3239,9 @@ function clearSearch(btn) {
   input.focus();
 }
 
-function openExpenseModal() {
-  resetExpenseForm();
+/** New record; `date` (YYYY-MM-DD) pre-fills the date, e.g. a past day picked in「最近 7 天」. */
+function openExpenseModal(date) {
+  resetExpenseForm(date || undefined);
   showExpenseModal(false);
 }
 
@@ -3390,6 +3403,7 @@ async function loadExpenses() {
     if (_expAll.some(e => e.fx_pending) || !_expAll.length) await api('/api/expenses/refresh-fx', { method: 'POST' }).catch(() => {});
     const expenses = await api('/api/expenses');
     _expAll = Array.isArray(expenses) ? expenses : [];
+    renderRecentDays();
   } catch (err) {
     showToast('載入收支資料失敗: ' + err.message, 'error');
     return;
@@ -3635,6 +3649,61 @@ function expTotals({ income, expense }) {
   return [income ? `收入 +${fmtTWD(income)}` : '', expense ? `支出 ${fmtTWD(expense)}` : ''].filter(Boolean).join(' · ');
 }
 
+/** One 收支 row (category, note / meta, amount); tap = edit, or pick while `select` (a ListSelect) is on. */
+function expRowHTML(e, meta, select = null) {
+  return `
+      <button type="button" class="exp-row exp-${e.type || 'expense'}${select ? select.rowClass(e.id) : ''}" data-sel="${e.id}" aria-label="${select?.on ? '勾選' : '編輯'} ${escapeAttr(catLabel(e.category))}">
+        <span class="sel-box"></span>
+        <span class="e-cat">${escapeHtml(catDisplay(e.category))}${meta ? `<span class="e-meta">${meta}</span>` : ''}</span>
+        <span class="e-amt">${expAmountCell(e)}</span>
+      </button>`;
+}
+
+// --- 最近 7 天 card: did I record today (or yesterday…)? Days with nothing are hollow; tap a day to
+// see its records right there, and「記這天」adds one on that day. Not tied to the month selector.
+let _expRecentDay = null; // picked date; null = today
+let _expRecentToday = '';
+let _expRecent = []; // recentDays() for the records on screen; a pick only re-renders from it
+
+/** Records changed (loadExpenses) or the date rolled over: recount the 7 days. */
+function renderRecentDays() {
+  const today = todayStr();
+  if (today !== _expRecentToday) { _expRecentToday = today; _expRecentDay = null; } // past midnight: back to today
+  _expRecent = recentDays(_expAll, today); // js/server/expenses.js
+  document.getElementById('exp-recent-days').innerHTML = _expRecent.map(d => {
+    const label = d.count ? `${d.count} 筆 · ${expTotals(d)}` : '還沒有紀錄';
+    return `<button type="button" class="recent-day${d.count ? '' : ' empty'}" data-date="${d.date}" title="${escapeAttr(`${dayLabel(d.date)} ${label}`)}" onclick="pickRecentDay(this.dataset.date)">
+        <span class="rd-wd">${d.date === today ? '今天' : `週${weekdayChar(d.date)}`}</span><span class="rd-date">${Number(d.date.slice(8))}</span><span class="rd-count">${d.count ? `${d.count} 筆` : '沒記'}</span>
+      </button>`;
+  }).join('');
+  pickRecentDay(_expRecentDay);
+}
+
+/** Show one day's records under the 7 days (null = today). */
+function pickRecentDay(date) {
+  _expRecentDay = date;
+  const sel = date || _expRecentToday;
+  const day = _expRecent.find(d => d.date === sel);
+  if (!day) return;
+  const isToday = sel === _expRecentToday;
+  document.querySelectorAll('#exp-recent-days .recent-day').forEach(b => {
+    b.classList.toggle('active', b.dataset.date === sel);
+    b.setAttribute('aria-pressed', b.dataset.date === sel);
+  });
+  document.getElementById('exp-recent-detail').innerHTML =
+    `<div class="exp-day"><span>${dayLabel(sel)}${isToday ? ' 今天' : ''}</span><span>${expTotals(day)}</span></div>` +
+    (day.records.length ? day.records.map(e => expRowHTML(e, noteHTML(e.note))).join('')
+      : `<div class="empty-state">${isToday ? '今天' : '這天'}還沒有紀錄</div>`);
+  document.getElementById('exp-recent-add-label').textContent = isToday ? '記今天' : `記 ${shortDate(sel)}`;
+}
+
+onRowOpen(document.getElementById('exp-recent-detail'), editExpense);
+
+// Phone left open overnight: when the page comes back, 今天 moves to the new day
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && document.body.dataset.tab === 'expenses' && todayStr() !== _expRecentToday) renderRecentDays();
+});
+
 /**
  * The 收支明細 list: the selected month / year, or every record matching the search box. By date:
  * grouped by day (header: date, weekday, the day's totals); by amount: one list, largest first, the
@@ -3658,12 +3727,7 @@ function renderExpenseTable(month) {
     return;
   }
   const dateText = (date) => `${words.length ? `${date.slice(0, 4)}/` : ''}${dayLabel(date)}`;
-  const row = (e, meta) => `
-      <button type="button" class="exp-row exp-${e.type || 'expense'}${expSelect.rowClass(e.id)}" data-sel="${e.id}" aria-label="${expSelect.on ? '勾選' : '編輯'} ${escapeAttr(catLabel(e.category))}">
-        <span class="sel-box"></span>
-        <span class="e-cat">${escapeHtml(catDisplay(e.category))}${meta ? `<span class="e-meta">${meta}</span>` : ''}</span>
-        <span class="e-amt">${expAmountCell(e)}</span>
-      </button>`;
+  const row = (e, meta) => expRowHTML(e, meta, expSelect);
   if (document.getElementById('exp-sort').value === 'amount') {
     list.innerHTML = filtered.sort((a, b) => b.amount_twd - a.amount_twd)
       .map(e => row(e, [escapeHtml(dateText(e.date)), noteHTML(e.note)].filter(Boolean).join(' · '))).join('');

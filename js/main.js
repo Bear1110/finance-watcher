@@ -28,7 +28,7 @@ import './server/settings.js';
 import './server/aiimport.js';
 import './server/profile.js';
 import './server/names.js';
-import { EXPENSE_CATEGORIES, EXPENSE_CURRENCIES, expenseListSummary } from './server/expenses.js';
+import { EXPENSE_CATEGORIES, EXPENSE_CURRENCIES, expenseListSummary, recentDays } from './server/expenses.js';
 import { txnListSummary } from './server/stocks.js';
 
 db.load();
@@ -232,7 +232,7 @@ Object.assign(window, {
   fwRefresh, renderCloudStatus, cloudSignIn, cloudSyncNow, cloudSignOut,
   onSyncPillClick, downloadBackup, clearLocalData, reloadApp,
   EXPENSE_CATEGORIES, EXPENSE_CURRENCIES,
-  expenseListSummary, txnListSummary, // 搜尋結果的合計：頁面篩選，加總在 js/server
+  expenseListSummary, recentDays, txnListSummary, // 搜尋結果、最近 7 天的合計：頁面篩選，加總在 js/server
 });
 
 window.localApiReady = Promise.resolve();

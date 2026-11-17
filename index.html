@@ -625,6 +625,18 @@
 
     <!-- ==================== EXPENSES TAB ==================== -->
     <section id="tab-expenses" class="tab-content">
+      <!-- 最近 7 天：放在月份切換上面（跟選的月份無關），換月份時這張卡和下面的內容都不會跳 -->
+      <div class="card" id="exp-recent-card">
+        <div class="card-header">
+          <h3 title="空心的日子是還沒記帳的；點一天看那天記了什麼">最近 7 天 ⓘ</h3>
+          <div class="header-actions">
+            <button type="button" class="btn btn-primary btn-sm" id="exp-recent-add" onclick="openExpenseModal(_expRecentDay)"><span class="i" data-icon="plus"></span><span id="exp-recent-add-label">記今天</span></button>
+          </div>
+        </div>
+        <div class="recent-days" id="exp-recent-days"></div>
+        <div class="recent-detail" id="exp-recent-detail"></div>
+      </div>
+
       <!-- Period + summary -->
       <div class="exp-period period-stepper">
         <button type="button" class="btn btn-outline btn-sm btn-icon" id="exp-prev" onclick="stepExpPeriod(-1)" aria-label="上一期" title="上一期"><span class="i" data-icon="chevron-left"></span></button>

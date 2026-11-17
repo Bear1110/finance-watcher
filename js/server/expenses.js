@@ -4,6 +4,7 @@ import * as db from './db.js';
 import { route } from './router.js';
 import { badRequest, body, cmp, isDate, storedUSDTWDRate, toTWD } from './util.js';
 import { fetchFxRate } from './market.js';
+import { addDays } from './twr_calc.js';
 
 /** Preset categories (add/edit dialog and AI import prompt); the first of each list is that type's default. */
 export const EXPENSE_CATEGORIES = {
@@ -55,6 +56,26 @@ export function expenseListSummary(records) {
   }
   const top = byCat.size > 1 ? [...byCat].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([category, amount]) => ({ category, amount })) : [];
   return { count: records.length, income, expense, first, last, top };
+}
+
+/**
+ * The 收支 page's「最近 7 天」card: the `n` days ending on `to` (oldest first), each with its count and
+ * TWD totals (expenseListSummary) and its records, days with nothing recorded included (count 0) so a missed day shows.
+ */
+export function recentDays(records, to, n = 7) {
+  const from = addDays(to, -(n - 1));
+  const byDay = new Map();
+  for (const e of records) {
+    if (!e.date || e.date < from || e.date > to) continue;
+    if (!byDay.has(e.date)) byDay.set(e.date, []);
+    byDay.get(e.date).push(e);
+  }
+  return Array.from({ length: n }, (_, i) => {
+    const date = addDays(from, i);
+    const records = byDay.get(date) || [];
+    const { count, income, expense } = expenseListSummary(records);
+    return { date, count, income, expense, records };
+  });
 }
 
 export const expenseJSON = (e) => ({

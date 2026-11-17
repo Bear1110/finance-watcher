@@ -1897,6 +1897,25 @@ body[data-tab="expenses"] .fab { display: flex; }
   color: var(--text-primary);
 }
 
+/* --- 收支「最近 7 天」：7 格日期（有記＝淡藍底＋筆數，沒記＝虛線框「沒記」），選中的那天明細在下面 --- */
+.recent-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin-bottom: 8px; }
+.recent-day {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 8px 2px; min-width: 0;
+  border: 1px solid var(--accent-subtle); border-radius: var(--radius-sm);
+  background: var(--accent-subtle); color: var(--text-primary);
+  font: inherit; cursor: pointer; transition: border-color var(--transition);
+}
+.recent-day:hover { border-color: var(--accent); }
+.recent-day .rd-wd { font-size: 0.72rem; color: var(--text-secondary); white-space: nowrap; }
+.recent-day .rd-date { font-size: 1.1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.recent-day .rd-count { font-size: 0.72rem; color: var(--accent); white-space: nowrap; }
+.recent-day.empty { background: none; border: 1px dashed var(--border-light); }
+.recent-day.empty :is(.rd-date, .rd-count) { color: var(--text-muted); }
+.recent-day.active { border: 2px solid var(--accent); padding: 7px 1px; }
+/* Same height whether the picked day has 0, 1 or 2 records, so tapping days doesn't push the page around */
+.recent-detail { min-height: 10.75rem; }
+
 /* --- 收支明細：每筆一列，像記帳 App（手機與電腦同一個版面）；點一列 = 編輯（刪除在編輯視窗） ---
    🍜 飲食                      NT$120
    和同事吃拉麵
