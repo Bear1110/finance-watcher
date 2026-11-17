@@ -3662,13 +3662,16 @@ function searchSummaryHTML(records) {
   let range = fullDate(first);
   if (last !== first) range += `–${last.startsWith(first.slice(0, 4)) ? shortDate(last) : fullDate(last)}`;
   const top = sum.top.map(t => `${escapeHtml(catLabel(t.category))} ${fmtTWD(t.amount)}`).join(' · ');
-  return `<div>${[`找到 ${sum.count} 筆`, expTotals(sum), range].filter(Boolean).join(' · ')}</div>${top ? `<div>${top}</div>` : ''}`;
+  return `<div>${[`找到 ${countTotals(sum)}`, range].join(' · ')}</div>${top ? `<div>${top}</div>` : ''}`;
 }
 
 /** Income / expense totals in TWD: "收入 +NT$ 1,500 · 支出 NT$ 1,283" (parts with nothing are left out). sum: expenseListSummary. */
 function expTotals({ income, expense }) {
   return [income ? `收入 +${fmtTWD(income)}` : '', expense ? `支出 ${fmtTWD(expense)}` : ''].filter(Boolean).join(' · ');
 }
+
+/** "4 筆 · 支出 NT$ 530" ('' for none). sum: expenseListSummary. */
+const countTotals = (sum) => sum.count ? [`${sum.count} 筆`, expTotals(sum)].filter(Boolean).join(' · ') : '';
 
 /** One 收支 row (category, note / meta, amount); tap = edit, or pick while `select` (a ListSelect) is on. */
 function expRowHTML(e, meta, select = null) {
@@ -3692,9 +3695,12 @@ function renderRecentDays() {
   if (today !== _expRecentToday) { _expRecentToday = today; _expRecentDay = null; } // past midnight: back to today
   _expRecent = recentDays(_expAll, today); // js/server/expenses.js
   document.getElementById('exp-recent-days').innerHTML = _expRecent.map(d => {
-    const label = d.count ? `${d.count} 筆 · ${expTotals(d)}` : '還沒有紀錄';
-    return `<button type="button" class="recent-day${d.count ? '' : ' empty'}" data-date="${d.date}" title="${escapeAttr(`${dayLabel(d.date)} ${label}`)}" onclick="pickRecentDay(this.dataset.date)">
-        <span class="rd-wd">${d.date === today ? '今天' : `週${weekdayChar(d.date)}`}</span><span class="rd-date">${Number(d.date.slice(8))}</span><span class="rd-count">${d.count ? `${d.count} 筆` : '沒記'}</span>
+    const isToday = d.date === today;
+    const tip = escapeAttr(`${dayLabel(d.date)} ${countTotals(d) || '還沒有紀錄'}`);
+    // A dot per record, 5 at most (it's "did I record"; the exact count is in the tooltip and under the days); none: one ring
+    const dots = '<i></i>'.repeat(Math.min(d.count, 5) || 1);
+    return `<button type="button" class="recent-day${d.count ? '' : ' empty'}${isToday ? ' today' : ''}" data-date="${d.date}" title="${tip}" aria-label="${tip}" onclick="pickRecentDay(this.dataset.date)">
+        <span class="rd-wd">${isToday ? '今天' : `週${weekdayChar(d.date)}`}</span><span class="rd-date">${Number(d.date.slice(8))}</span><span class="rd-dots" aria-hidden="true">${dots}</span>
       </button>`;
   }).join('');
   pickRecentDay(_expRecentDay);
@@ -3712,7 +3718,7 @@ function pickRecentDay(date) {
     b.setAttribute('aria-pressed', b.dataset.date === sel);
   });
   document.getElementById('exp-recent-detail').innerHTML =
-    `<div class="exp-day"><span>${dayLabel(sel)}${isToday ? ' 今天' : ''}</span><span>${expTotals(day)}</span></div>` +
+    `<div class="exp-day"><span>${dayLabel(sel)}${isToday ? ' 今天' : ''}</span><span>${countTotals(day)}</span></div>` +
     (day.records.length ? day.records.map(e => expRowHTML(e, noteHTML(e.note))).join('')
       : `<div class="empty-state">${isToday ? '今天' : '這天'}還沒有紀錄</div>`);
   document.getElementById('exp-recent-add-label').textContent = isToday ? '記今天' : `記 ${shortDate(sel)}`;

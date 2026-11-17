@@ -15,6 +15,7 @@
   --bg-input: #162030;
   --border-color: #2a3a4e;
   --border-light: #334460;
+  --divider: rgba(138, 154, 181, 0.12); /* between rows of any list (收支、持股、快照、設定、表格): lighter than a card's border */
 
   --text-primary: #e8ecf1;
   --text-secondary: #8a9ab5;
@@ -353,7 +354,7 @@ thead th[data-sort]:hover {
 
 tbody td {
   padding: 0.6rem 0.75rem;
-  border-bottom: 1px solid rgba(42, 58, 78, 0.5);
+  border-bottom: 1px solid var(--divider);
   color: var(--text-primary);
   white-space: nowrap;
 }
@@ -1652,7 +1653,7 @@ body[data-tab="expenses"] .fab { display: flex; }
   flex-wrap: wrap;
   gap: 10px 16px;
   padding: 12px 0;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--divider);
 }
 
 .card-header + .settings-row { border-top: none; padding-top: 0; }
@@ -1877,7 +1878,7 @@ body[data-tab="expenses"] .fab { display: flex; }
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--text-secondary);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--divider);
 }
 .exp-day:first-child { padding-top: 4px; }
 
@@ -1897,22 +1898,27 @@ body[data-tab="expenses"] .fab { display: flex; }
   color: var(--text-primary);
 }
 
-/* --- 收支「最近 7 天」：7 格日期（有記＝淡藍底＋筆數，沒記＝虛線框「沒記」），選中的那天明細在下面 --- */
-.recent-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin-bottom: 8px; }
+/* --- 收支「最近 7 天」：一條沒有框的時間軸。有記＝實心點（一筆一點，最多 5 點），沒記＝灰色日期＋空心圈，
+   選中的那天實心藍底，明細在下面 --- */
+.recent-days { display: grid; grid-template-columns: repeat(7, minmax(0, 72px)); justify-content: space-between; gap: 4px; margin-bottom: 8px; }
 .recent-day {
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
   padding: 8px 2px; min-width: 0;
-  border: 1px solid var(--accent-subtle); border-radius: var(--radius-sm);
-  background: var(--accent-subtle); color: var(--text-primary);
-  font: inherit; cursor: pointer; transition: border-color var(--transition);
+  border: none; border-radius: var(--radius-sm);
+  background: none; color: var(--text-primary);
+  font: inherit; cursor: pointer; transition: background var(--transition);
 }
-.recent-day:hover { border-color: var(--accent); }
+.recent-day:hover { background: var(--bg-card-hover); }
 .recent-day .rd-wd { font-size: 0.72rem; color: var(--text-secondary); white-space: nowrap; }
-.recent-day .rd-date { font-size: 1.1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
-.recent-day .rd-count { font-size: 0.72rem; color: var(--accent); white-space: nowrap; }
-.recent-day.empty { background: none; border: 1px dashed var(--border-light); }
-.recent-day.empty :is(.rd-date, .rd-count) { color: var(--text-muted); }
-.recent-day.active { border: 2px solid var(--accent); padding: 7px 1px; }
+.recent-day .rd-date { font-size: 1.1rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.recent-day .rd-dots { display: flex; gap: 3px; color: var(--accent); }
+/* dots and the ring take the text color, so each state below sets one color */
+.recent-day .rd-dots i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.recent-day.empty .rd-dots i { background: none; box-shadow: inset 0 0 0 1px currentColor; }
+.recent-day.empty :is(.rd-date, .rd-dots) { color: var(--text-muted); }
+.recent-day.today .rd-wd { color: var(--accent); font-weight: 600; }
+.recent-day.active { background: var(--accent); }
+.recent-day.active :is(.rd-wd, .rd-date, .rd-dots) { color: #fff; }
 /* Same height whether the picked day has 0, 1 or 2 records, so tapping days doesn't push the page around */
 .recent-detail { min-height: 10.75rem; }
 
@@ -1928,7 +1934,7 @@ body[data-tab="expenses"] .fab { display: flex; }
   width: 100%;
   padding: 10px 4px;
   border: none;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--divider);
   background: none;
   color: var(--text-primary);
   font: inherit;
@@ -1984,7 +1990,7 @@ body[data-tab="expenses"] .fab { display: flex; }
 }
 .snap-row[open] > summary::before { transform: rotate(90deg); }
 
-.snap-row { border-top: 1px solid var(--border-color); }
+.snap-row { border-top: 1px solid var(--divider); }
 .snap-row > summary:hover { background: var(--bg-card-hover); }
 .snap-date { color: var(--text-secondary); font-variant-numeric: tabular-nums; min-width: 3em; }
 .snap-total { flex: 1; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -2012,7 +2018,7 @@ body[data-tab="expenses"] .fab { display: flex; }
 .risk-warn { color: var(--yellow); font-weight: 600; }
 .risk-danger { color: var(--red); font-weight: 600; }
 
-.pf-row { padding: 0.65rem 0; border-top: 1px solid var(--border-color); }
+.pf-row { padding: 0.65rem 0; border-top: 1px solid var(--divider); }
 .pf-row:first-child { border-top: none; padding-top: 0; }
 .pf-row-head { display: flex; align-items: center; gap: 0.5rem; }
 .pf-sym { font-weight: 600; color: var(--text-heading); }
@@ -2133,7 +2139,7 @@ body[data-tab="expenses"] .fab { display: flex; }
 .nw-legend { margin: 0 0 10px; }
 .nw-legend .legend-item { cursor: help; }
 #snap-year-meta { margin: 0 0 6px; }
-.nw-year { padding: 10px 0; border-top: 1px solid var(--border-color); }
+.nw-year { padding: 10px 0; border-top: 1px solid var(--divider); }
 .nw-year:first-child { border-top: none; padding-top: 0; }
 .nw-year-head { display: flex; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
 .nw-year .source-bar { margin-top: 6px; }
