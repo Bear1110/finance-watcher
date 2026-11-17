@@ -49,3 +49,14 @@ test('UI: hints use form-hint with card-hint / chart-note, no inline margins or 
     }
   }
 });
+
+test('UI: bright blue only for small things; big blue areas use the calm blue (--accent-fill / --accent-tint)', () => {
+  const css = readFileSync(new URL('css/style.css', root), 'utf8');
+  for (const m of css.matchAll(/(background(?:-color)?|accent-color)\s*:\s*var\(--accent(?:-hover)?\)/g)) {
+    assert.fail(`css/style.css:${lineOf(css, m.index)} ${m[0]}: use var(--accent-fill) (solid, white text) or var(--accent-tint) (primary button)`);
+  }
+  for (const [file, src] of sources) {
+    const m = src.match(/background(?:-color)?\s*:\s*var\(--accent(?:-hover)?\)/);
+    assert.ok(!m, `${file}:${m && lineOf(src, m.index)} ${m?.[0]}: use var(--accent-fill)`);
+  }
+});

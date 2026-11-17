@@ -121,6 +121,7 @@ node --test                  # 單元測試（FIFO、TWR、代管帳戶、股利
 ### 數字、顏色、圖表、表單
 
 - 數字卡片：`.dash-stats` 網格 + `.stat-card`（`.stat-label` / `.stat-value` / `.stat-sub`），用 `setStat(id, html, sub)` 寫入。一排 4 張；分組時上方加 `.stats-group-label`。
+- 藍色：亮藍 `--accent` 只給小東西（文字、連結、圖示、圓點）；大面積用沉穩的藍：實心塊配白字用 `--accent-fill`（選到的日期、切換按鈕、右下 ＋），主要按鈕是深藍淡底配淺藍字（`--accent-tint` / `--accent-on-tint`，`.btn-primary` 已經套好），勾選框也用 `--accent-fill`。不要寫 `background: var(--accent)`（`test/ui.test.mjs` 會擋）。
 - 金額與百分比用 `fmtTWD` / `fmtPL` / `fmtPct` / `fmtWan`（隱私模式自動遮蔽），正負色用 `plSpan(v, fmt)` / `plClass(v)`，不要自己 `toLocaleString`。
 - 長條用 `.source-bar.cat-track`；多個來源堆疊加 `.lt-stack`，顏色 `--lt-0`…`--lt-5`（`--lt-5` 是「其他」）。列表的一列用 `.pf-row`（`.pf-row-head` / `.pf-row-sub`）。
 - % 折線圖用 `pctLineChart` / `pctLine`，大盤線顏色用 `BENCH_COLORS`。

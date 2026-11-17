@@ -25,6 +25,14 @@
   --accent: #4e8cff;
   --accent-hover: #6ba0ff;
   --accent-subtle: rgba(78, 140, 255, 0.12);
+  /* Bright blue (--accent) only for small things: text, links, icons, dots. Big areas use a calmer blue:
+     --accent-fill for solid blocks with white text (selected day, active toggle, ＋), --accent-tint for
+     the primary button (dark blue with light blue text) */
+  --accent-fill: #3461a3;
+  --accent-fill-hover: #3d6db3;
+  --accent-tint: #243b5b;
+  --accent-tint-hover: #2b4669;
+  --accent-on-tint: #8fb6ff;
 
   --green: #34d399;
   --green-bg: rgba(52, 211, 153, 0.1);
@@ -144,11 +152,6 @@ a:hover { color: var(--accent-hover); }
   color: var(--text-primary);
 }
 
-.font-btn.active {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
-}
 
 .tab-btn,
 .privacy-toggle {
@@ -501,13 +504,12 @@ select option {
 }
 
 .btn-primary {
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-tint);
+  color: var(--accent-on-tint);
 }
 
 .btn-primary:hover {
-  background: var(--accent-hover);
-  box-shadow: 0 4px 14px rgba(78, 140, 255, 0.3);
+  background: var(--accent-tint-hover);
 }
 
 .btn-outline {
@@ -778,7 +780,7 @@ body:has(dialog.modal-overlay[open]) { overflow: hidden; }
 }
 
 .market-group-header td {
-  background: rgba(78, 140, 255, 0.1);
+  background: var(--accent-subtle);
   font-weight: 600;
   font-size: 0.95rem;
   padding: 10px 16px;
@@ -809,11 +811,6 @@ body:has(dialog.modal-overlay[open]) { overflow: hidden; }
   color: var(--text-primary);
 }
 
-.chip-btn.active {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
-}
 
 .realized-stats {
   display: grid;
@@ -943,10 +940,6 @@ body:has(dialog.modal-overlay[open]) { overflow: hidden; }
   transition: all 0.2s;
 }
 
-.chart-type-btn.active {
-  background: var(--accent);
-  color: #fff;
-}
 
 .chart-type-btn:hover:not(.active) {
   color: var(--text-primary);
@@ -1005,10 +998,12 @@ body:has(dialog.modal-overlay[open]) { overflow: hidden; }
   border-color: var(--accent);
 }
 
-.toggle-sm.active {
-  background: var(--accent);
+/* The picked button of every toggle group (font size, chips, segmented/chart toggles): one solid calm
+   blue. After their :hover rules, which set a bright border at the same specificity. */
+:is(.font-btn, .chip-btn, .chart-type-btn, .toggle-sm).active {
+  background: var(--accent-fill);
   color: #fff;
-  border-color: var(--accent);
+  border-color: var(--accent-fill);
 }
 
 .snapshot-auto-info {
@@ -1058,7 +1053,7 @@ body:has(dialog.modal-overlay[open]) { overflow: hidden; }
   width: 18px;
   height: 18px;
   margin: 0;
-  accent-color: var(--accent);
+  accent-color: var(--accent-fill);
   cursor: pointer;
 }
 
@@ -1535,7 +1530,7 @@ body { overflow-x: clip; }
   justify-content: center;
   border: none;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
   box-shadow: var(--shadow-lg);
   cursor: pointer;
@@ -1543,7 +1538,7 @@ body { overflow-x: clip; }
 }
 
 body[data-tab="expenses"] .fab { display: flex; }
-.fab:hover { background: var(--accent-hover); }
+.fab:hover { background: var(--accent-fill-hover); }
 .fab:active { transform: scale(0.94); }
 .fab svg { width: 26px; height: 26px; }
 
@@ -1900,11 +1895,11 @@ body[data-tab="expenses"] .fab { display: flex; }
 
 /* --- 收支「最近 7 天」：一條沒有框的時間軸。有記＝實心點（一筆一點，最多 5 點），沒記＝灰色日期＋空心圈，
    選中的那天實心藍底，明細在下面 --- */
-.recent-days { display: grid; grid-template-columns: repeat(7, minmax(0, 72px)); justify-content: space-between; gap: 4px; margin-bottom: 8px; }
+.recent-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin-bottom: 8px; }
 .recent-day {
   display: flex; flex-direction: column; align-items: center; gap: 4px;
-  padding: 8px 2px; min-width: 0;
-  border: none; border-radius: var(--radius-sm);
+  padding: 10px 2px; min-width: 0;
+  border: none; border-radius: var(--radius);
   background: none; color: var(--text-primary);
   font: inherit; cursor: pointer; transition: background var(--transition);
 }
@@ -1917,7 +1912,7 @@ body[data-tab="expenses"] .fab { display: flex; }
 .recent-day.empty .rd-dots i { background: none; box-shadow: inset 0 0 0 1px currentColor; }
 .recent-day.empty :is(.rd-date, .rd-dots) { color: var(--text-muted); }
 .recent-day.today .rd-wd { color: var(--accent); font-weight: 600; }
-.recent-day.active { background: var(--accent); }
+.recent-day.active { background: var(--accent-fill); }
 .recent-day.active :is(.rd-wd, .rd-date, .rd-dots) { color: #fff; }
 /* Same height whether the picked day has 0, 1 or 2 records, so tapping days doesn't push the page around */
 .recent-detail { min-height: 10.75rem; }
@@ -2222,7 +2217,7 @@ body[data-tab="expenses"] .fab { display: flex; }
   display: inline-block; width: 16px; height: 16px; flex: none;
   border: 1.5px solid var(--text-secondary); border-radius: 3px; vertical-align: middle;
 }
-.selected .sel-box { background: var(--accent); border-color: var(--accent); }
+.selected .sel-box { background: var(--accent-fill); border-color: var(--accent-fill); }
 .selected .sel-box::after {
   content: ''; display: block; width: 4px; height: 8px; margin: 1px 0 0 4.5px;
   border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);
@@ -2273,9 +2268,9 @@ body[data-tab="expenses"] .fab { display: flex; }
 .snap-month:not(.done):hover .snap-dot { color: var(--accent); border-color: var(--accent); }
 /* the line on to the next month, behind the stamps (so hiding older months leaves none dangling); solid when both are stamped */
 .snap-month:not(:last-child)::after { content: ''; position: absolute; top: calc(6px + var(--snap-dot) / 2 - 1px); left: 50%; width: 100%; height: 2px; background: var(--border-color); z-index: 0; }
-.snap-month.done:has(+ .done)::after { background: var(--accent); opacity: 0.6; }
+.snap-month.done:has(+ .done)::after { background: var(--accent-fill); }
 .snap-dot { position: relative; z-index: 1; width: var(--snap-dot); height: var(--snap-dot); border-radius: 50%; display: grid; place-items: center; border: 2px solid var(--border-color); background: var(--bg-card); color: transparent; font-size: 0.8rem; font-weight: 700; line-height: 1; transition: transform 0.15s; }
-.snap-month.done .snap-dot { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 2px 8px var(--accent-subtle); }
+.snap-month.done .snap-dot { background: var(--accent-fill); border-color: var(--accent-fill); color: #fff; box-shadow: 0 2px 8px var(--accent-subtle); }
 .snap-month.now { color: var(--accent); font-weight: 600; }
 .snap-month.now .snap-dot { border-color: var(--accent); border-style: dashed; color: var(--accent); font-size: 1rem; animation: snap-pulse 2s ease-in-out infinite; }
 @keyframes snap-pulse { 50% { box-shadow: 0 0 0 5px var(--accent-subtle); } }
