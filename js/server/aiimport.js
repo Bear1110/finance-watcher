@@ -21,7 +21,7 @@
 import * as db from './db.js';
 import { route } from './router.js';
 import { badRequest, body, isCounted, isDate, round4 } from './util.js';
-import { EXPENSE_CATEGORIES, EXPENSE_CURRENCIES, expenseTWD, normalizeExpense, withFxRate } from './expenses.js';
+import { EXPENSE_CATEGORIES, EXPENSE_CURRENCIES, expenseTWD, normalizeExpense, unhideNoteTags, withFxRate } from './expenses.js';
 import { normalizeTxn, applyAutoFee, replaySymbol, ledgerOrder, fmtShares } from './ledger.js';
 import { hasProxy } from './market.js';
 import { syncPriceHistory, performance } from './twr.js';
@@ -132,7 +132,10 @@ const expenses = {
   key: (r) => [r.date, r.type, r.category, Math.round(r.amount * 100), r.currency].join('|'),
   existing: () => db.all('expenses'),
   async insertAll(records) {
-    for (const r of records) db.insert('expenses', r);
+    for (const r of records) {
+      db.insert('expenses', r);
+      unhideNoteTags(r.note);
+    }
   },
 };
 

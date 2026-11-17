@@ -3137,15 +3137,14 @@ function showExpenseModal(editing) {
   document.getElementById('expense-modal-title').textContent = editing ? '編輯紀錄' : '新增紀錄';
   document.getElementById('expense-continue-btn').style.display = editing ? 'none' : '';
   document.getElementById('expense-delete-btn').style.display = editing ? '' : 'none';
-  loadRecentTags();
-  renderExpenseTagChips();
+  refreshTagChips();
   // _expAll can be stale or empty when opened from the dashboard (loadExpenses fills it on the 收支
-  // page): re-read the records (local, fast) for the recent tags
-  api('/api/expenses').then(r => {
+  // page): re-read the records (local, fast) for the recent tags; the hidden tags may have synced in
+  Promise.all([api('/api/expenses'), api('/api/expenses/hidden-tags')]).then(([r, hidden]) => {
     if (!Array.isArray(r)) return;
     _expAll = r;
-    loadRecentTags();
-    renderExpenseTagChips();
+    _hiddenTags = new Set(hidden);
+    refreshTagChips();
   }, () => {});
   openModal('modal-expense');
   document.querySelector('#expense-form [name="amount"]').focus();
@@ -3153,11 +3152,8 @@ function showExpenseModal(editing) {
 
 // --- 收支 #tags: "#日本2026" in the note groups records (a trip, a project). Tapping a tag in the list
 // searches for it, which ignores the month, so a trip from 11/27 to 12/10 is one list with its totals.
-// Phone keyboards often type the full-width ＃; both count. A tag ends at a space or punctuation
-// ("（#日本2026）" is #日本2026); text right after it without a space belongs to the tag.
+// What counts as a tag (TAG_RE, noteTags) is in js/server/expenses.js; main.js puts it on window.
 
-const TAG_RE = /[#＃]([^\s#＃,，、。.;；:：!！?？()（）[\]【】「」『』《》<>"'“”]+)/g;
-const noteTags = (note) => [...String(note || '').matchAll(TAG_RE)].map(m => `#${m[1]}`);
 const sameTag = (a, b) => a.toLowerCase() === b.toLowerCase();
 const MAX_TAG_CHIPS = 8;
 
@@ -3172,10 +3168,32 @@ function uniqueTags(tags, max = MAX_TAG_CHIPS) {
 }
 
 let _recentTags = []; // newest first; worked out when the dialog opens, not on every keystroke
+// Tags the user dismissed (✕ on a chip), lower-case; kept and synced by js/server/expenses.js, which
+// also brings one back when a new record uses it. Typing one in a note still works.
+let _hiddenTags = new Set();
 
 function loadRecentTags() {
   // Lazy: uniqueTags stops reading once it has enough, so only the newest records are parsed
-  _recentTags = uniqueTags((function* () { for (const e of _expAll) yield* noteTags(e.note); })());
+  _recentTags = uniqueTags((function* () {
+    for (const e of _expAll) for (const t of noteTags(e.note)) if (!_hiddenTags.has(t.toLowerCase())) yield t;
+  })());
+}
+
+function refreshTagChips() {
+  loadRecentTags();
+  renderExpenseTagChips();
+}
+
+/** ✕ on a suggested tag: stop suggesting it (the records keep their tags). */
+async function hideExpenseTag(tag) {
+  try {
+    const r = await api('/api/expenses/hide-tag', { method: 'POST', body: JSON.stringify({ tag }) });
+    _hiddenTags = new Set(r.hidden);
+    refreshTagChips();
+    showToast(`不再推薦 ${tag}（之後再用到這個標籤會自動恢復）`, 'success');
+  } catch (err) {
+    showToast('儲存失敗: ' + err.message, 'error');
+  }
 }
 
 /** The dialog's tag chips: tags in the note (selected) + recently used ones; tap toggles. */
@@ -3187,7 +3205,10 @@ function renderExpenseTagChips() {
   document.getElementById('expense-tag-hint').hidden = tags.length > 0;
   box.innerHTML = tags.map(t => {
     const on = inNote.some(x => sameTag(x, t));
-    return `<button type="button" class="cat-chip${on ? ' active' : ''}" aria-pressed="${on}" data-tag="${escapeAttr(t)}" onclick="toggleExpenseTag(this.dataset.tag)">${escapeHtml(t)}</button>`;
+    const a = escapeAttr(t);
+    const chip = `<button type="button" class="cat-chip${on ? ' active' : ''}" aria-pressed="${on}" data-tag="${a}" onclick="toggleExpenseTag(this.dataset.tag)">${escapeHtml(t)}</button>`;
+    if (on) return chip; // in the note: tap the chip to take it out first
+    return `<span class="tag-chip">${chip}<button type="button" class="tag-hide" data-tag="${a}" onclick="hideExpenseTag(this.dataset.tag)" aria-label="不再推薦 ${a}" title="不再推薦這個標籤">${svgIcon('x')}</button></span>`;
   }).join('');
 }
 

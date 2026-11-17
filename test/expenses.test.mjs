@@ -116,3 +116,19 @@ test('recentDays: 7 days up to today, oldest first; empty days have count 0; inc
   // Across a month / year boundary
   assert.deepEqual(recentDays([], '2027-01-02', 3).map(d => d.date), ['2026-12-31', '2027-01-01', '2027-01-02']);
 });
+
+test('#tags: ✕ hides a tag from the suggestions; a new record using it brings it back, editing an old one does not', async () => {
+  const post = (url, b) => handle(url, { method: 'POST', body: JSON.stringify(b) });
+  assert.deepEqual(await handle('/api/expenses/hidden-tags'), []);
+  assert.deepEqual((await post('/api/expenses/hide-tag', { tag: '#舊專案A' })).hidden, ['#舊專案a']);
+  await post('/api/expenses/hide-tag', { tag: '＃裝潢' }); // full-width ＃ counts
+  assert.deepEqual(await handle('/api/expenses/hidden-tags'), ['#舊專案a', '#裝潢']);
+  await assert.rejects(post('/api/expenses/hide-tag', { tag: '沒有井字號' }), (e) => e.status === 400);
+
+  // Editing an old record that has the tag: still hidden
+  await handle('/api/expenses/2', { method: 'PUT', body: JSON.stringify({ date: '2026-03-01', type: 'expense', amount: 1000, category: '飲食', note: '#裝潢 補記' }) });
+  assert.deepEqual(await handle('/api/expenses/hidden-tags'), ['#舊專案a', '#裝潢']);
+  // A new record with it (any spelling of the case): suggested again
+  await post('/api/expenses', { date: '2026-06-01', type: 'expense', amount: 50, category: '飲食', note: '午餐 #舊專案A' });
+  assert.deepEqual(await handle('/api/expenses/hidden-tags'), ['#裝潢']);
+});

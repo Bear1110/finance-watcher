@@ -28,7 +28,7 @@ import './server/settings.js';
 import './server/aiimport.js';
 import './server/profile.js';
 import './server/names.js';
-import { EXPENSE_CATEGORIES, EXPENSE_CURRENCIES, expenseListSummary, recentDays } from './server/expenses.js';
+import { EXPENSE_CATEGORIES, EXPENSE_CURRENCIES, TAG_RE, expenseListSummary, noteTags, recentDays } from './server/expenses.js';
 import { txnListSummary } from './server/stocks.js';
 
 db.load();
@@ -233,6 +233,7 @@ Object.assign(window, {
   onSyncPillClick, downloadBackup, clearLocalData, reloadApp,
   EXPENSE_CATEGORIES, EXPENSE_CURRENCIES,
   expenseListSummary, recentDays, txnListSummary, // 搜尋結果、最近 7 天的合計：頁面篩選，加總在 js/server
+  TAG_RE, noteTags, // 收支 #標籤：明細、搜尋、記帳視窗跟存檔時用同一個規則
 });
 
 window.localApiReady = Promise.resolve();

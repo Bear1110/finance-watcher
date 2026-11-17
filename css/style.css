@@ -1941,6 +1941,17 @@ body[data-tab="expenses"] .fab { display: flex; }
 .exp-row .e-tag { color: var(--accent); cursor: pointer; }
 .exp-row .e-tag:hover { text-decoration: underline; }
 .tag-chips { margin-top: 8px; }
+/* A suggested tag with its ✕ (不再推薦): one pill, the ✕ a separate button on the right */
+.tag-chip { display: inline-flex; align-items: stretch; border: 1px solid var(--border-color); border-radius: 999px; }
+.tag-chip:hover { border-color: var(--accent); }
+.tag-chip .cat-chip { border: none; padding-right: 4px; }
+.tag-hide {
+  display: flex; align-items: center; justify-content: center;
+  min-width: 30px; padding: 0 8px 0 2px; border: none; border-radius: 0 999px 999px 0;
+  background: none; color: var(--text-secondary); cursor: pointer;
+}
+.tag-hide:hover { color: var(--red); }
+.tag-hide svg { width: 14px; height: 14px; }
 .exp-row .e-amt { text-align: right; font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .exp-row .e-amt .cell-sub { font-size: 0.78rem; font-weight: 400; color: var(--text-secondary); opacity: 1; }
 .exp-income .e-amt { color: var(--green); }

@@ -168,9 +168,51 @@ async function refreshPendingRates() {
   return { updated };
 }
 
+// ---------------------------------------------------------------- #tags
+// "#日本2026" in the note groups records (a trip, a project). Phone keyboards often type the
+// full-width ＃; both count. A tag ends at a space or punctuation ("（#日本2026）" is #日本2026).
+// Shared with the page (main.js puts these on window): the list, search and the dialog's chips.
+
+export const TAG_RE = /[#＃]([^\s#＃,，、。.;；:：!！?？()（）[\]【】「」『』《》<>"'“”]+)/g;
+export const noteTags = (note) => [...String(note || '').matchAll(TAG_RE)].map((m) => `#${m[1]}`);
+
+// Tags the user stopped the dialog from suggesting (✕ on a chip): lower-case, a JSON array in the
+// synced setting, so every device stops suggesting them. The records keep their tags.
+const HIDDEN_TAGS = 'hidden_tags';
+
+export function hiddenTags() {
+  try {
+    const a = JSON.parse(db.getSetting(HIDDEN_TAGS) || '[]');
+    return new Set(Array.isArray(a) ? a.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function setHiddenTags(set) {
+  db.setSetting(HIDDEN_TAGS, set.size ? JSON.stringify([...set]) : '');
+}
+
+/** A new record with a hidden tag means it's in use again: suggest it again. Every create path calls this. */
+export function unhideNoteTags(note) {
+  const hidden = hiddenTags();
+  const n = hidden.size;
+  for (const t of noteTags(note)) hidden.delete(t.toLowerCase());
+  if (hidden.size !== n) setHiddenTags(hidden);
+}
+
+function hideTag(req) {
+  const [tag] = noteTags(body(req)?.tag);
+  if (!tag) throw badRequest('沒有標籤');
+  const hidden = hiddenTags();
+  setHiddenTags(hidden.add(tag.toLowerCase()));
+  return { hidden: [...hidden] };
+}
+
 async function create(req) {
   const e = await withFxRate(normalizeExpense(body(req)));
   const row = db.insert('expenses', e);
+  unhideNoteTags(e.note);
   return { id: row.id, ...e, created_at: '' };
 }
 
@@ -243,6 +285,8 @@ route('PUT', '/api/expenses/{id}', updateExpense);
 route('DELETE', '/api/expenses/{id}', remove);
 route('POST', '/api/expenses/delete', removeMany);
 route('GET', '/api/expenses/stats', getStats);
+route('GET', '/api/expenses/hidden-tags', () => [...hiddenTags()]);
+route('POST', '/api/expenses/hide-tag', hideTag);
 // Market rate for the add/edit dialog: ?currency=JPY&date=YYYY-MM-DD -> { rate, date }
 route('GET', '/api/expenses/fx', (req) => {
   const currency = req.query.get('currency');
