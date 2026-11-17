@@ -883,9 +883,9 @@ body:has(dialog.modal-overlay[open]) { overflow: hidden; }
   position: relative;
   background: linear-gradient(135deg, #1e3a5f 0%, #2a1a4e 100%);
   border-radius: 16px;
-  padding: 32px;
+  padding: 24px 32px;
   text-align: center;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
   border: 1px solid var(--border-color);
 }
 
@@ -1383,7 +1383,7 @@ body { overflow-x: clip; }
   .table-wrap table:not(.as-cards) tbody tr:hover td:first-child:not([colspan]) { background: var(--bg-card-hover); }
 
   /* --- Dashboard --- */
-  .hero-card { padding: 20px 16px; border-radius: 12px; }
+  .hero-card { padding: 16px; border-radius: 12px; }
   .hero-value { font-size: 1.8rem; }
   .hero-label { letter-spacing: 1px; }
   .dash-stats,
@@ -2116,8 +2116,8 @@ body[data-tab="expenses"] .fab { display: flex; }
 
 .hero-year { margin-top: 6px; font-size: 1.05rem; font-weight: 600; color: var(--text-secondary); }
 .hero-year-parts { margin-top: 4px; font-size: 0.85rem; color: var(--text-secondary); }
-.hero-comp { max-width: 520px; height: 8px; margin: 18px auto 8px; border-radius: 4px; }
-.hero-comp-legend { justify-content: center; gap: 4px 12px; margin: 0 0 10px; font-size: 0.8rem; }
+.hero-comp { max-width: 520px; height: 8px; margin: 14px auto 8px; border-radius: 4px; }
+.hero-comp-legend { justify-content: center; gap: 4px 12px; margin: 0 0 6px; font-size: 0.8rem; }
 
 .month-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .month-grid > div { display: flex; flex-direction: column; gap: 2px; }
@@ -2129,7 +2129,7 @@ body[data-tab="expenses"] .fab { display: flex; }
 .month-cat .cat-amt { color: var(--text-secondary); }
 .month-foot { margin: 14px 0 0; padding-top: 10px; border-top: 1px solid var(--border-color); font-size: 0.85rem; color: var(--text-secondary); }
 
-.nw-controls { margin-bottom: 12px; }
+.nw-controls { margin-bottom: 12px; justify-content: space-between; }
 .nw-years-pick { display: contents; }
 .nw-legend { margin: 0 0 10px; }
 .nw-legend .legend-item { cursor: help; }
@@ -2257,7 +2257,7 @@ body[data-tab="expenses"] .fab { display: flex; }
 }
 
 /* 每月快照 on the 淨資產走勢 card: a stamp card, one stamp a month, joined by a line */
-.snap-strip { margin-bottom: 18px; padding: 12px 14px 8px; border-radius: 12px; background: var(--accent-subtle); }
+.snap-strip { margin-bottom: 18px; padding: 12px 14px 8px; border-radius: 12px; border: 1px solid var(--divider); }
 .snap-strip-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 0.85rem; color: var(--text-secondary); }
 .snap-strip-title { font-weight: 600; color: var(--text-heading); }
 .snap-streak { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--yellow-bg); color: var(--yellow); font-size: 0.78rem; font-weight: 600; }

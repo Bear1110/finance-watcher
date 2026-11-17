@@ -60,3 +60,13 @@ test('UI: bright blue only for small things; big blue areas use the calm blue (-
     assert.ok(!m, `${file}:${m && lineOf(src, m.index)} ${m?.[0]}: use var(--accent-fill)`);
   }
 });
+
+test('app.js: no two top-level functions or consts share a name (a classic script: the later one silently replaces the first)', () => {
+  const src = readFileSync(new URL('js/app.js', root), 'utf8');
+  const seen = new Map();
+  for (const m of src.matchAll(/^(?:async\s+)?(?:function\*?\s+|const\s+|let\s+)([A-Za-z_$][\w$]*)/gm)) {
+    const line = lineOf(src, m.index);
+    assert.ok(!seen.has(m[1]), `js/app.js:${line} ${m[1]} is already defined at line ${seen.get(m[1])}`);
+    seen.set(m[1], line);
+  }
+});

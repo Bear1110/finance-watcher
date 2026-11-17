@@ -15,7 +15,7 @@ let privacyMode = false;
 try { privacyMode = localStorage.getItem('privacyMode') === '1'; } catch (e) {}
 
 /** Axis tick/grid style shared by the charts */
-const CHART_AXIS = { ticks: { color: '#5c6f8a', font: { size: 11 } }, grid: { color: 'rgba(42,58,78,0.4)' } };
+const CHART_AXIS = { ticks: { color: '#8a9ab5', font: { size: 11 } }, grid: { color: 'rgba(42,58,78,0.4)' } }; // ticks: --text-secondary (--text-muted is too dark to read)
 
 /** Format an amount / share count with commas (masked in privacy mode) */
 function fmt(n, decimals = 0) {
@@ -52,6 +52,13 @@ function fmtPct(n) {
   if (n == null || isNaN(n)) return '--';
   const v = Math.round(n * 100) / 100 || 0; // −0.001 → +0.00%, not "-0.00%"
   return (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+}
+
+/** A share of a whole as a short label: 61%, and <1% / >99% instead of a misleading 0% / 100%. */
+function sharePct(pct) {
+  if (pct > 0 && pct < 1) return '<1%';
+  if (pct > 99 && pct < 100) return '>99%';
+  return `${pct.toFixed(0)}%`;
 }
 
 /** Get CSS class for positive/negative */
@@ -686,8 +693,7 @@ function renderHero(ov) {
   const total = parts.reduce((sum, p) => sum + p.v, 0);
   $('dash-comp-bar').innerHTML = segmentsHtml(parts);
   $('dash-comp-legend').innerHTML = parts.map(p =>
-    `<span class="legend-item"><span class="legend-dot" style="background:${p.color}"></span>${p.label} ${(p.v / total * 100).toFixed(0)}%</span>`).join('') +
-    '';
+    `<span class="legend-item"><span class="legend-dot" style="background:${p.color}"></span>${p.label} ${sharePct(p.v / total * 100)}</span>`).join('');
 
   const c = ov.cash;
   const counted = [c.trades && `${c.trades} 筆交易`, c.dividends && `${c.dividends} 筆股利`].filter(Boolean);
@@ -780,6 +786,21 @@ function setNetWorthPeriod(years) {
 }
 
 /**
+ * Net worth tooltip's second line: the change since the last point a month or more before point `i`
+ * ("比一個月前 +120,000（+1.25%）"). Daily or per-snapshot points alike; '' near the start of the line.
+ */
+function monthChangeText(points, i) {
+  const [date, value] = points[i];
+  const [y, m] = date.split('-').map(Number);
+  // Same day last month, as text ("2026-02-31" still sorts right after the 28th)
+  const target = `${m > 1 ? y : y - 1}-${String(m > 1 ? m - 1 : 12).padStart(2, '0')}${date.slice(7)}`;
+  let j = i - 1;
+  while (j >= 0 && points[j][0] > target) j--;
+  const text = j >= 0 ? changePlainText(value, points[j][1]) : '';
+  return text && `比一個月前 ${text}`;
+}
+
+/**
  * Net worth line: per weekday from the performance series (assets.js netWorthSeries), else per
  * snapshot. The last point is today's net worth from the hero.
  */
@@ -813,7 +834,10 @@ function renderNetWorthChart() {
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `淨資產: ${fmtTWD(c.parsed.y)}` } } },
+      plugins: { legend: { display: false }, tooltip: { callbacks: {
+        label: c => `淨資產: ${fmtTWD(c.parsed.y)}`,
+        afterLabel: c => monthChangeText(points, c.dataIndex),
+      } } },
       scales: {
         x: { ticks: { ...CHART_AXIS.ticks, maxTicksLimit: 6, maxRotation: 0, callback(v) { return this.getLabelForValue(v).slice(0, 7); } }, grid: { display: false } },
         y: { ticks: { ...CHART_AXIS.ticks, callback: v => fmt(v) }, grid: CHART_AXIS.grid },
@@ -854,9 +878,12 @@ const growthBarHtml = (g) => `<div class="source-bar" aria-hidden="true">${segme
 /** Colored change from base to cur: "+12,345 (+1.23%)", or just the percent when compact. '' without a base. */
 function changeHtml(cur, base, compact = false) {
   if (!(base > 0)) return '';
-  const diff = cur - base;
-  const pct = fmtPct(diff / base * 100);
-  return `<span class="${plClass(diff)}">${compact ? pct : `${fmtPL(diff)} (${pct})`}</span>`;
+  return `<span class="${plClass(cur - base)}">${compact ? fmtPct((cur - base) / base * 100) : changePlainText(cur, base)}</span>`;
+}
+
+/** changeHtml as plain text ("+12,345 (+1.23%)"), for chart tooltips; '' without a base. */
+function changePlainText(cur, base) {
+  return base > 0 ? `${fmtPL(cur - base)} (${fmtPct((cur - base) / base * 100)})` : '';
 }
 
 /** One history row: date, total and change in the summary; tap for the rest. */
@@ -2317,15 +2344,15 @@ function pctLineChart(canvas, old, labels, datasets, tooltipTitle) {
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { display: true, position: 'top', labels: { color: '#8a9ab5', usePointStyle: true, pointStyle: 'line', font: { size: 11 } } },
+        legend: { display: true, position: 'top', labels: { ...CHART_AXIS.ticks, usePointStyle: true, pointStyle: 'line' } },
         tooltip: { callbacks: { ...(tooltipTitle && { title: tooltipTitle }), label: c => c.parsed.y == null ? null : `${c.dataset.label}: ${fmtPct(c.parsed.y)}` } },
       },
       scales: {
-        x: { ticks: { color: '#5c6f8a', font: { size: 11 }, maxTicksLimit: 8, maxRotation: 0 }, grid: { display: false } },
+        x: { ticks: { ...CHART_AXIS.ticks, maxTicksLimit: 8, maxRotation: 0 }, grid: { display: false } },
         y: {
-          ticks: { color: '#5c6f8a', font: { size: 11 }, callback: v => v + '%' },
+          ticks: { ...CHART_AXIS.ticks, callback: v => v + '%' },
           // Emphasize the 0% line: above it the period made money.
-          grid: { color: c => c.tick.value === 0 ? 'rgba(138,154,181,0.6)' : 'rgba(42,58,78,0.4)' },
+          grid: { color: c => c.tick.value === 0 ? 'rgba(138,154,181,0.6)' : CHART_AXIS.grid.color },
         },
       },
     },
@@ -2506,7 +2533,7 @@ function renderHoldingsTrend() {
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { labels: { color: '#8a9ab5', boxWidth: 12, font: { size: 11 } } },
+        legend: { labels: { ...CHART_AXIS.ticks, boxWidth: 12 } },
         tooltip: {
           callbacks: {
             label: c => `${c.dataset.label}: ${mode === 'value' ? fmtTWD(c.parsed.y) : fmtPL(c.parsed.y)}`,
@@ -2724,14 +2751,14 @@ async function loadDividendSources() {
       <div class="pf-row-head"><strong>${y.year}</strong><span class="pf-weight">${fmtTWD(y.total)}</span></div>
       <div class="source-bar cat-track lt-stack" aria-hidden="true" style="width:${y.total / max * 100}%">${y.parts.map(p =>
         `<span style="width:${p.amount / y.total * 100}%;background:${color(p.symbol)}" title="${escapeAttr(stockText(p.symbol))} ${fmtTWD(p.amount)}"></span>`).join('')}</div>
-      <div class="pf-row-sub">${y.parts.slice(0, 3).map(p => `${escapeHtml(stockText(p.symbol))} ${(p.amount / y.total * 100).toFixed(0)}%`).join(' · ')}${
+      <div class="pf-row-sub">${y.parts.slice(0, 3).map(p => `${escapeHtml(stockText(p.symbol))} ${sharePct(p.amount / y.total * 100)}`).join(' · ')}${
         changeLine(y, drivers)}</div>
     </div>`;
   }).join('');
 
   const t = r.ttm;
   document.getElementById('div-sources-hint').innerHTML = t.total > 0
-    ? `近 12 個月 ${fmtTWD(t.total)}，${escapeHtml(stockText(t.parts[0].symbol))} 佔 ${t.top_share.toFixed(0)}%` +
+    ? `近 12 個月 ${fmtTWD(t.total)}，${escapeHtml(stockText(t.parts[0].symbol))} 佔 ${sharePct(t.top_share)}` +
       (t.top_share >= 50 ? '：股利現金流大多靠這一檔，它的配息政策一改變，整體股利就會跟著變。' : '。')
     : '近 12 個月沒有股利。';
 }
@@ -4641,17 +4668,17 @@ function renderManagedSnapshotChart(list) {
         legend: {
           display: true,
           position: 'top',
-          labels: { color: '#8a9ab5', usePointStyle: true, pointStyle: 'line', font: { size: 11 } }
+          labels: { ...CHART_AXIS.ticks, usePointStyle: true, pointStyle: 'line' }
         },
         tooltip: {
           callbacks: { label: c => `${c.dataset.label}: ${fmtTWD(c.parsed.y)}` }
         }
       },
       scales: {
-        x: { ticks: { color: '#5c6f8a', font: { size: 11 } }, grid: { color: 'rgba(42,58,78,0.4)' } },
+        x: CHART_AXIS,
         y: {
-          ticks: { color: '#5c6f8a', font: { size: 11 }, callback: v => fmt(v) },
-          grid: { color: 'rgba(42,58,78,0.4)' },
+          ticks: { ...CHART_AXIS.ticks, callback: v => fmt(v) },
+          grid: CHART_AXIS.grid,
         }
       }
     }
