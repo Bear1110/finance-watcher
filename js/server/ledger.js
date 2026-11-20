@@ -5,7 +5,7 @@
 // holdings stale.
 
 import * as db from './db.js';
-import { isBonusShares, isCounted, normalizeSymbolMarket, twFeeDiscount, round4, badRequest, cmp } from './util.js';
+import { isBonusShares, isCounted, isHistorySell, normalizeSymbolMarket, twFeeDiscount, round4, badRequest, cmp } from './util.js';
 import { lotFromBuy, takeLots, lotsTotal, twTradeCost } from './lots.js';
 
 const actionOrder = (a) => (a === 'BUY' ? 0 : 1);
@@ -47,13 +47,55 @@ export function replayTrades(txns) {
   return out;
 }
 
+/** Whether some SELL is left uncovered when the (sorted) counted trades plus the `promoted` history SELLs are replayed. */
+function anyUncovered(sorted, promoted) {
+  const lots = [];
+  for (const t of sorted) {
+    if (t.action === 'BUY') {
+      if (t.shares > 0) lots.push(lotFromBuy(t));
+    } else if (isCounted(t) || promoted.has(t.id)) {
+      if (takeLots(lots, t.shares).left > 1e-9) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * A history SELL (fixed realized_pl, no lots) was saved that way because no BUY covered it then.
+ * Once BUYs that cover it are recorded (配股 from 從 Yahoo 查詢股利, a back-filled buy), its shares
+ * would otherwise stay in holdings forever — so let it consume lots (lots_consumed 1), keeping its
+ * stored realized_pl like any pl_manual SELL. Skipped when that would leave another SELL uncovered
+ * (the shares came from trades never recorded) or when a 匯入持倉 is dated on or before it (that
+ * stands for today's holdings, not what was sold then). One way only: deleting the covering BUY
+ * later leaves an uncovered SELL (warned), not a history SELL again.
+ * `sorted`: the symbol's self-account trades in ledgerOrder; promoted rows are updated in place.
+ */
+function promoteHistorySells(sorted) {
+  const history = sorted.filter(isHistorySell);
+  if (!history.length) return;
+  const firstTransfer = sorted.find((t) => t.action === 'BUY' && t.is_transfer === 1)?.date;
+  const promoted = new Set();
+  for (const s of history) {
+    if (firstTransfer && firstTransfer <= s.date) break; // history is in date order
+    promoted.add(s.id);
+    if (anyUncovered(sorted, promoted)) promoted.delete(s.id);
+  }
+  for (const s of history) {
+    if (!promoted.has(s.id)) continue;
+    s.lots_consumed = 1;
+    db.update('stock_transactions', s.id, { lots_consumed: 1 });
+  }
+}
+
 /**
  * Replay one symbol of the self account (counted txns) and rewrite its stock_holdings row.
  * With no BUY left (all deleted, or only imported history SELLs) the holding row is removed.
  * Returns { shares, avgCost, hasBuys, uncovered }.
  */
 export function replaySymbol(symbol) {
-  const r = replayTrades(db.where('stock_transactions', (t) => t.symbol === symbol && isCounted(t)));
+  const own = db.where('stock_transactions', (t) => t.symbol === symbol && t.account_id == null).sort(ledgerOrder);
+  promoteHistorySells(own);
+  const r = replayTrades(own.filter(isCounted));
   const res = { shares: 0, avgCost: 0, hasBuys: r.hasBuys, uncovered: r.uncovered };
   const { lots, market, currency } = r;
 

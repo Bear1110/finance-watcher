@@ -220,7 +220,8 @@ async function recordTransaction(req) {
 }
 
 // A historical SELL with a caller-supplied realized_pl: consumes no lots and
-// leaves stock_holdings alone.
+// leaves stock_holdings alone, until BUYs that cover it are recorded (ledger.js
+// promoteHistorySells then lets it take lots, keeping this realized_pl).
 function recordManualSell(txn) {
   if (txn.action !== 'SELL') throw badRequest('manual_pl only applies to SELL');
   const row = db.insert('stock_transactions', {

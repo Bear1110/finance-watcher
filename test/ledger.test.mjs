@@ -143,3 +143,57 @@ test('POST /api/stocks imports a holding as a transfer BUY', async () => {
   assert.equal(h.note, '匯入');
   assert.equal(db.get('stock_transactions', r.id).is_transfer, 1);
 });
+
+// --- history SELLs become ordinary once BUYs cover them
+
+const isHistory = (id) => db.get('stock_transactions', id).lots_consumed === 0;
+
+test('history SELL covered by later-recorded 配股 is promoted (2892 case)', () => {
+  const ids = insertTxns('B.TW',
+    { action: 'BUY', shares: 4000, price: 26.4, fee: 150, date: '2023-09-06' },
+    { action: 'SELL', shares: 4000, price: 29.6, fee: 168, tax: 355, date: '2026-05-11' },
+    // 零股賣出：當初沒有配股紀錄，存成歷史損益
+    { action: 'SELL', shares: 223, price: 31.6, fee: 10, tax: 21, date: '2026-06-16', realized_pl: 7015, pl_manual: 1, lots_consumed: 0 },
+    // 之後才補的配股
+    { action: 'BUY', shares: 120, price: 0, date: '2024-08-08' },
+    { action: 'BUY', shares: 103, price: 0, date: '2025-08-07' },
+  );
+  replaySymbol('B.TW');
+  assert.equal(isHistory(ids[2]), false);
+  assert.equal(holding('B.TW').shares, 0);
+  assert.equal(realizedPL(ids[2]), 7015); // 對帳單的損益保留
+});
+
+test('history SELL stays when promoting would leave a later SELL uncovered', () => {
+  const ids = insertTxns('C.TW',
+    { action: 'BUY', shares: 100, price: 10, date: '2020-01-02' },
+    { action: 'SELL', shares: 100, price: 12, date: '2021-01-02', realized_pl: 200, pl_manual: 1, lots_consumed: 0 },
+    { action: 'SELL', shares: 100, price: 15, date: '2022-01-02' },
+  );
+  replaySymbol('C.TW');
+  assert.equal(isHistory(ids[1]), true);
+  assert.equal(realizedPL(ids[1]), 200);
+  assert.equal(holding('C.TW').shares, 0);
+});
+
+test('history SELL stays when a 匯入持倉 dated before it exists', () => {
+  const ids = insertTxns('D.TW',
+    { action: 'BUY', shares: 100, price: 10, date: '2020-01-02', is_transfer: 1 },
+    { action: 'SELL', shares: 50, price: 12, date: '2025-01-02', realized_pl: 100, pl_manual: 1, lots_consumed: 0 },
+  );
+  replaySymbol('D.TW');
+  assert.equal(isHistory(ids[1]), true);
+  assert.equal(holding('D.TW').shares, 100);
+});
+
+test('only the history SELLs the BUYs can cover are promoted', () => {
+  const ids = insertTxns('E.TW',
+    { action: 'BUY', shares: 50, price: 0, date: '2024-01-02' },
+    { action: 'SELL', shares: 50, price: 12, date: '2025-01-02', realized_pl: 600, pl_manual: 1, lots_consumed: 0 },
+    { action: 'SELL', shares: 70, price: 12, date: '2025-06-02', realized_pl: 300, pl_manual: 1, lots_consumed: 0 },
+  );
+  replaySymbol('E.TW');
+  assert.equal(isHistory(ids[1]), false);
+  assert.equal(isHistory(ids[2]), true);
+  assert.equal(holding('E.TW').shares, 0);
+});
