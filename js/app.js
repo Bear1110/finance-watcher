@@ -2840,15 +2840,16 @@ function renderDividendSuggestions() {
   }
   body.innerHTML = rows.map(({ s, i }) => {
     const fc = n => fmtCur(n, s.currency);
+    const stock = s.kind === 'stock';
     return `
       <tr>
         <td><input type="checkbox" class="div-suggest-cb" data-idx="${i}" checked></td>
         <td>${s.ex_date}</td>
         <td><strong>${stockHTML(s.symbol)}</strong></td>
-        <td>${s.currency === 'TWD' ? 'NT$' : '$'}${fmtNum(s.per_share, 4)}</td>
+        <td>${stock ? `配股：每千股 ${fmtNum(s.per_thousand, 2)} 股` : `${s.currency === 'TWD' ? 'NT$' : '$'}${fmtNum(s.per_share, 4)}`}</td>
         <td>${fmt(s.shares)}</td>
-        <td class="positive">${fc(s.amount)}</td>
-        <td>${s.withheld ? fc(s.withheld) : '--'}</td>
+        <td class="positive">${stock ? `+${fmt(s.new_shares)} 股` : fc(s.amount)}</td>
+        <td>${!stock && s.withheld ? fc(s.withheld) : '--'}</td>
       </tr>`;
   }).join('');
 }
@@ -2865,15 +2866,21 @@ async function importDividendSuggestions() {
   try {
     await api('/api/dividends/batch', {
       method: 'POST',
-      body: JSON.stringify(picked.map(s => ({
+      body: JSON.stringify(picked.map(s => (s.kind === 'stock' ? {
+        kind: 'stock', symbol: s.symbol, market: s.market, currency: s.currency,
+        shares: s.new_shares, ex_date: s.ex_date,
+        note: `配股：每千股 ${s.per_thousand} 股 × ${s.shares} 股（Yahoo 估算，日期為除權日）`,
+      } : {
         symbol: s.symbol, market: s.market, currency: s.currency,
         amount: s.amount, withheld: s.withheld,
         date: s.ex_date, ex_date: s.ex_date,
         note: `Yahoo 估算：每股 ${s.per_share} × ${s.shares} 股（日期為除息日）`,
       }))),
     });
-    showToast(`已匯入 ${picked.length} 筆股利`, 'success');
+    const nStock = picked.filter(s => s.kind === 'stock').length;
+    showToast(`已匯入 ${picked.length - nStock} 筆股利${nStock ? `、${nStock} 筆配股（記在交易紀錄）` : ''}`, 'success');
     document.getElementById('div-suggest').style.display = 'none';
+    if (nStock) { loadHoldings(); loadTransactions(); }
     loadDividends();
     loadRealizedSummary();
     loadXirr();

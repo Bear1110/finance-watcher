@@ -52,6 +52,13 @@
 
 停用的表（`budgets`、`stock_snapshots`、`llm_conversations`）已不在 `SCHEMA`，不再同步；試算表裡的舊分頁可以自行刪除。它們的 sheetId（7、8、12）列在 `sheets.js` 的 `RETIRED_SHEET_IDS`，新表不能再用。本機殘留的待同步紀錄在載入時略過。
 
+## 股利建議（從 Yahoo 查詢股利）
+
+`dividends.js` 的 `dividendSuggestions`：Yahoo 的除息（`events=div`）與分割（`events=splits`）× 除權息前持股。
+- 台股配股在 Yahoo 是比例小於 2 的「分割」（`1030:1000` = 每千股配 30 股），列成配股建議；匯入後是交易紀錄裡**價格 0 的買入**（日期為除權日，不足一股的不列）。比例 ≥ 2 是真的分割（0050 的 1 拆 4），不當配股；美股的分割也不處理（AI 匯入已換算）
+- Yahoo 的舊現金股利已經除以之後每次的分割比例，台股估算時把配股的部分乘回來（例：2884 2024 年 1.188101 → 1.2）
+- 價格 0 的買入：不算投入的錢，TWR 不用它的 0 當當天的價格；已實現損益的 % 本來就把零成本的賣出排除
+
 ## 行情
 
 Yahoo Finance 沒有 CORS，瀏覽器不能直接呼叫。`market.js` 的請求經過代理轉送：大多是 Yahoo chart API（`/v8/finance/chart`），穿透持股另用 `quoteSummary` 的 `topHoldings`（`/v10/finance/quoteSummary`，Yahoo 要 cookie + crumb，由 Worker 代拿；只允許 `quoteType`、`topHoldings` 兩個模組）。台股中文名稱走 Worker 的 `/tw-names?codes=2330,0050`（Worker 用證交所的上市每日收盤清單，查不到的上櫃／興櫃再逐一查證交所 ISIN 頁；結果快取一天。櫃買中心的 openapi 會擋 Cloudflare，不能用）。Worker 改過要重新部署：

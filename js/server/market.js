@@ -266,22 +266,29 @@ export async function fetchFxRate(currency, date) {
 
 const dividendCache = new Map(); // symbol|since -> { at, evs }
 
-/** Ex-dividend events since `since` (Date): [{ ex_date, per_share }], oldest first. */
+/** Yahoo's event time as a calendar date in fixed UTC+8, so it doesn't shift with the browser's timezone. */
+const eventDate = (t) => new Date((t + 8 * 3600) * 1000).toISOString().slice(0, 10);
+
+/**
+ * Ex-dividend and split events since `since` (Date), oldest first:
+ * { cash: [{ ex_date, per_share }], splits: [{ ex_date, ratio }] }. ratio is new shares per old share
+ * (台股配股 1030:1000 → 1.03). per_share is as Yahoo reports it: divided by every later split.
+ */
 export async function fetchDividendHistory(symbol, since) {
   const key = `${symbol}|${since.toISOString().slice(0, 10)}`;
   const e = dividendCache.get(key);
   if (e && Date.now() - e.at < DIVIDEND_TTL_MS) return e.evs;
   const body = await proxyGetJSON(
-    chartPath(symbol, `interval=1mo&events=div&period1=${unix(since)}&period2=${periodEnd()}`),
+    chartPath(symbol, `interval=1mo&events=div,splits&period1=${unix(since)}&period2=${periodEnd()}`),
     `${symbol} dividends`);
-  const res = body.chart?.result?.[0];
-  const evs = [];
-  for (const d of Object.values(res?.events?.dividends || {})) {
-    if (!(d.amount > 0)) continue;
-    // Fixed UTC+8 so the calendar date doesn't shift with the browser's timezone.
-    evs.push({ ex_date: new Date((d.date + 8 * 3600) * 1000).toISOString().slice(0, 10), per_share: d.amount });
-  }
-  evs.sort((a, b) => (a.ex_date < b.ex_date ? -1 : a.ex_date > b.ex_date ? 1 : 0));
+  const events = body.chart?.result?.[0]?.events || {};
+  const byDate = (a, b) => (a.ex_date < b.ex_date ? -1 : a.ex_date > b.ex_date ? 1 : 0);
+  const evs = {
+    cash: Object.values(events.dividends || {}).filter((d) => d.amount > 0)
+      .map((d) => ({ ex_date: eventDate(d.date), per_share: d.amount })).sort(byDate),
+    splits: Object.values(events.splits || {}).filter((d) => d.numerator > 0 && d.denominator > 0)
+      .map((d) => ({ ex_date: eventDate(d.date), ratio: d.numerator / d.denominator })).sort(byDate),
+  };
   dividendCache.set(key, { at: Date.now(), evs });
   return evs;
 }

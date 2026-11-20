@@ -144,10 +144,11 @@ export function computePerformance(input) {
     const tradeAmt = {};
     const tradeQty = {};
     trades.forEach((t, i) => {
+      tradePx[i] = t.price;
+      if (t.price === 0 && !t.transfer) return; // 配股: no money in, and its 0 must not price the holding before it
       if (cursors[t.symbol].i === 0 && !px[t.symbol]) {
         px[t.symbol] = t.price; // no daily close yet: use the trade price
       }
-      tradePx[i] = t.price;
       if (t.transfer) tradePx[i] = px[t.symbol] || 0;
       tradeAmt[t.symbol] = (tradeAmt[t.symbol] || 0) + t.shares * tradePx[i];
       tradeQty[t.symbol] = (tradeQty[t.symbol] || 0) + t.shares;

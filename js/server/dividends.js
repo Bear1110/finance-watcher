@@ -1,8 +1,9 @@
-// Cash dividends, Yahoo-based suggestions and per-symbol totals.
+// Cash dividends, Yahoo-based suggestions (cash and 台股配股) and per-symbol totals.
 
 import * as db from './db.js';
 import { route } from './router.js';
 import { fetchDividendHistory, MarketUnavailableError } from './market.js';
+import { replaySymbol } from './ledger.js';
 import {
   HttpError, badRequest, body, cmp, isCounted, normalizeSymbolMarket, settingFloat, storedUSDTWDRate, toTWD,
 } from './util.js';
@@ -36,20 +37,45 @@ route('POST', '/api/dividends', (req) => {
   return insertDividend(d);
 });
 
-// All-or-nothing import (used by the Yahoo suggestions list).
+/** A 配股 suggestion as a zero-cost BUY dated the ex-date (Yahoo's prices are adjusted from then on). */
+function normalizeStockDividend(d) {
+  normalizeSymbolMarket(d);
+  d.shares = Number(d.shares) || 0;
+  if (!(d.shares > 0) || !Number.isInteger(d.shares)) throw badRequest('配股股數必須是正整數');
+  return d;
+}
+
+function insertStockDividend(d) {
+  db.insert('stock_transactions', {
+    symbol: d.symbol, market: d.market, action: 'BUY', shares: d.shares, price: 0, fee: 0, tax: 0,
+    currency: d.currency, date: d.ex_date, realized_pl: 0, note: d.note || '配股',
+  });
+}
+
+// All-or-nothing import (used by the Yahoo suggestions list): cash rows become dividends,
+// kind 'stock' rows (配股) zero-cost BUYs.
 route('POST', '/api/dividends/batch', async (req) => {
   const list = body(req);
   if (!Array.isArray(list)) throw badRequest('invalid JSON: expected an array');
   const items = list.map((raw) => {
     const d = { ...raw };
     try {
-      return normalizeDividend(d);
+      return d.kind === 'stock' ? normalizeStockDividend(d) : normalizeDividend(d);
     } catch (e) {
       throw badRequest(`${d.symbol}: ${e.message}`);
     }
   });
   await db.transaction(async () => {
-    for (const d of items) insertDividend(d);
+    const replay = new Set();
+    for (const d of items) {
+      if (d.kind === 'stock') {
+        insertStockDividend(d);
+        replay.add(d.symbol);
+      } else {
+        insertDividend(d);
+      }
+    }
+    for (const sym of replay) replaySymbol(sym);
   });
   return { created: items.length };
 });
@@ -189,6 +215,22 @@ export function dividendAlreadyRecorded(existing, symbol, exDate) {
   return false;
 }
 
+/** A zero-cost BUY of the symbol (an imported or hand-entered 配股) dated -3..60 days from the ex-date. */
+export function stockDividendRecorded(txns, symbol, exDate) {
+  const ex = Date.parse(exDate);
+  return txns.some((t) => {
+    if (t.symbol !== symbol || t.action !== 'BUY' || t.price !== 0) return false;
+    const days = (Date.parse(t.date) - ex) / 86400000;
+    return days >= -3 && days <= 60;
+  });
+}
+
+/**
+ * 台股配股 as Yahoo reports it: a split whose ratio is under 2 (a real split, e.g. 0050's 1→4,
+ * is ≥ 2 and left alone; AI 匯入 already converts trades across those).
+ */
+export const isStockDividend = (market, ratio) => market === 'TW' && ratio > 1 && ratio < 2;
+
 /** Run fns with at most n in flight. */
 async function pool(fns, n) {
   const out = new Array(fns.length);
@@ -204,22 +246,24 @@ async function pool(fns, n) {
 }
 
 /**
- * Estimates unrecorded dividends from Yahoo ex-dividend events × shares held
- * before each ex-date, newest first. Returns { suggestions, errors } where
- * errors lists symbols Yahoo failed for. Throws MarketUnavailableError when no
- * market source is configured.
+ * Estimates unrecorded dividends from Yahoo events × shares held before each ex-date, newest first.
+ * 台股 also gets 配股 rows (kind 'stock': whole new shares, fractions are paid in cash) and cash amounts
+ * restored from Yahoo's split-adjusted figures; a suggested 配股 counts toward later ex-dates even before
+ * it is imported. Returns { suggestions, errors } where errors lists symbols Yahoo failed for. Throws
+ * MarketUnavailableError when no market source is configured.
  *
- * opts.fetchHistory(symbol, sinceDate) and opts.today ('YYYY-MM-DD') are
+ * opts.fetchHistory(symbol, sinceDate) → { cash, splits } and opts.today ('YYYY-MM-DD') are
  * injectable for tests.
  */
 export async function dividendSuggestions(opts = {}) {
   const fetchHistory = opts.fetchHistory || fetchDividendHistory;
   const today = opts.today || db.today();
 
+  const counted = db.where('stock_transactions', isCounted);
   const events = new Map(); // symbol -> [{date, action, shares}]
   const meta = new Map(); // symbol -> [market, currency]
   const firstBuy = new Map();
-  for (const t of db.where('stock_transactions', isCounted)) {
+  for (const t of counted) {
     if (!events.has(t.symbol)) events.set(t.symbol, []);
     events.get(t.symbol).push({ date: t.date, action: t.action, shares: t.shares });
     meta.set(t.symbol, [t.market, t.currency]);
@@ -237,7 +281,7 @@ export async function dividendSuggestions(opts = {}) {
     if (Number.isNaN(since.getTime())) continue;
     jobs.push(async () => {
       try {
-        return { symbol: sym, evs: (await fetchHistory(sym, since)) || [] };
+        return { symbol: sym, evs: (await fetchHistory(sym, since)) || {} };
       } catch (err) {
         return { symbol: sym, err };
       }
@@ -256,25 +300,48 @@ export async function dividendSuggestions(opts = {}) {
       continue;
     }
     const [market, currency] = meta.get(res.symbol);
-    for (const ev of res.evs) {
-      if (ev.ex_date > today) continue;
-      // Entitled shares = bought before the ex-date and not sold before it.
-      let shares = 0;
+    const splits = (res.evs.splits || []).filter((sp) => isStockDividend(market, sp.ratio));
+    const pending = []; // suggested, not yet imported 配股: { ex_date, shares }
+    // Entitled shares = bought before the ex-date and not sold before it (+ earlier pending 配股).
+    const sharesBefore = (exDate) => {
+      let n = 0;
       for (const he of events.get(res.symbol)) {
-        if (he.date >= ev.ex_date) continue;
-        shares += he.action === 'BUY' ? he.shares : -he.shares;
+        if (he.date < exDate) n += he.action === 'BUY' ? he.shares : -he.shares;
       }
+      for (const p of pending) if (p.ex_date < exDate) n += p.shares;
+      return n;
+    };
+    const timeline = [
+      ...(res.evs.cash || []).map((ev) => ({ ...ev, kind: 'cash' })),
+      ...splits.map((ev) => ({ ...ev, kind: 'stock' })),
+    ].filter((ev) => ev.ex_date <= today).sort((a, b) => cmp(a.ex_date, b.ex_date));
+    for (const ev of timeline) {
+      const shares = sharesBefore(ev.ex_date);
       if (shares <= 1e-9) continue;
+      if (ev.kind === 'stock') {
+        const add = Math.floor(shares * (ev.ratio - 1) + 1e-6);
+        if (add < 1 || stockDividendRecorded(counted, res.symbol, ev.ex_date)) continue;
+        pending.push({ ex_date: ev.ex_date, shares: add });
+        suggestions.push({
+          kind: 'stock', symbol: res.symbol, market, currency, ex_date: ev.ex_date,
+          per_thousand: Math.round((ev.ratio - 1) * 1e7) / 1e4, shares, new_shares: add,
+        });
+        continue;
+      }
       if (dividendAlreadyRecorded(existing, res.symbol, ev.ex_date)) continue;
-      const est = estimateDividend(market, currency, shares * ev.per_share, usWithholding);
+      // Yahoo divides a dividend by every later split; undo that for the 配股 we count as shares.
+      let perShare = ev.per_share;
+      for (const sp of splits) if (sp.ex_date > ev.ex_date) perShare *= sp.ratio;
+      perShare = Math.round(perShare * 1e6) / 1e6;
+      const est = estimateDividend(market, currency, shares * perShare, usWithholding);
       suggestions.push({
-        symbol: res.symbol, market, currency, ex_date: ev.ex_date,
-        per_share: ev.per_share, shares,
+        kind: 'cash', symbol: res.symbol, market, currency, ex_date: ev.ex_date,
+        per_share: perShare, shares,
         gross: est.gross, amount: est.amount, withheld: est.withheld,
       });
     }
   }
-  suggestions.sort((a, b) => cmp(b.ex_date, a.ex_date) || cmp(a.symbol, b.symbol));
+  suggestions.sort((a, b) => cmp(b.ex_date, a.ex_date) || cmp(a.symbol, b.symbol) || cmp(a.kind, b.kind));
   errors.sort(cmp);
   return { suggestions, errors };
 }

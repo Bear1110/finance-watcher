@@ -63,6 +63,23 @@ test('TWR sell and dividend', () => {
   assert.equal(s.end_value, 0);
 });
 
+test('TWR 配股 (zero-cost BUY on the ex-date) is no money in and does not price the holding at 0', () => {
+  const r = computePerformance({
+    // Ex-date: Yahoo's adjusted close stays 100, 1000 A become 1030 for free; another buy the same day.
+    txns: [
+      buy('A.TW', '2026-01-05', 1000, 100), buy('B.TW', '2026-01-05', 10, 100),
+      buy('A.TW', '2026-01-06', 30, 0), buy('B.TW', '2026-01-06', 10, 100),
+    ],
+    closes: {
+      'A.TW': closesOf('2026-01-05', 100, '2026-01-06', 100),
+      'B.TW': closesOf('2026-01-05', 100, '2026-01-06', 100),
+    },
+    today: '2026-01-06', liveRate: 30,
+  });
+  approx('twr', lastReturn(r, 'ALL'), 105000 / 102000 - 1);
+  assert.equal(r.stats('ALL', 0).pnl, 3000);
+});
+
 test('TWR USD uses daily rate', () => {
   const us = { symbol: 'X', market: 'US', currency: 'USD', action: 'BUY', date: '2026-01-05', shares: 1, price: 100, fee: 0, tax: 0 };
   const r = computePerformance({

@@ -457,7 +457,7 @@
           </div>
           <p class="form-hint card-hint">股利是現金收入，不會併入收支紀錄，避免重複計算。</p>
           <div id="div-suggest" style="display:none">
-            <p class="form-hint card-hint">依你的買賣紀錄與 Yahoo 的除息資料估算。日期為<strong>除息日</strong>（實際入帳通常晚數週，匯入後可編輯）；美股預扣 30%、台股單筆 ≥ NT$20,000 扣 2.11% 補充保費皆為估計，請對照券商入帳金額。</p>
+            <p class="form-hint card-hint">依你的買賣紀錄與 Yahoo 的除權息資料估算。日期為<strong>除權息日</strong>（實際入帳通常晚數週，匯入後可編輯）；台股配股會記成交易紀錄裡成本 0 的買入，不足一股的部分券商發現金，不列入；美股預扣 30%、台股單筆 ≥ NT$20,000 扣 2.11% 補充保費皆為估計，請對照券商入帳金額。</p>
             <p class="form-hint card-hint">
               <label>起算日（早於此日的除息不列出）：<input type="date" id="div-suggest-since" class="input-sm" onchange="renderDividendSuggestions()"></label>
               若某檔的持股數明顯偏高，通常是「匯入持倉」的買入日期不是實際買進日，可到交易紀錄修正日期，或在這裡設起算日。
@@ -467,10 +467,10 @@
                 <thead>
                   <tr>
                     <th><input type="checkbox" id="div-suggest-all" checked onchange="toggleAllSuggestions(this.checked)"></th>
-                    <th>除息日</th>
+                    <th>除權息日</th>
                     <th>股票</th>
-                    <th>每股配息</th>
-                    <th>除息前持股</th>
+                    <th>配發</th>
+                    <th>除權息前持股</th>
                     <th>預估實收</th>
                     <th>預估扣稅</th>
                   </tr>
