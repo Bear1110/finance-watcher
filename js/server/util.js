@@ -111,6 +111,9 @@ export const round2 = (v) => goRound(v * 100) / 100;
 /** Whole days between two YYYY-MM-DD dates. */
 export const daysBetween = (from, to) => Math.round((Date.parse(to) - Date.parse(from)) / 86400000);
 
+/** Bonus shares from a stock dividend (配股): a BUY at price 0 — no money in, not a market price. */
+export const isBonusShares = (t) => t.action === 'BUY' && t.price === 0 && !(t.transfer || t.is_transfer);
+
 /** Compare helpers for ORDER BY */
 export const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 

@@ -270,7 +270,7 @@ const dividendCache = new Map(); // symbol|since -> { at, evs }
 const eventDate = (t) => new Date((t + 8 * 3600) * 1000).toISOString().slice(0, 10);
 
 /**
- * Ex-dividend and split events since `since` (Date), oldest first:
+ * Ex-dividend and split events since `since` (Date), unordered:
  * { cash: [{ ex_date, per_share }], splits: [{ ex_date, ratio }] }. ratio is new shares per old share
  * (台股配股 1030:1000 → 1.03). per_share is as Yahoo reports it: divided by every later split.
  */
@@ -282,12 +282,11 @@ export async function fetchDividendHistory(symbol, since) {
     chartPath(symbol, `interval=1mo&events=div,splits&period1=${unix(since)}&period2=${periodEnd()}`),
     `${symbol} dividends`);
   const events = body.chart?.result?.[0]?.events || {};
-  const byDate = (a, b) => (a.ex_date < b.ex_date ? -1 : a.ex_date > b.ex_date ? 1 : 0);
   const evs = {
     cash: Object.values(events.dividends || {}).filter((d) => d.amount > 0)
-      .map((d) => ({ ex_date: eventDate(d.date), per_share: d.amount })).sort(byDate),
+      .map((d) => ({ ex_date: eventDate(d.date), per_share: d.amount })),
     splits: Object.values(events.splits || {}).filter((d) => d.numerator > 0 && d.denominator > 0)
-      .map((d) => ({ ex_date: eventDate(d.date), ratio: d.numerator / d.denominator })).sort(byDate),
+      .map((d) => ({ ex_date: eventDate(d.date), ratio: d.numerator / d.denominator })),
   };
   dividendCache.set(key, { at: Date.now(), evs });
   return evs;

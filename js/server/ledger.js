@@ -5,7 +5,7 @@
 // holdings stale.
 
 import * as db from './db.js';
-import { isCounted, normalizeSymbolMarket, twFeeDiscount, round4, badRequest, cmp } from './util.js';
+import { isBonusShares, isCounted, normalizeSymbolMarket, twFeeDiscount, round4, badRequest, cmp } from './util.js';
 import { lotFromBuy, takeLots, lotsTotal, twTradeCost } from './lots.js';
 
 const actionOrder = (a) => (a === 'BUY' ? 0 : 1);
@@ -93,8 +93,7 @@ export function normalizeTxn(txn) {
   txn.realized_pl = Number(txn.realized_pl) || 0;
   txn.note = txn.note == null ? '' : String(txn.note);
   if (!(txn.shares > 0)) throw badRequest('股數必須大於 0');
-  // A BUY at 0 is bonus shares (配股); a SELL always has a price.
-  if (!(txn.price > 0) && !(txn.action === 'BUY' && txn.price === 0)) throw badRequest('價格必須大於 0（配股的買入可填 0）');
+  if (!(txn.price > 0) && !isBonusShares(txn)) throw badRequest('價格必須大於 0（配股的買入可填 0）');
   if (txn.fee < 0 || txn.tax < 0) throw badRequest('手續費與稅金不可為負');
   return txn;
 }
@@ -105,7 +104,7 @@ export function normalizeTxn(txn) {
  * requested, market is TW, neither fee nor tax was entered and it is not 配股 (price 0).
  */
 export function applyAutoFee(txn) {
-  if (!txn.auto_fee || txn.market !== 'TW' || txn.fee !== 0 || txn.tax !== 0 || txn.price === 0) return;
+  if (!txn.auto_fee || txn.market !== 'TW' || txn.fee !== 0 || txn.tax !== 0 || isBonusShares(txn)) return;
   Object.assign(txn, twTradeCost(txn.symbol, txn.action, txn.shares, txn.price, twFeeDiscount()));
 }
 

@@ -2866,16 +2866,12 @@ async function importDividendSuggestions() {
   try {
     await api('/api/dividends/batch', {
       method: 'POST',
-      body: JSON.stringify(picked.map(s => (s.kind === 'stock' ? {
-        kind: 'stock', symbol: s.symbol, market: s.market, currency: s.currency,
-        shares: s.new_shares, ex_date: s.ex_date,
-        note: `配股：每千股 ${s.per_thousand} 股 × ${s.shares} 股（Yahoo 估算，日期為除權日）`,
-      } : {
-        symbol: s.symbol, market: s.market, currency: s.currency,
-        amount: s.amount, withheld: s.withheld,
-        date: s.ex_date, ex_date: s.ex_date,
-        note: `Yahoo 估算：每股 ${s.per_share} × ${s.shares} 股（日期為除息日）`,
-      }))),
+      body: JSON.stringify(picked.map(s => {
+        const base = { symbol: s.symbol, market: s.market, currency: s.currency, ex_date: s.ex_date };
+        return s.kind === 'stock'
+          ? { ...base, kind: 'stock', shares: s.new_shares, note: `配股：每千股 ${s.per_thousand} 股 × ${s.shares} 股（Yahoo 估算，日期為除權日）` }
+          : { ...base, amount: s.amount, withheld: s.withheld, date: s.ex_date, note: `Yahoo 估算：每股 ${s.per_share} × ${s.shares} 股（日期為除息日）` };
+      })),
     });
     const nStock = picked.filter(s => s.kind === 'stock').length;
     showToast(`已匯入 ${picked.length - nStock} 筆股利${nStock ? `、${nStock} 筆配股（記在交易紀錄）` : ''}`, 'success');

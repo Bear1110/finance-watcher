@@ -3,9 +3,10 @@
 import * as db from './db.js';
 import { route } from './router.js';
 import { fetchDividendHistory, MarketUnavailableError } from './market.js';
-import { replaySymbol } from './ledger.js';
+import { normalizeTxn, replaySymbol } from './ledger.js';
 import {
-  HttpError, badRequest, body, cmp, isCounted, normalizeSymbolMarket, settingFloat, storedUSDTWDRate, toTWD,
+  HttpError, badRequest, body, cmp, daysBetween, isBonusShares, isCounted, normalizeSymbolMarket, round4, settingFloat,
+  storedUSDTWDRate, toTWD,
 } from './util.js';
 
 function normalizeDividend(d) {
@@ -38,18 +39,13 @@ route('POST', '/api/dividends', (req) => {
 });
 
 /** A 配股 suggestion as a zero-cost BUY dated the ex-date (Yahoo's prices are adjusted from then on). */
-function normalizeStockDividend(d) {
-  normalizeSymbolMarket(d);
-  d.shares = Number(d.shares) || 0;
-  if (!(d.shares > 0) || !Number.isInteger(d.shares)) throw badRequest('配股股數必須是正整數');
-  return d;
-}
-
-function insertStockDividend(d) {
-  db.insert('stock_transactions', {
-    symbol: d.symbol, market: d.market, action: 'BUY', shares: d.shares, price: 0, fee: 0, tax: 0,
-    currency: d.currency, date: d.ex_date, realized_pl: 0, note: d.note || '配股',
+function stockDividendTxn(d) {
+  const t = normalizeTxn({
+    symbol: d.symbol, market: d.market, currency: d.currency, action: 'BUY', shares: d.shares, price: 0,
+    date: d.ex_date, note: d.note || '配股',
   });
+  if (!Number.isInteger(t.shares)) throw badRequest('配股股數必須是整數');
+  return { ...t, kind: 'stock' };
 }
 
 // All-or-nothing import (used by the Yahoo suggestions list): cash rows become dividends,
@@ -60,22 +56,22 @@ route('POST', '/api/dividends/batch', async (req) => {
   const items = list.map((raw) => {
     const d = { ...raw };
     try {
-      return d.kind === 'stock' ? normalizeStockDividend(d) : normalizeDividend(d);
+      return d.kind === 'stock' ? stockDividendTxn(d) : normalizeDividend(d);
     } catch (e) {
       throw badRequest(`${d.symbol}: ${e.message}`);
     }
   });
   await db.transaction(async () => {
-    const replay = new Set();
     for (const d of items) {
-      if (d.kind === 'stock') {
-        insertStockDividend(d);
-        replay.add(d.symbol);
-      } else {
-        insertDividend(d);
+      if (d.kind !== 'stock') insertDividend(d);
+      else {
+        db.insert('stock_transactions', {
+          symbol: d.symbol, market: d.market, action: 'BUY', shares: d.shares, price: 0, fee: 0, tax: 0,
+          currency: d.currency, date: d.date, realized_pl: 0, note: d.note,
+        });
       }
     }
-    for (const sym of replay) replaySymbol(sym);
+    for (const sym of new Set(items.filter((d) => d.kind === 'stock').map((d) => d.symbol))) replaySymbol(sym);
   });
   return { created: items.length };
 });
@@ -194,35 +190,23 @@ export function estimateDividend(market, currency, gross, usWithholding) {
   return { gross: rnd(gross), amount: rnd(net), withheld: rnd(withheld) };
 }
 
+/** A payout recorded by hand counts for an ex-date when dated 3 days before to 60 days after it. */
+const nearExDate = (exDate, date) => {
+  const days = daysBetween(exDate, date);
+  return days >= -3 && days <= 60;
+};
+
 /**
  * Matches an imported record by ex_date, or a manually entered one (no ex_date)
  * paid between 3 days before and 60 days after the ex-date.
  */
 export function dividendAlreadyRecorded(existing, symbol, exDate) {
-  const ex = Date.parse(exDate);
-  if (Number.isNaN(ex)) return false;
-  for (const d of existing) {
-    if (d.symbol !== symbol) continue;
-    if (d.ex_date === exDate) return true;
-    if (d.ex_date === '') {
-      const paid = Date.parse(d.date);
-      if (!Number.isNaN(paid)) {
-        const days = (paid - ex) / 86400000;
-        if (days >= -3 && days <= 60) return true;
-      }
-    }
-  }
-  return false;
+  return existing.some((d) => d.symbol === symbol && (d.ex_date === exDate || (d.ex_date === '' && nearExDate(exDate, d.date))));
 }
 
 /** A zero-cost BUY of the symbol (an imported or hand-entered 配股) dated -3..60 days from the ex-date. */
 export function stockDividendRecorded(txns, symbol, exDate) {
-  const ex = Date.parse(exDate);
-  return txns.some((t) => {
-    if (t.symbol !== symbol || t.action !== 'BUY' || t.price !== 0) return false;
-    const days = (Date.parse(t.date) - ex) / 86400000;
-    return days >= -3 && days <= 60;
-  });
+  return txns.some((t) => t.symbol === symbol && isBonusShares(t) && nearExDate(exDate, t.date));
 }
 
 /**
@@ -301,16 +285,9 @@ export async function dividendSuggestions(opts = {}) {
     }
     const [market, currency] = meta.get(res.symbol);
     const splits = (res.evs.splits || []).filter((sp) => isStockDividend(market, sp.ratio));
-    const pending = []; // suggested, not yet imported 配股: { ex_date, shares }
-    // Entitled shares = bought before the ex-date and not sold before it (+ earlier pending 配股).
-    const sharesBefore = (exDate) => {
-      let n = 0;
-      for (const he of events.get(res.symbol)) {
-        if (he.date < exDate) n += he.action === 'BUY' ? he.shares : -he.shares;
-      }
-      for (const p of pending) if (p.ex_date < exDate) n += p.shares;
-      return n;
-    };
+    // Entitled shares = bought before the ex-date and not sold before it; suggested 配股 join the history.
+    const hist = [...events.get(res.symbol)];
+    const sharesBefore = (exDate) => hist.reduce((n, he) => (he.date < exDate ? n + (he.action === 'BUY' ? he.shares : -he.shares) : n), 0);
     const timeline = [
       ...(res.evs.cash || []).map((ev) => ({ ...ev, kind: 'cash' })),
       ...splits.map((ev) => ({ ...ev, kind: 'stock' })),
@@ -321,10 +298,10 @@ export async function dividendSuggestions(opts = {}) {
       if (ev.kind === 'stock') {
         const add = Math.floor(shares * (ev.ratio - 1) + 1e-6);
         if (add < 1 || stockDividendRecorded(counted, res.symbol, ev.ex_date)) continue;
-        pending.push({ ex_date: ev.ex_date, shares: add });
+        hist.push({ date: ev.ex_date, action: 'BUY', shares: add });
         suggestions.push({
           kind: 'stock', symbol: res.symbol, market, currency, ex_date: ev.ex_date,
-          per_thousand: Math.round((ev.ratio - 1) * 1e7) / 1e4, shares, new_shares: add,
+          per_thousand: round4((ev.ratio - 1) * 1000), shares, new_shares: add,
         });
         continue;
       }

@@ -6,7 +6,7 @@
 // not shift with the browser's timezone.
 
 import { USDTWD_SYMBOL } from './market.js';
-import { goRound, round2, round4, toTWD } from './util.js';
+import { goRound, isBonusShares, round2, round4, toTWD } from './util.js';
 import { lotFromBuy, takeLots, lotsTotal, estSellCost } from './lots.js';
 
 
@@ -145,7 +145,7 @@ export function computePerformance(input) {
     const tradeQty = {};
     trades.forEach((t, i) => {
       tradePx[i] = t.price;
-      if (t.price === 0 && !t.transfer) return; // 配股: no money in, and its 0 must not price the holding before it
+      if (isBonusShares(t)) return; // 配股: no money in, and its 0 must not price the holding before it
       if (cursors[t.symbol].i === 0 && !px[t.symbol]) {
         px[t.symbol] = t.price; // no daily close yet: use the trade price
       }
