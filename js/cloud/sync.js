@@ -18,6 +18,7 @@ let sheet = null;
 let running = null;
 let again = false;
 let timer = null;
+let expiryTimer = null;
 const listeners = new Set();
 export const state = { status: 'idle', error: null, lastSync: null };
 
@@ -25,6 +26,9 @@ function setStatus(status, error = null) {
   state.status = status;
   state.error = error;
   for (const fn of listeners) fn(state);
+  // 網頁一直開著時，權杖到期那一刻沒有事件：到期時再檢查一次，狀態才會切成「需要重新連線」
+  clearTimeout(expiryTimer);
+  if (auth.hasValidToken()) expiryTimer = setTimeout(() => scheduleSync(0), auth.msUntilExpiry() + 1000);
 }
 
 export function onStatus(fn) {
@@ -105,7 +109,8 @@ async function syncOnce() {
 
 function scheduleSync(delay = AUTO_SYNC_DELAY_MS) {
   if (!auth.hasValidToken()) {
-    setStatus(db.hasPending() ? (auth.getEmail() ? 'expired' : 'signed-out') : state.status);
+    // 登入過就一律顯示過期（就算沒有待上傳的變更，也收不到別台裝置的修改）
+    setStatus(auth.getEmail() ? 'expired' : db.hasPending() ? 'signed-out' : state.status);
     return;
   }
   clearTimeout(timer);

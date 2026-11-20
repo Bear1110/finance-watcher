@@ -181,6 +181,35 @@ function cloudSignIn() {
     });
 }
 
+// 權杖過期時，使用者下一次點畫面任何地方就順便重新連線（等同替他按「重新連線」）。
+// 不能用程式呼叫 button.click()：沒有真的使用者手勢，Google 彈窗會被瀏覽器擋掉。
+// 每次過期只自動試一次；被關掉或失敗就留給右上角的雲朵手動按，避免每點一下都跳彈窗。
+let autoReconnectArmed = false;
+let autoReconnectTried = false;
+
+const needsReconnect = () => sync.state.status === 'expired' && sync.auth.isAuthReady();
+
+function onAutoReconnectClick(e) {
+  setAutoReconnect(false);
+  if (!needsReconnect() || !navigator.onLine) return;
+  // 這些按鈕自己會開登入彈窗：一次點擊只能開一個彈窗，這裡先開的話按鈕自己的會被擋
+  if (e.target.closest?.('#sync-pill, #cloud-signin-btn')) return;
+  autoReconnectTried = true;
+  sync.signIn().catch(() => {}); // 安靜地試；原本的點擊照常進行，不攔
+}
+
+function setAutoReconnect(on) {
+  if (on === autoReconnectArmed) return;
+  autoReconnectArmed = on;
+  if (on) document.addEventListener('click', onAutoReconnectClick, true);
+  else document.removeEventListener('click', onAutoReconnectClick, true);
+}
+
+function updateAutoReconnect() {
+  if (sync.auth.hasValidToken()) autoReconnectTried = false; // 連上了：下次過期可以再自動試一次
+  setAutoReconnect(needsReconnect() && !autoReconnectTried);
+}
+
 function onSyncPillClick() {
   const st = sync.state.status;
   if ((st === 'expired' || st === 'signed-out') && sync.auth.isAuthReady()) return cloudSignIn();
@@ -241,6 +270,7 @@ window.calcInfo = calcInfo; // 算式欄位的即時結果（app.js initCalcInpu
 
 document.getElementById('import-file')?.addEventListener('change', onImportFile);
 sync.onStatus(renderCloudStatus);
+sync.onStatus(updateAutoReconnect);
 db.onChange(() => { window.invalidatePerf?.(); window.invalidateDataCheck?.(); }); // trades, dividends, settings: derived data is stale
 
 db.onChange(() => renderCloudStatus());
