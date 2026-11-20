@@ -394,26 +394,32 @@ function debounce(fn, ms = 150) {
  */
 function labelListTable(table) {
   const ths = [...(table.tHead?.rows[0]?.cells || [])];
-  for (const tr of [...table.tBodies].concat(table.tFoot || []).flatMap(b => [...b.rows])) {
+  const labels = ths.map(th => th.dataset.short || th.textContent.replace('ⓘ', '').trim());
+  for (const tr of table.querySelectorAll('tbody tr, tfoot tr')) {
     let col = 0;
     for (const td of tr.cells) {
-      const th = ths[col];
+      const i = col;
       col += td.colSpan;
-      if (!th || td.colSpan > 1) continue;
-      td.dataset.label = th.dataset.short || th.textContent.replace('ⓘ', '').trim();
-      if (th.dataset.m) td.dataset.m = th.dataset.m;
+      if (!ths[i] || td.colSpan > 1) continue;
+      td.dataset.label = labels[i];
+      if (ths[i].dataset.m) td.dataset.m = ths[i].dataset.m;
     }
   }
 }
 
+/** Relabel when rows come or go (not when a cell's content changes, e.g. stock names arriving). */
 function initListTables() {
   document.querySelectorAll('table.m-list').forEach(labelListTable);
+  const ROWS = new Set(['TABLE', 'THEAD', 'TBODY', 'TFOOT', 'TR']);
   new MutationObserver(muts => {
     const tables = new Set();
     for (const m of muts) {
-      const t = m.target.closest?.('table.m-list');
-      if (t) tables.add(t);
-      for (const n of m.addedNodes) n.querySelectorAll?.('table.m-list').forEach(x => tables.add(x));
+      if (ROWS.has(m.target.nodeName)) {
+        const t = m.target.closest('table.m-list');
+        if (t) tables.add(t);
+      } else {
+        for (const n of m.addedNodes) n.querySelectorAll?.('table.m-list').forEach(x => tables.add(x));
+      }
     }
     tables.forEach(labelListTable);
   }).observe(document.body, { childList: true, subtree: true });
@@ -802,7 +808,7 @@ function renderRecentTx(txList) {
       <td>${stockHTML(t.symbol)}</td>
       <td><span class="${t.action === 'BUY' ? 'tag-buy' : 'tag-sell'}">${t.action === 'BUY' ? '買' : '賣'}</span></td>
       <td>${fmt(t.shares)}</td>
-      <td>${fmtNum(t.price, 2)}</td>
+      <td>${t.bonus ? '配股' : fmtNum(t.price, 2)}</td>
     </tr>`).join('') : '<tr><td colspan="5" class="empty-state">尚無交易紀錄</td></tr>';
 }
 
@@ -1809,7 +1815,7 @@ function renderTransactions() {
           <td><strong>${stockHTML(t.symbol)}</strong></td>
           <td><span class="${t.action === 'BUY' ? 'tag-buy' : 'tag-sell'}">${t.action === 'BUY' ? '買' : '賣'}</span></td>
           <td>${fmt(t.shares)}</td>
-          <td>${t.action === 'BUY' && t.price === 0 ? '配股' : fmtNum(t.price, 2)}</td>
+          <td>${t.bonus ? '配股' : fmtNum(t.price, 2)}</td>
           <td${feeTitle}>${fees ? fmt(fees, 0) : '--'}</td>
           <td class="${plClass(t.realized_pl)}">${t.realized_pl ? fmtPLCur(t.realized_pl, t.currency) : '--'}</td>
           <td>${escapeHtml(t.note || '')}</td>
@@ -2260,13 +2266,13 @@ function perfCardHtml(view) {
     </div>
     <div class="chart-container-md"><canvas data-perf="chart"></canvas></div>
     <div class="table-wrap">
-      <table class="perf-table">
+      <table class="perf-table scroll-grid">
         <thead><tr data-perf="head"><th></th></tr></thead>
         <tbody data-perf="body"><tr><td class="text-muted">載入中…</td></tr></tbody>
       </table>
     </div>
     ${risk ? `<div class="table-wrap">
-      <table class="perf-risk-table">
+      <table class="perf-risk-table scroll-grid">
         <thead><tr data-perf="risk-head"></tr></thead>
         <tbody data-perf="risk-body"></tbody>
       </table>

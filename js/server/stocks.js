@@ -7,7 +7,7 @@ import { route } from './router.js';
 import { fetchQuotes, invalidateCache, lastFetchTime } from './market.js';
 import { dividendsBySymbol } from './dividends.js';
 import {
-  HttpError, badRequest, body, storedUSDTWDRate, twFeeDiscount, toTWD, realizedTWD, fmtLocal, round2, cmp, sellCostBasis, sellReturnPct,
+  HttpError, badRequest, body, storedUSDTWDRate, twFeeDiscount, toTWD, realizedTWD, fmtLocal, round2, cmp, sellCostBasis, sellReturnPct, isBonusShares,
 } from './util.js';
 import { replaySymbol, normalizeTxn, applyAutoFee, uncoveredWarnings, fmtShares } from './ledger.js';
 import { estSellCost } from './lots.js';
@@ -28,7 +28,7 @@ export function holdingDetail(h) {
   };
 }
 
-/** Transaction as the API returns it (auto_fee/manual_pl/account_id omitted when empty). */
+/** Transaction as the API returns it (auto_fee/manual_pl/bonus/account_id omitted when empty). */
 export function txnJSON(t) {
   const out = {
     id: t.id, symbol: t.symbol, market: t.market, action: t.action,
@@ -36,6 +36,7 @@ export function txnJSON(t) {
   };
   if (t.auto_fee) out.auto_fee = true;
   if (t.manual_pl) out.manual_pl = true;
+  if (isBonusShares(t)) out.bonus = true; // 配股
   Object.assign(out, {
     currency: t.currency, date: t.date, realized_pl: t.realized_pl,
     note: t.note ?? '', created_at: t.created_at ?? '',

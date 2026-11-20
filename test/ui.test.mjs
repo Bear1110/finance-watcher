@@ -61,12 +61,11 @@ test('UI: bright blue only for small things; big blue areas use the calm blue (-
   }
 });
 
-test('UI: tables are phone lists (.m-list) unless they are grids that scroll sideways on purpose', () => {
-  const grids = /\b(holdings-table|heatmap-table|perf-risk-table|perf-table)\b/; // own card view, or a matrix
+test('UI: tables are phone lists (.m-list) or grids that scroll sideways on purpose (.scroll-grid)', () => {
   for (const [file, src] of sources) {
     for (const m of src.matchAll(/<table\b([^>]*)>/g)) {
-      if (/\bm-list\b/.test(m[1]) || grids.test(m[1])) continue;
-      assert.fail(`${file}:${lineOf(src, m.index)} <table> without class="m-list": add it (and data-m on the headers) so phones get one block per row`);
+      if (/\b(m-list|scroll-grid)\b/.test(m[1])) continue;
+      assert.fail(`${file}:${lineOf(src, m.index)} <table> without class="m-list" (data-m on the headers) or "scroll-grid" (a matrix)`);
     }
   }
 });
