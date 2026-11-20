@@ -159,12 +159,12 @@
           <h3>近期交易</h3>
         </div>
         <div class="table-wrap">
-          <table>
+          <table class="m-list">
             <thead>
               <tr>
-                <th>日期</th>
-                <th>股票</th>
-                <th>操作</th>
+                <th data-m="top">日期</th>
+                <th data-m="top">股票</th>
+                <th data-m="top">操作</th>
                 <th>股數</th>
                 <th>價格</th>
               </tr>
@@ -376,16 +376,16 @@
             <h3>各股損益明細</h3>
           </div>
           <div class="table-wrap">
-            <table>
+            <table class="m-list">
               <thead>
                 <tr>
-                  <th>股票</th>
-                  <th>市場</th>
+                  <th data-m="top">股票</th>
+                  <th data-m="hide">市場</th>
                   <th>交易次數</th>
                   <th>賣出股數</th>
                   <th>總收入</th>
                   <th>總成本</th>
-                  <th>已實現損益</th>
+                  <th data-m="end">已實現損益</th>
                   <th>平均報酬率</th>
                   <th>最佳 %</th>
                   <th>最差 %</th>
@@ -394,8 +394,8 @@
               <tbody id="rpl-stock-body"></tbody>
               <tfoot id="rpl-stock-foot">
                 <tr>
-                  <td colspan="6"><strong>合計</strong></td>
-                  <td id="rpl-stock-total-pl"></td>
+                  <td colspan="6" data-m="top"><strong>合計</strong></td>
+                  <td id="rpl-stock-total-pl" data-m="end"></td>
                   <td id="rpl-stock-avg-return"></td>
                   <td colspan="2"></td>
                 </tr>
@@ -424,18 +424,18 @@
           </div>
           <div class="select-bar"></div>
           <div class="table-wrap">
-            <table>
+            <table class="m-list">
               <thead>
                 <tr>
-                  <th class="sel-col" aria-label="選取"></th>
-                  <th>日期</th>
-                  <th>股票</th>
-                  <th>買賣</th>
+                  <th data-m="top" class="sel-col" aria-label="選取"></th>
+                  <th data-m="top">日期</th>
+                  <th data-m="top">股票</th>
+                  <th data-m="top">買賣</th>
                   <th>股數</th>
                   <th>價格</th>
                   <th title="手續費＋證交稅">費用</th>
-                  <th>已實現損益</th>
-                  <th>備註</th>
+                  <th data-m="end">已實現損益</th>
+                  <th data-m="wide">備註</th>
                 </tr>
               </thead>
               <tbody id="tx-body">
@@ -463,15 +463,15 @@
               若某檔的持股數明顯偏高，通常是「匯入持倉」的買入日期不是實際買進日，可到交易紀錄修正日期，或在這裡設起算日。
             </p>
             <div class="table-wrap">
-              <table>
+              <table class="m-list">
                 <thead>
                   <tr>
-                    <th><input type="checkbox" id="div-suggest-all" checked onchange="toggleAllSuggestions(this.checked)"></th>
-                    <th>除權息日</th>
-                    <th>股票</th>
+                    <th data-m="top"><input type="checkbox" id="div-suggest-all" checked onchange="toggleAllSuggestions(this.checked)"></th>
+                    <th data-m="top">除權息日</th>
+                    <th data-m="top">股票</th>
                     <th>配發</th>
                     <th>除權息前持股</th>
-                    <th>預估實收</th>
+                    <th data-m="end">預估實收</th>
                     <th>預估扣稅</th>
                   </tr>
                 </thead>
@@ -543,16 +543,16 @@
             </div>
           </div>
           <div class="table-wrap">
-            <table>
+            <table class="m-list">
               <thead>
                 <tr>
-                  <th>日期</th>
-                  <th>股票</th>
-                  <th>市場</th>
-                  <th>實收金額</th>
+                  <th data-m="top">日期</th>
+                  <th data-m="top">股票</th>
+                  <th data-m="hide">市場</th>
+                  <th data-m="end">實收金額</th>
                   <th>已扣稅費</th>
-                  <th>備註</th>
-                  <th>操作</th>
+                  <th data-m="wide">備註</th>
+                  <th data-m="act">操作</th>
                 </tr>
               </thead>
               <tbody id="div-body">
@@ -771,17 +771,17 @@
             </div>
           </div>
           <div class="table-wrap">
-            <table>
+            <table class="m-list">
               <thead>
                 <tr>
-                  <th>股票</th>
-                  <th>市場</th>
+                  <th data-m="top">股票</th>
+                  <th data-m="hide">市場</th>
                   <th>股數</th>
                   <th>均價</th>
                   <th>現價</th>
                   <th>市值 (原幣)</th>
                   <th>市值 (TWD)</th>
-                  <th>未實現損益</th>
+                  <th data-m="end">未實現損益</th>
                   <th>損益 %</th>
                 </tr>
               </thead>
@@ -802,17 +802,17 @@
           <p class="form-hint card-hint">一鍵凍結此帳戶當下的現金、持倉市值與損益（含即時匯率），只屬於這個帳戶。</p>
           <div class="chart-container-md" style="margin-bottom:20px"><canvas id="chart-mng-snapshot"></canvas></div>
           <div class="table-wrap">
-            <table>
+            <table class="m-list">
               <thead>
                 <tr>
-                  <th>日期</th>
+                  <th data-m="top">日期</th>
                   <th>台幣現金</th>
                   <th>美金現金</th>
                   <th>股票市值</th>
                   <th>未實現損益</th>
-                  <th>總價值</th>
+                  <th data-m="end">總價值</th>
                   <th>匯率</th>
-                  <th>操作</th>
+                  <th data-m="act">操作</th>
                 </tr>
               </thead>
               <tbody id="mng-snapshot-body">
@@ -829,16 +829,16 @@
             <button class="btn btn-outline btn-sm" onclick="closeManagedSnapshotDetail()">關閉</button>
           </div>
           <div class="table-wrap">
-            <table>
+            <table class="m-list">
               <thead>
                 <tr>
-                  <th>股票</th>
-                  <th>市場</th>
+                  <th data-m="top">股票</th>
+                  <th data-m="hide">市場</th>
                   <th>股數</th>
                   <th>均價</th>
                   <th>現價</th>
                   <th>市值(TWD)</th>
-                  <th>損益(TWD)</th>
+                  <th data-m="end">損益(TWD)</th>
                 </tr>
               </thead>
               <tbody id="mng-snapshot-detail-body"></tbody>
@@ -852,18 +852,18 @@
             <h3>交易紀錄</h3>
           </div>
           <div class="table-wrap">
-            <table>
+            <table class="m-list">
               <thead>
                 <tr>
-                  <th>日期</th>
-                  <th>股票</th>
-                  <th>操作</th>
+                  <th data-m="top">日期</th>
+                  <th data-m="top">股票</th>
+                  <th data-m="top">操作</th>
                   <th>股數</th>
                   <th>價格</th>
                   <th>手續費</th>
-                  <th>已實現損益</th>
-                  <th>備註</th>
-                  <th>操作</th>
+                  <th data-m="end">已實現損益</th>
+                  <th data-m="wide">備註</th>
+                  <th data-m="act">操作</th>
                 </tr>
               </thead>
               <tbody id="mng-tx-body">
@@ -880,15 +880,15 @@
           </div>
           <p class="form-hint card-hint">收到更多錢就「存入」，領出/退還就「提領」。刪除紀錄會自動回沖現金。</p>
           <div class="table-wrap">
-            <table>
+            <table class="m-list">
               <thead>
                 <tr>
-                  <th>日期</th>
-                  <th>類型</th>
-                  <th>幣別</th>
-                  <th>金額</th>
-                  <th>備註</th>
-                  <th>操作</th>
+                  <th data-m="top">日期</th>
+                  <th data-m="top">類型</th>
+                  <th data-m="hide">幣別</th>
+                  <th data-m="end">金額</th>
+                  <th data-m="wide">備註</th>
+                  <th data-m="act">操作</th>
                 </tr>
               </thead>
               <tbody id="mng-cash-body">

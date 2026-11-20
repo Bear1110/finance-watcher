@@ -386,6 +386,39 @@ function debounce(fn, ms = 150) {
   return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms); };
 }
 
+/**
+ * Phone list layout for tables marked .m-list (style.css): each body/foot cell gets its column header as
+ * data-label and the header's data-m role (top: first line, end: the number on the right, wide: own
+ * line, act: buttons, hide: not on phones). Renderers stay plain <tr>s; labelListTables runs whenever
+ * rows change (initListTables).
+ */
+function labelListTable(table) {
+  const ths = [...(table.tHead?.rows[0]?.cells || [])];
+  for (const tr of [...table.tBodies].concat(table.tFoot || []).flatMap(b => [...b.rows])) {
+    let col = 0;
+    for (const td of tr.cells) {
+      const th = ths[col];
+      col += td.colSpan;
+      if (!th || td.colSpan > 1) continue;
+      td.dataset.label = th.dataset.short || th.textContent.replace('ⓘ', '').trim();
+      if (th.dataset.m) td.dataset.m = th.dataset.m;
+    }
+  }
+}
+
+function initListTables() {
+  document.querySelectorAll('table.m-list').forEach(labelListTable);
+  new MutationObserver(muts => {
+    const tables = new Set();
+    for (const m of muts) {
+      const t = m.target.closest?.('table.m-list');
+      if (t) tables.add(t);
+      for (const n of m.addedNodes) n.querySelectorAll?.('table.m-list').forEach(x => tables.add(x));
+    }
+    tables.forEach(labelListTable);
+  }).observe(document.body, { childList: true, subtree: true });
+}
+
 function segmentSelect(sel) {
   let box = sel._seg;
   if (!box) {
@@ -1776,7 +1809,7 @@ function renderTransactions() {
           <td><strong>${stockHTML(t.symbol)}</strong></td>
           <td><span class="${t.action === 'BUY' ? 'tag-buy' : 'tag-sell'}">${t.action === 'BUY' ? '買' : '賣'}</span></td>
           <td>${fmt(t.shares)}</td>
-          <td>${fmtNum(t.price, 2)}</td>
+          <td>${t.action === 'BUY' && t.price === 0 ? '配股' : fmtNum(t.price, 2)}</td>
           <td${feeTitle}>${fees ? fmt(fees, 0) : '--'}</td>
           <td class="${plClass(t.realized_pl)}">${t.realized_pl ? fmtPLCur(t.realized_pl, t.currency) : '--'}</td>
           <td>${escapeHtml(t.note || '')}</td>
@@ -4137,7 +4170,7 @@ function renderImportSection(kind, r) {
     (r.duplicates ? `，略過 ${r.duplicates} 筆重複` : '') + (r.errors.length ? `，${r.errors.length} 筆無法匯入` : '') + '</p>';
   const warnings = (r.warnings || []).map(w => `<p class="import-warning">${escapeHtml(w)}</p>`).join('');
   const cols = IMPORT_COLUMNS[kind] || [];
-  const table = r.records.length && cols.length ? `<div class="table-wrap"><table>
+  const table = r.records.length && cols.length ? `<div class="table-wrap"><table class="m-list">
     <thead><tr>${cols.map(([h]) => `<th>${h}</th>`).join('')}</tr></thead>
     <tbody>${r.records.slice(0, 100).map(row => `<tr>${cols.map(([, cell]) => `<td>${cell(row)}</td>`).join('')}</tr>`).join('')}</tbody>
     </table></div>` + (r.records.length > 100 ? '<p class="form-hint">只顯示前 100 筆。</p>' : '') : '';
@@ -4424,6 +4457,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadStockNames().finally(loadDashboard);
 
   initHoldingsView();
+  initListTables();
 
   // Refresh USD/TWD in the background (best-effort, won't block the first paint). Redraw the
   // dashboard only when the rate moved enough to show (≥ 0.1%), not on every start.

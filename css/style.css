@@ -1372,15 +1372,15 @@ body { overflow-x: clip; }
   thead th { padding: 0.5rem; font-size: 0.72rem; }
   tbody td, tfoot td { padding: 0.5rem; }
   /* not in card view (.as-cards, see the end of this file) */
-  .table-wrap table:not(.as-cards) th:first-child,
-  .table-wrap table:not(.as-cards) td:first-child:not([colspan]) {
+  .table-wrap table:not(.as-cards, .m-list) th:first-child,
+  .table-wrap table:not(.as-cards, .m-list) td:first-child:not([colspan]) {
     position: sticky;
     left: 0;
     z-index: 1;
     background: var(--bg-card);
     box-shadow: 1px 0 0 var(--border-color);
   }
-  .table-wrap table:not(.as-cards) tbody tr:hover td:first-child:not([colspan]) { background: var(--bg-card-hover); }
+  .table-wrap table:not(.as-cards, .m-list) tbody tr:hover td:first-child:not([colspan]) { background: var(--bg-card-hover); }
 
   /* --- Dashboard --- */
   .hero-card { padding: 16px; border-radius: 12px; }
@@ -2281,4 +2281,39 @@ body[data-tab="expenses"] .fab { display: flex; }
   .snap-month { font-size: 0.66rem; letter-spacing: -0.02em; }
   .snap-month:nth-last-child(n+7) { display: none; } /* the last 6 months fit a phone */
   .snap-months { --snap-dot: 22px; }
+}
+
+/* Phones: list tables (.m-list) become one block per row instead of a sideways-scrolling table.
+   Cells carry their header as data-label and a role as data-m (labelListTable in app.js):
+   top = first line, end = the number on its right, wide = its own line, act = buttons, hide = not shown. */
+@media (max-width: 599px) {
+  .table-wrap:has(> table.m-list) { overflow-x: visible; }
+  table.m-list, table.m-list :is(tbody, tfoot) { display: block; }
+  table.m-list thead { display: none; }
+  table.m-list tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 16px;
+    padding: 10px 2px;
+    border-bottom: 1px solid var(--divider);
+  }
+  table.m-list tbody tr:last-child { border-bottom: none; }
+  table.m-list tfoot tr { border-top: 1px solid var(--border-color); border-bottom: none; }
+  table.m-list tr::after { content: ''; order: 2; flex-basis: 100%; height: 0; } /* ends the first line */
+  table.m-list td { order: 3; padding: 0; border: none; background: none; white-space: normal; font-size: 0.85rem; }
+  table.m-list td:empty, table.m-list td[data-m="hide"] { display: none; }
+  table.m-list td[data-label]:not([data-m])::before,
+  table.m-list td[data-m="wide"]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+  }
+  table.m-list td[data-m="top"] { order: 0; font-size: 0.9rem; }
+  table.m-list td[data-m="top"].sel-col { width: auto; }
+  table.m-list td[data-m="end"] { order: 1; margin-left: auto; text-align: right; font-weight: 600; }
+  table.m-list td[data-m="wide"] { flex-basis: 100%; }
+  table.m-list td[data-m="act"] { margin-left: auto; }
+  table.m-list td[colspan]:not([data-m]) { order: 0; flex-basis: 100%; }
 }
